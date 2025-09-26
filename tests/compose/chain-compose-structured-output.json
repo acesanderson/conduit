@@ -1,0 +1,86 @@
+{
+  "workflow": {
+    "name": "Product Analysis Pipeline",
+    "description": "Analyze product reviews and extract structured insights using Pydantic models",
+    "inputs": {
+      "product_name": {
+        "type": "string",
+        "description": "Name of the product to analyze"
+      },
+      "review_text": {
+        "type": "string",
+        "description": "Customer review text to analyze"
+      }
+    },
+    "outputs": {
+      "sentiment_analysis": {
+        "from": "analyze_sentiment.output",
+        "description": "Structured sentiment analysis results"
+      },
+      "feature_extraction": {
+        "from": "extract_features.output",
+        "description": "Extracted product features and ratings"
+      },
+      "final_report": {
+        "from": "generate_report.output",
+        "description": "Comprehensive analysis report"
+      }
+    },
+    "steps": {
+      "analyze_sentiment": {
+        "model": "claude-3-5-haiku",
+        "description": "Analyze sentiment of the product review",
+        "prompt": "Analyze the sentiment of this product review for {{inputs.product_name}}:\n\n{{inputs.review_text}}\n\nProvide detailed sentiment analysis.",
+        "parser": {
+          "type": "structured",
+          "title": "SentimentAnalysis",
+          "schema": {
+            "overall_sentiment": "string",
+            "confidence_score": "float",
+            "positive_aspects": "list[string]",
+            "negative_aspects": "list[string]",
+            "emotional_tone": "string",
+            "recommendation_likelihood": "float"
+          }
+        },
+        "depends_on": []
+      },
+      "extract_features": {
+        "model": "gpt-4o",
+        "description": "Extract and rate product features from the review",
+        "prompt": "From this review of {{inputs.product_name}}:\n\n{{inputs.review_text}}\n\nExtract specific product features mentioned and rate them.",
+        "parser": {
+          "type": "structured",
+          "title": "FeatureExtraction",
+          "schema": {
+            "mentioned_features": "list[string]",
+            "feature_ratings": "dict",
+            "price_perception": "string",
+            "quality_indicators": "list[string]",
+            "comparison_products": "list[string]",
+            "usage_context": "string"
+          }
+        },
+        "depends_on": []
+      },
+      "generate_report": {
+        "model": "gpt-4o",
+        "description": "Generate comprehensive analysis report combining all insights",
+        "prompt": "Create a comprehensive product analysis report for {{inputs.product_name}} combining:\n\nSentiment Analysis:\n- Overall sentiment: {{analyze_sentiment.output.overall_sentiment}}\n- Confidence: {{analyze_sentiment.output.confidence_score}}\n- Positive aspects: {{analyze_sentiment.output.positive_aspects|join(', ')}}\n- Negative aspects: {{analyze_sentiment.output.negative_aspects|join(', ')}}\n\nFeature Analysis:\n- Features mentioned: {{extract_features.output.mentioned_features|join(', ')}}\n- Price perception: {{extract_features.output.price_perception}}\n- Quality indicators: {{extract_features.output.quality_indicators|join(', ')}}\n\nProvide actionable insights for product improvement.",
+        "parser": {
+          "type": "structured",
+          "title": "ProductReport",
+          "schema": {
+            "executive_summary": "string",
+            "key_strengths": "list[string]",
+            "areas_for_improvement": "list[string]",
+            "customer_satisfaction_score": "float",
+            "recommended_actions": "list[string]",
+            "competitive_positioning": "string"
+          }
+        },
+        "depends_on": ["analyze_sentiment", "extract_features"]
+      }
+    }
+  }
+}

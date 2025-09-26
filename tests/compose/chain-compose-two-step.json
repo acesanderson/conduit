@@ -1,0 +1,41 @@
+{
+  "workflow": {
+    "name": "Research and Summarize",
+    "description": "Two-stage workflow: research a topic, then create a summary",
+    "inputs": {
+      "research_topic": {
+        "type": "string",
+        "description": "Topic to research and summarize"
+      },
+      "target_audience": {
+        "type": "string",
+        "default": "general public",
+        "description": "Target audience for the summary"
+      }
+    },
+    "outputs": {
+      "research_notes": {
+        "from": "research_topic.output",
+        "description": "Detailed research findings"
+      },
+      "final_summary": {
+        "from": "create_summary.output",
+        "description": "Audience-appropriate summary"
+      }
+    },
+    "steps": {
+      "research_topic": {
+        "model": "claude-3-5-sonnet",
+        "description": "Conduct thorough research on the given topic",
+        "prompt": "Research {{inputs.research_topic}} thoroughly. Provide detailed information including:\n- Key concepts and definitions\n- Current developments and trends\n- Important facts and statistics\n- Different perspectives or viewpoints\n\nBe comprehensive and factual.",
+        "depends_on": []
+      },
+      "create_summary": {
+        "model": "gpt-4o",
+        "description": "Create an audience-appropriate summary from research",
+        "prompt": "Based on this research:\n\n{{research_topic.output}}\n\nCreate a clear, engaging summary about {{inputs.research_topic}} for {{inputs.target_audience}}. Make it accessible and well-structured.",
+        "depends_on": ["research_topic"]
+      }
+    }
+  }
+}

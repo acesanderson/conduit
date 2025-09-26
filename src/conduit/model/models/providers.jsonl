@@ -1,0 +1,5 @@
+{"provider":"openai","temperature_range":[0.0,2.0]}
+{"provider":"anthropic","temperature_range":[0.0,1.0]}
+{"provider":"google","temperature_range":[0.0,1.0]}
+{"provider":"perplexity","temperature_range":"Not supported"}
+{"provider":"ollama","temperature_range":[0.0,1.0]}

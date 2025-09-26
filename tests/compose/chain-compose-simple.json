@@ -1,0 +1,26 @@
+{
+  "workflow": {
+    "name": "Simple Query",
+    "description": "Basic single-step LLM query with no dependencies",
+    "inputs": {
+      "topic": {
+        "type": "string",
+        "description": "Topic to explain"
+      }
+    },
+    "outputs": {
+      "explanation": {
+        "from": "explain_topic.output",
+        "description": "Simple explanation of the topic"
+      }
+    },
+    "steps": {
+      "explain_topic": {
+        "model": "gpt-4o-mini",
+        "description": "Generate a simple explanation of the given topic",
+        "prompt": "Explain {{inputs.topic}} in simple terms that anyone can understand.",
+        "depends_on": []
+      }
+    }
+  }
+}

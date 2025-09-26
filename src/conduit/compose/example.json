@@ -1,0 +1,196 @@
+{
+  "workflow": {
+    "name": "Research Article Analyzer",
+    "description": "Analyzes research articles for content quality, extracts key insights, and generates summaries with citations",
+    "inputs": {
+      "article_url": {
+        "type": "string",
+        "description": "URL of the research article to analyze"
+      },
+      "analysis_depth": {
+        "type": "string",
+        "default": "standard",
+        "description": "Analysis depth: quick, standard, or comprehensive"
+      },
+      "include_citations": {
+        "type": "bool",
+        "default": true,
+        "description": "Whether to extract and validate citations"
+      }
+    },
+    "outputs": {
+      "executive_summary": {
+        "from": "generate_executive_summary.output",
+        "description": "High-level summary for executives and decision makers"
+      },
+      "quality_score": {
+        "from": "assess_quality.output.overall_score",
+        "description": "Overall quality assessment score (0-100)"
+      },
+      "key_insights": {
+        "from": "extract_insights.output",
+        "description": "List of key insights and findings"
+      },
+      "citation_analysis": {
+        "from": "analyze_citations.output",
+        "description": "Citation analysis results"
+      },
+      "final_report": {
+        "from": "compile_final_report.output",
+        "description": "Complete analysis report with all findings"
+      }
+    },
+    "steps": {
+      "extract_article_content": {
+        "model": "gpt-4o-mini",
+        "description": "Extract and clean main content from research article",
+        "prompt": "Extract the main content from this research article URL: {{inputs.article_url}}\n\nFocus on:\n- Title and abstract\n- Main body text (excluding references)\n- Key figures and tables descriptions\n- Methodology section\n- Results and conclusions\n\nClean the text by removing navigation, ads, and formatting artifacts.\nPreserve the logical structure and important technical details.",
+        "parser": {
+          "type": "structured",
+          "title": "ArticleContent",
+          "schema": {
+            "title": "string",
+            "abstract": "string",
+            "main_content": "string",
+            "methodology": "string",
+            "results": "string",
+            "conclusions": "string",
+            "word_count": "int"
+          }
+        },
+        "depends_on": []
+      },
+      "detect_article_type": {
+        "model": "claude-3-5-haiku",
+        "description": "Classify the type and domain of the research article",
+        "prompt": "Analyze this research article and determine its type and domain:\n\nTitle: {{extract_article_content.output.title}}\nAbstract: {{extract_article_content.output.abstract}}\n\nClassify into:\n- Article type: empirical_study, literature_review, case_study, theoretical, meta_analysis, opinion\n- Research domain: computer_science, medicine, biology, psychology, economics, physics, chemistry, other\n- Methodology: quantitative, qualitative, mixed_methods, theoretical, computational",
+        "parser": {
+          "type": "structured",
+          "title": "ArticleClassification",
+          "schema": {
+            "article_type": "string",
+            "research_domain": "string",
+            "methodology_type": "string",
+            "confidence": "float"
+          }
+        },
+        "depends_on": [
+          "extract_article_content"
+        ]
+      },
+      "assess_quality": {
+        "model": "gpt-4o",
+        "description": "Assess the methodological and content quality of the research",
+        "prompt": "{% if inputs.analysis_depth == \"quick\" %}\nProvide a quick quality assessment focusing on major issues:\n{% elif inputs.analysis_depth == \"standard\" %}\nProvide a standard quality assessment covering methodology and presentation:\n{% else %}\nProvide a comprehensive quality assessment covering all aspects:\n{% endif %}\n\nArticle Type: {{detect_article_type.output.article_type}}\nResearch Domain: {{detect_article_type.output.research_domain}}\n\nContent to assess:\nTitle: {{extract_article_content.output.title}}\nAbstract: {{extract_article_content.output.abstract}}\nMethodology: {{extract_article_content.output.methodology}}\nResults: {{extract_article_content.output.results}}\n\nEvaluate:\n- Methodological rigor (0-25 points)\n- Clarity of presentation (0-25 points)\n- Significance of findings (0-25 points)\n- Technical accuracy (0-25 points)\n\nProvide specific feedback for each dimension.",
+        "parser": {
+          "type": "structured",
+          "title": "QualityAssessment",
+          "schema": {
+            "methodological_rigor": "int",
+            "clarity_score": "int",
+            "significance_score": "int",
+            "technical_accuracy": "int",
+            "overall_score": "int",
+            "strengths": "list[string]",
+            "weaknesses": "list[string]",
+            "recommendations": "list[string]"
+          }
+        },
+        "depends_on": [
+          "extract_article_content",
+          "detect_article_type"
+        ]
+      },
+      "extract_insights": {
+        "model": "claude-3-5-sonnet",
+        "description": "Extract key insights and novel contributions from the research",
+        "prompt": "Extract the most important insights and contributions from this research article:\n\nTitle: {{extract_article_content.output.title}}\nAbstract: {{extract_article_content.output.abstract}}\nResults: {{extract_article_content.output.results}}\nConclusions: {{extract_article_content.output.conclusions}}\n\nFocus on:\n- Novel findings or discoveries\n- Practical applications\n- Theoretical contributions\n- Methodological innovations\n- Implications for future research\n\nPrioritize insights that are:\n1. Actionable for practitioners\n2. Significant for the field\n3. Transferable to other domains",
+        "parser": {
+          "type": "structured",
+          "title": "ResearchInsights",
+          "schema": {
+            "novel_findings": "list[string]",
+            "practical_applications": "list[string]",
+            "theoretical_contributions": "list[string]",
+            "methodological_innovations": "list[string]",
+            "future_research_directions": "list[string]",
+            "key_takeaways": "list[string]"
+          }
+        },
+        "depends_on": [
+          "extract_article_content"
+        ]
+      },
+      "analyze_citations": {
+        "model": "gpt-4o-mini",
+        "description": "Analyze citation patterns and validate key references",
+        "prompt": "Analyze the citation patterns in this research article:\n\nFull Content: {{extract_article_content.output.main_content}}\n\nExtract and analyze:\n- Total number of citations\n- Recent citations (last 5 years) vs older citations\n- Self-citations by authors\n- Citations of seminal works in the field\n- Geographic distribution of cited work (if determinable)\n\nIdentify the 5 most important cited works based on:\n- Frequency of citation in the text\n- Foundational importance to the research\n- Recency and relevance",
+        "parser": {
+          "type": "structured",
+          "title": "CitationAnalysis",
+          "schema": {
+            "total_citations": "int",
+            "recent_citations_count": "int",
+            "self_citations_count": "int",
+            "key_references": "list[string]",
+            "citation_distribution": "dict",
+            "citation_quality_score": "int"
+          }
+        },
+        "depends_on": [
+          "extract_article_content"
+        ],
+        "condition": {
+          "when": "{{inputs.include_citations}} == true"
+        }
+      },
+      "generate_executive_summary": {
+        "model": "claude-3-5-sonnet",
+        "description": "Generate executive summary tailored for business leaders and decision makers",
+        "prompt": "Create an executive summary of this research article for business leaders and decision makers:\n\nArticle: {{extract_article_content.output.title}}\nDomain: {{detect_article_type.output.research_domain}}\nQuality Score: {{assess_quality.output.overall_score}}/100\n\nKey Insights:\n{% for insight in extract_insights.output.key_takeaways %}\n- {{insight}}\n{% endfor %}\n\nPractical Applications:\n{% for app in extract_insights.output.practical_applications %}\n- {{app}}\n{% endfor %}\n\nFocus on:\n- Business relevance and impact\n- Actionable recommendations\n- Investment or strategic implications\n- Risk considerations\n- Timeline for practical implementation\n\nKeep the summary concise but comprehensive, suitable for C-level executives.",
+        "parser": {
+          "type": "structured",
+          "title": "ExecutiveSummary",
+          "schema": {
+            "summary": "string",
+            "business_impact": "string",
+            "actionable_recommendations": "list[string]",
+            "investment_implications": "list[string]",
+            "implementation_timeline": "string",
+            "risk_factors": "list[string]"
+          }
+        },
+        "depends_on": [
+          "extract_article_content",
+          "detect_article_type",
+          "assess_quality",
+          "extract_insights"
+        ]
+      },
+      "compile_final_report": {
+        "model": "gpt-4o",
+        "description": "Compile comprehensive final report integrating all analysis components",
+        "prompt": "Compile a comprehensive analysis report integrating all findings:\n\n## Article Information\nTitle: {{extract_article_content.output.title}}\nType: {{detect_article_type.output.article_type}}\nDomain: {{detect_article_type.output.research_domain}}\nWord Count: {{extract_article_content.output.word_count}}\n\n## Quality Assessment\nOverall Score: {{assess_quality.output.overall_score}}/100\nStrengths: {{assess_quality.output.strengths|join(\"; \")}}\nWeaknesses: {{assess_quality.output.weaknesses|join(\"; \")}}\n\n## Key Insights\nNovel Findings: {{extract_insights.output.novel_findings|join(\"; \")}}\nPractical Applications: {{extract_insights.output.practical_applications|join(\"; \")}}\n\n{% if analyze_citations.output %}\n## Citation Analysis\nTotal Citations: {{analyze_citations.output.total_citations}}\nCitation Quality: {{analyze_citations.output.citation_quality_score}}/10\nKey References: {{analyze_citations.output.key_references|join(\"; \")}}\n{% endif %}\n\n## Executive Summary\n{{generate_executive_summary.output.summary}}\n\nCreate a well-structured, comprehensive report that synthesizes all these findings.\nInclude recommendations for different stakeholder groups (researchers, practitioners, investors).",
+        "parser": {
+          "type": "structured",
+          "title": "FinalReport",
+          "schema": {
+            "report_summary": "string",
+            "detailed_findings": "dict",
+            "stakeholder_recommendations": "dict",
+            "confidence_assessment": "float",
+            "follow_up_actions": "list[string]"
+          }
+        },
+        "depends_on": [
+          "extract_article_content",
+          "detect_article_type",
+          "assess_quality",
+          "extract_insights",
+          "analyze_citations",
+          "generate_executive_summary"
+        ]
+      }
+    }
+  }
+}

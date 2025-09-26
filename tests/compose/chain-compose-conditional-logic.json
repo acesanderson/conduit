@@ -1,0 +1,98 @@
+{
+  "workflow": {
+    "name": "Content Classification Router",
+    "description": "Classifies content and routes to specialized processors based on type and complexity",
+    "inputs": {
+      "content": {
+        "type": "string",
+        "description": "Content to classify and process"
+      },
+      "processing_priority": {
+        "type": "string",
+        "default": "standard",
+        "description": "Processing priority: quick, standard, or thorough"
+      }
+    },
+    "outputs": {
+      "content_classification": {
+        "from": "classify_content.output",
+        "description": "Content classification results"
+      },
+      "processed_result": {
+        "from": "merge_results.output",
+        "description": "Final processed content result"
+      }
+    },
+    "steps": {
+      "classify_content": {
+        "model": "gpt-4o-mini",
+        "description": "Classify the content type and complexity",
+        "prompt": "Analyze this content and classify it:\n\n{{inputs.content}}\n\nDetermine the content type and complexity level.",
+        "parser": {
+          "type": "structured",
+          "title": "ContentClassification",
+          "schema": {
+            "content_type": "string",
+            "complexity_level": "string",
+            "estimated_processing_time": "int",
+            "requires_fact_checking": "bool",
+            "technical_level": "string",
+            "primary_language": "string"
+          }
+        },
+        "depends_on": []
+      },
+      "process_technical_content": {
+        "model": "claude-3-5-sonnet",
+        "description": "Process technical content with detailed analysis",
+        "prompt": "Provide detailed technical analysis of:\n\n{{inputs.content}}\n\nInclude technical accuracy, methodology, and implementation details.",
+        "depends_on": ["classify_content"],
+        "condition": {
+          "when": "{{classify_content.output.content_type}} == 'technical' or {{classify_content.output.technical_level}} == 'advanced'"
+        }
+      },
+      "process_creative_content": {
+        "model": "gpt-4o",
+        "description": "Process creative content with style and narrative analysis",
+        "prompt": "Analyze the creative elements of:\n\n{{inputs.content}}\n\nFocus on style, narrative structure, and artistic merit.",
+        "depends_on": ["classify_content"],
+        "condition": {
+          "when": "{{classify_content.output.content_type}} == 'creative' or {{classify_content.output.content_type}} == 'literary'"
+        }
+      },
+      "process_business_content": {
+        "model": "gpt-4o",
+        "description": "Process business content with market and strategic analysis",
+        "prompt": "Provide business analysis of:\n\n{{inputs.content}}\n\nInclude market implications, strategic considerations, and actionable insights.",
+        "depends_on": ["classify_content"],
+        "condition": {
+          "when": "{{classify_content.output.content_type}} == 'business' or {{classify_content.output.content_type}} == 'financial'"
+        }
+      },
+      "fact_check_content": {
+        "model": "claude-3-5-sonnet",
+        "description": "Perform fact-checking on content that requires verification",
+        "prompt": "Fact-check the claims and statements in:\n\n{{inputs.content}}\n\nVerify accuracy and flag any questionable assertions.",
+        "depends_on": ["classify_content"],
+        "condition": {
+          "when": "{{classify_content.output.requires_fact_checking}} == true"
+        }
+      },
+      "quick_summary": {
+        "model": "gpt-4o-mini",
+        "description": "Generate quick summary for low-priority processing",
+        "prompt": "{% if inputs.processing_priority == 'quick' %}\nProvide a brief summary of: {{inputs.content}}\n{% endif %}",
+        "depends_on": ["classify_content"],
+        "condition": {
+          "when": "{{inputs.processing_priority}} == 'quick'"
+        }
+      },
+      "merge_results": {
+        "model": "gpt-4o",
+        "description": "Merge results from all applicable processing steps",
+        "prompt": "Combine and synthesize results from content analysis:\n\nContent Type: {{classify_content.output.content_type}}\nComplexity: {{classify_content.output.complexity_level}}\n\n{% if process_technical_content.output %}\nTechnical Analysis: {{process_technical_content.output}}\n{% endif %}\n\n{% if process_creative_content.output %}\nCreative Analysis: {{process_creative_content.output}}\n{% endif %}\n\n{% if process_business_content.output %}\nBusiness Analysis: {{process_business_content.output}}\n{% endif %}\n\n{% if fact_check_content.output %}\nFact Check Results: {{fact_check_content.output}}\n{% endif %}\n\n{% if quick_summary.output %}\nQuick Summary: {{quick_summary.output}}\n{% endif %}\n\nProvide a comprehensive synthesis of all analysis.",
+        "depends_on": ["classify_content", "process_technical_content", "process_creative_content", "process_business_content", "fact_check_content", "quick_summary"]
+      }
+    }
+  }
+}
