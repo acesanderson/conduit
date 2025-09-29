@@ -152,8 +152,6 @@ class Model:
             return "groq", "GroqClientSync"
         elif model in model_list["perplexity"]:
             return "perplexity", "PerplexityClientSync"
-        elif model in model_list["huggingface"]:
-            return "huggingface", "HuggingFaceClientSync"
         else:
             raise ValueError(f"Model {model} not found in models")
 

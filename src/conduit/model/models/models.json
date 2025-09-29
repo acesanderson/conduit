@@ -56,8 +56,4 @@
     "sonar-pro",
     "sonar"
   ],
-  "huggingface": [
-    "Jlonge4/flux-dev-fp8",
-    "openai/whisper-base"
-  ]
 }
