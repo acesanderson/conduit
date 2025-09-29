@@ -115,11 +115,11 @@ members = [
 database-clients = { path = "../database-clients", editable = true }
 
 [project.scripts]
-update = "Chain.scripts.update_modelstore:main"
-update_ollama = "Chain.scripts.update_ollama_list:main"
-models = "Chain.scripts.models_cli:main"
-chat = "Chain.scripts.chat_cli:main"
-chainserver = "Chain.api.server.run:main"
-tokens = "Chain.odometer.database.pgres.snapshot:main"
-imagegen = "Chain.scripts.imagegen_cli:main"
+update = "conduit.scripts.update_modelstore:main"
+update_ollama = "conduit.scripts.update_ollama_list:main"
+models = "conduit.scripts.models_cli:main"
+chat = "conduit.scripts.chat_cli:main"
+chainserver = "conduit.api.server.run:main"
+tokens = "conduit.odometer.database.pgres.snapshot:main"
+imagegen = "conduit.scripts.imagegen_cli:main"
 
