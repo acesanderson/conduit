@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "Chain"
-version = "3.0.0"
+name = "conduit"
+version = "0.1.0"
 description = "A lightweight, unified framework for building LLM applications"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -51,19 +51,78 @@ dependencies = [
 dev = [
     "pytest",
     "pytest-asyncio",
+    "ruff>=0.12.4",
 ]
-tts = [
-    # Add when these become available on PyPI
-    # "ChatTTS",
-    # "bark", 
-    # "elevenlabs",
+
+# ── Hatchling (build) ──────────────────────────────────────────────────────────
+# Point Hatchling at the src/ package; this is the critical bit for src-layout.
+[tool.hatch.build.targets.wheel]
+packages = ["src/conduit"]
+sources = ["src"]
+
+# If you ship non-.py files inside the package (configs, prompts, assets),
+# list them so they’re included in wheels and sdists.
+[tool.hatch.build]
+include = [
+  "src/twig/**/*.txt",
+  "src/twig/**/*.md",
+  "src/twig/**/*.json",
+  "src/twig/**/*.yaml",
+  "src/twig/**/*.yml",
+  "src/twig/**/*.ini",
+  "src/twig/**/*.jinja*",
+  "src/twig/assets/**",
 ]
-full = [
-    "pandas",
-    "matplotlib", 
-    "tensorflow",
-    "mammoth",
+
+[tool.hatch.build.targets.sdist]
+include = ["src/**", "README.*", "LICENSE*", "*.json"]
+
+# ── Pytest ─────────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+addopts = "-v -s --tb=short --no-header --showlocals --pdb -x"
+log_cli = true
+log_cli_level = "INFO"
+
+# ── Ruff ───────────────────────────────────────────────────────────────────────
+[tool.ruff]
+line-length = 88
+target-version = "py312"  # align with requires-python
+
+[tool.ruff.lint]
+select = [
+    "F", "E",
+    "UP",
+    "SIM",
+    "ARG",
+    "B",
+    "RUF",
+    "S102", "S103", "S108",
+    "PERF",
+    "FBT003",
 ]
+ignore = [
+    "SIM118",
+    "ARG001", "ARG002",
+    "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "ARG", "FBT"]
+"scripts/**/*.py" = ["ARG", "SIM"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["twig"]
+force-sort-within-sections = true
+split-on-trailing-comma = true
+
+[tool.uv.workspace]
+members = [
+    ".",
+]
+
+# ── uv sources (local/editable deps) ───────────────────────────────────────────
+[tool.uv.sources]
+database-clients = { path = "../database-clients", editable = true }
 
 [project.scripts]
 update = "Chain.scripts.update_modelstore:main"
@@ -74,14 +133,3 @@ chainserver = "Chain.api.server.run:main"
 tokens = "Chain.odometer.database.pgres.snapshot:main"
 imagegen = "Chain.scripts.imagegen_cli:main"
 
-[tool.pytest.ini_options]
-addopts = "-v -s --tb=short --no-header --showlocals --pdb -x"
-log_cli = true
-log_cli_level = "INFO"
-
-# Hatchling configuration (replaces setuptools.packages.find)
-[tool.hatch.build.targets.wheel]
-packages = ["Chain"]
-
-[tool.uv.sources]
-database-clients = { path = "../database-clients", editable = true }
