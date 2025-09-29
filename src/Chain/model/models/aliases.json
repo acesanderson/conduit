@@ -1,0 +1,20 @@
+{
+  "claude": "claude-sonnet-4-20250514",
+  "deepseek": "deepseek-chat",
+  "flash": "gemini-2.5-flash-preview-05-20",
+  "gemini": "gemini-2.5-flash-preview-05-20",
+  "gemini2.5": "gemini-2.5-pro-preview-05-06",
+  "gpt": "gpt-5-mini",
+  "gpt-mini": "gpt-4o-mini",
+  "gpt-oss": "gpt-oss:latest",
+  "gpt3": "gpt-3.5-turbo-0125",
+  "groq": "mixtral-8x7b-32768",
+  "haiku": "claude-3-5-haiku-20241022",
+  "llama": "llama3.1:latest",
+  "nano": "gpt-5-mini",
+  "ollama": "mistral:latest",
+  "opus": "claude-opus-4-1-20250805",
+  "qwen": "qwen3:14b",
+  "tts": "gemini-2.5-flash-preview-tts",
+  "banana": "gemini-2.5-flash-image-preview"
+}

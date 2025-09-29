@@ -1,0 +1,221 @@
+{
+  "workflow": {
+    "name": "Multi-Source Research Synthesis",
+    "description": "Complex workflow with parallel processing, multiple data sources, and intelligent synthesis",
+    "inputs": {
+      "research_query": {
+        "type": "string",
+        "description": "Primary research question or topic"
+      },
+      "source_documents": {
+        "type": "list[string]",
+        "description": "List of source documents to analyze"
+      },
+      "analysis_depth": {
+        "type": "string",
+        "default": "comprehensive",
+        "description": "Analysis depth: surface, standard, comprehensive, or exhaustive"
+      },
+      "output_format": {
+        "type": "string",
+        "default": "academic",
+        "description": "Output format: academic, business, journalistic, or technical"
+      }
+    },
+    "outputs": {
+      "research_overview": {
+        "from": "generate_overview.output",
+        "description": "High-level research overview and methodology"
+      },
+      "source_analyses": {
+        "from": "consolidate_sources.output",
+        "description": "Consolidated analysis of all sources"
+      },
+      "expert_perspectives": {
+        "from": "synthesize_perspectives.output",
+        "description": "Expert perspectives from different analytical angles"
+      },
+      "final_synthesis": {
+        "from": "create_final_report.output",
+        "description": "Complete research synthesis and recommendations"
+      },
+      "confidence_assessment": {
+        "from": "assess_confidence.output",
+        "description": "Confidence levels and reliability assessment"
+      }
+    },
+    "steps": {
+      "generate_overview": {
+        "model": "gpt-4o",
+        "description": "Generate research overview and establish methodology",
+        "prompt": "Create a research overview for: {{inputs.research_query}}\n\nConsider {{inputs.analysis_depth}} depth analysis with {{inputs.output_format}} formatting.\nSources available: {{inputs.source_documents|length}} documents.",
+        "parser": {
+          "type": "structured",
+          "title": "ResearchOverview",
+          "schema": {
+            "research_scope": "string",
+            "methodology": "string",
+            "key_questions": "list[string]",
+            "expected_challenges": "list[string]",
+            "success_criteria": "list[string]"
+          }
+        },
+        "depends_on": []
+      },
+      "analyze_source_1": {
+        "model": "claude-3-5-sonnet",
+        "description": "Analyze first source document in detail",
+        "prompt": "{% if inputs.source_documents|length > 0 %}\nAnalyze this source for research on {{inputs.research_query}}:\n\n{{inputs.source_documents[0]}}\n\nFocus on relevance, credibility, and key insights.\n{% endif %}",
+        "parser": {
+          "type": "structured",
+          "title": "SourceAnalysis",
+          "schema": {
+            "source_summary": "string",
+            "key_findings": "list[string]",
+            "credibility_score": "float",
+            "bias_assessment": "string",
+            "supporting_evidence": "list[string]",
+            "contradicting_evidence": "list[string]"
+          }
+        },
+        "depends_on": ["generate_overview"],
+        "condition": {
+          "when": "{{inputs.source_documents|length}} > 0"
+        }
+      },
+      "analyze_source_2": {
+        "model": "claude-3-5-sonnet",
+        "description": "Analyze second source document in detail",
+        "prompt": "{% if inputs.source_documents|length > 1 %}\nAnalyze this source for research on {{inputs.research_query}}:\n\n{{inputs.source_documents[1]}}\n\nFocus on relevance, credibility, and key insights.\n{% endif %}",
+        "parser": {
+          "type": "structured",
+          "title": "SourceAnalysis",
+          "schema": {
+            "source_summary": "string",
+            "key_findings": "list[string]",
+            "credibility_score": "float",
+            "bias_assessment": "string",
+            "supporting_evidence": "list[string]",
+            "contradicting_evidence": "list[string]"
+          }
+        },
+        "depends_on": ["generate_overview"],
+        "condition": {
+          "when": "{{inputs.source_documents|length}} > 1"
+        }
+      },
+      "analyze_source_3": {
+        "model": "claude-3-5-sonnet",
+        "description": "Analyze third source document in detail",
+        "prompt": "{% if inputs.source_documents|length > 2 %}\nAnalyze this source for research on {{inputs.research_query}}:\n\n{{inputs.source_documents[2]}}\n\nFocus on relevance, credibility, and key insights.\n{% endif %}",
+        "parser": {
+          "type": "structured",
+          "title": "SourceAnalysis",
+          "schema": {
+            "source_summary": "string",
+            "key_findings": "list[string]",
+            "credibility_score": "float",
+            "bias_assessment": "string",
+            "supporting_evidence": "list[string]",
+            "contradicting_evidence": "list[string]"
+          }
+        },
+        "depends_on": ["generate_overview"],
+        "condition": {
+          "when": "{{inputs.source_documents|length}} > 2"
+        }
+      },
+      "technical_perspective": {
+        "model": "gpt-4o",
+        "description": "Analyze from technical/scientific perspective",
+        "prompt": "Provide technical analysis of {{inputs.research_query}} based on methodology: {{generate_overview.output.methodology}}\n\nFocus on technical accuracy, methodological rigor, and scientific validity.",
+        "depends_on": ["generate_overview"]
+      },
+      "business_perspective": {
+        "model": "gpt-4o",
+        "description": "Analyze from business/economic perspective",
+        "prompt": "Provide business and economic analysis of {{inputs.research_query}} based on research scope: {{generate_overview.output.research_scope}}\n\nFocus on market implications, economic impact, and strategic considerations.",
+        "depends_on": ["generate_overview"]
+      },
+      "social_perspective": {
+        "model": "claude-3-5-sonnet",
+        "description": "Analyze from social and ethical perspective",
+        "prompt": "Provide social and ethical analysis of {{inputs.research_query}}\n\nConsider societal impact, ethical implications, and stakeholder perspectives.",
+        "depends_on": ["generate_overview"]
+      },
+      "consolidate_sources": {
+        "model": "gpt-4o",
+        "description": "Consolidate analysis from all source documents",
+        "prompt": "Consolidate findings from source analyses:\n\n{% if analyze_source_1.output %}\nSource 1 Findings: {{analyze_source_1.output.key_findings|join('; ')}}\nCredibility: {{analyze_source_1.output.credibility_score}}\n{% endif %}\n\n{% if analyze_source_2.output %}\nSource 2 Findings: {{analyze_source_2.output.key_findings|join('; ')}}\nCredibility: {{analyze_source_2.output.credibility_score}}\n{% endif %}\n\n{% if analyze_source_3.output %}\nSource 3 Findings: {{analyze_source_3.output.key_findings|join('; ')}}\nCredibility: {{analyze_source_3.output.credibility_score}}\n{% endif %}\n\nIdentify patterns, contradictions, and consensus across sources.",
+        "parser": {
+          "type": "structured",
+          "title": "SourceConsolidation",
+          "schema": {
+            "consensus_findings": "list[string]",
+            "conflicting_viewpoints": "list[string]",
+            "evidence_strength": "string",
+            "data_gaps": "list[string]",
+            "most_reliable_sources": "list[string]"
+          }
+        },
+        "depends_on": ["analyze_source_1", "analyze_source_2", "analyze_source_3"]
+      },
+      "synthesize_perspectives": {
+        "model": "gpt-4o",
+        "description": "Synthesize insights from different analytical perspectives",
+        "prompt": "Synthesize perspectives on {{inputs.research_query}}:\n\nTechnical Analysis: {{technical_perspective.output}}\n\nBusiness Analysis: {{business_perspective.output}}\n\nSocial Analysis: {{social_perspective.output}}\n\nIdentify complementary insights and potential conflicts between perspectives.",
+        "parser": {
+          "type": "structured",
+          "title": "PerspectiveSynthesis",
+          "schema": {
+            "integrated_insights": "list[string]",
+            "perspective_conflicts": "list[string]",
+            "cross_cutting_themes": "list[string]",
+            "actionable_recommendations": "list[string]",
+            "future_research_directions": "list[string]"
+          }
+        },
+        "depends_on": ["technical_perspective", "business_perspective", "social_perspective"]
+      },
+      "assess_confidence": {
+        "model": "claude-3-5-sonnet",
+        "description": "Assess confidence levels and reliability of findings",
+        "prompt": "Assess the confidence and reliability of research findings:\n\nSource Quality: {{consolidate_sources.output.evidence_strength}}\nData Gaps: {{consolidate_sources.output.data_gaps|join(', ')}}\nPerspective Integration: {{synthesize_perspectives.output.integrated_insights|length}} key insights\n\nProvide confidence assessment for {{inputs.research_query}}.",
+        "parser": {
+          "type": "structured",
+          "title": "ConfidenceAssessment",
+          "schema": {
+            "overall_confidence": "float",
+            "high_confidence_findings": "list[string]",
+            "medium_confidence_findings": "list[string]",
+            "low_confidence_findings": "list[string]",
+            "uncertainty_factors": "list[string]",
+            "reliability_score": "float"
+          }
+        },
+        "depends_on": ["consolidate_sources", "synthesize_perspectives"]
+      },
+      "create_final_report": {
+        "model": "gpt-4o",
+        "description": "Create comprehensive final research report",
+        "prompt": "Create a comprehensive {{inputs.output_format}} format report on {{inputs.research_query}}:\n\nResearch Overview:\n{{generate_overview.output.research_scope}}\n\nConsolidated Sources:\n- Consensus: {{consolidate_sources.output.consensus_findings|join('; ')}}\n- Conflicts: {{consolidate_sources.output.conflicting_viewpoints|join('; ')}}\n\nSynthesized Perspectives:\n- Key Insights: {{synthesize_perspectives.output.integrated_insights|join('; ')}}\n- Recommendations: {{synthesize_perspectives.output.actionable_recommendations|join('; ')}}\n\nConfidence Assessment:\n- Overall Confidence: {{assess_confidence.output.overall_confidence}}\n- High Confidence Items: {{assess_confidence.output.high_confidence_findings|join('; ')}}\n\nCreate a {{inputs.analysis_depth}} analysis formatted for {{inputs.output_format}} audience.",
+        "parser": {
+          "type": "structured",
+          "title": "FinalReport",
+          "schema": {
+            "executive_summary": "string",
+            "methodology_summary": "string",
+            "key_findings": "list[string]",
+            "evidence_assessment": "string",
+            "conclusions": "list[string]",
+            "recommendations": "list[string]",
+            "limitations": "list[string]",
+            "future_work": "list[string]",
+            "confidence_level": "string"
+          }
+        },
+        "depends_on": ["generate_overview", "consolidate_sources", "synthesize_perspectives", "assess_confidence"]
+      }
+    }
+  }
+}

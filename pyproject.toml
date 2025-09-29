@@ -1,0 +1,87 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "Chain"
+version = "3.0.0"
+description = "A lightweight, unified framework for building LLM applications"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    # Core dependencies
+    "pydantic",
+    "jinja2",
+    "rich",
+    "tiktoken",
+    "instructor[perplexity]",
+    "tinydb",
+    "python-dotenv",
+    # LLM Provider SDKs
+    "openai",
+    "anthropic",
+    "google-generativeai",
+    "ollama",
+    # Audio/Image Processing
+    "pydub",
+    "pillow",
+    "soundfile",
+    # Machine Learning/AI
+    "torch==2.7.1", # Pinned for your GPU setup
+    "transformers==4.51.3",
+    "huggingface_hub",
+    # Web/HTTP
+    "requests",
+    "fastapi",
+    "uvicorn",
+    # Data Processing
+    "numpy",
+    "ruff>=0.12.4",
+    "ty>=0.0.1a15",
+    "diffusers>=0.34.0",
+    "peft>=0.17.0",
+    "accelerator>=2024.9.13",
+    "sentencepiece>=0.2.0",
+    "yt-dlp>=2025.7.21",
+    "psycopg2-binary==2.9.10",
+    "database-clients",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+]
+tts = [
+    # Add when these become available on PyPI
+    # "ChatTTS",
+    # "bark", 
+    # "elevenlabs",
+]
+full = [
+    "pandas",
+    "matplotlib", 
+    "tensorflow",
+    "mammoth",
+]
+
+[project.scripts]
+update = "Chain.scripts.update_modelstore:main"
+update_ollama = "Chain.scripts.update_ollama_list:main"
+models = "Chain.scripts.models_cli:main"
+chat = "Chain.scripts.chat_cli:main"
+chainserver = "Chain.api.server.run:main"
+tokens = "Chain.odometer.database.pgres.snapshot:main"
+imagegen = "Chain.scripts.imagegen_cli:main"
+
+[tool.pytest.ini_options]
+addopts = "-v -s --tb=short --no-header --showlocals --pdb -x"
+log_cli = true
+log_cli_level = "INFO"
+
+# Hatchling configuration (replaces setuptools.packages.find)
+[tool.hatch.build.targets.wheel]
+packages = ["Chain"]
+
+[tool.uv.sources]
+database-clients = { path = "../database-clients", editable = true }
