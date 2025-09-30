@@ -40,7 +40,7 @@ class AsyncConduit(SyncConduit):
         self.model = model
         self.parser = parser
         if self.prompt:
-            self.input_schema = self.prompt.input_schema()  # this is a set
+            self.input_schema = self.prompt.input_schema  # this is a set
         else:
             self.input_schema = set()
 

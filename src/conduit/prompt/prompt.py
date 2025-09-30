@@ -39,6 +39,7 @@ class Prompt:
         )  # this takes all named variables from the dictionary we pass to this.
         return rendered_prompt
 
+    @property
     def input_schema(self) -> set:
         """
         Returns a set of variable names from the template.
