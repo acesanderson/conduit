@@ -13,6 +13,9 @@ from conduit.conduit.async_conduit import AsyncConduit
 from conduit.model.model_async import ModelAsync
 from conduit.prompt.prompt import Prompt
 
+# Cache
+from conduit.cache.cache import ConduitCache
+
 # Primitives: dataclasses / enums
 from conduit.result.response import Response
 from conduit.progress.verbosity import Verbosity
@@ -21,6 +24,7 @@ from conduit.request.request import Request
 
 __all__ = [
     "AsyncConduit",
+    "ConduitCache",
     "Message",
     "ModelAsync",
     "Prompt",
