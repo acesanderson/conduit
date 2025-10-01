@@ -9,9 +9,11 @@ response = conduit.run(input_data)
 
 # Orchestration classes
 from conduit.conduit.sync_conduit import SyncConduit
-
 from conduit.model.model import Model
 from conduit.prompt.prompt import Prompt
+
+# Cache
+from conduit.cache.cache import ConduitCache
 
 # Primitives: dataclasses / enums
 from conduit.result.response import Response
@@ -24,6 +26,7 @@ Conduit = SyncConduit  # Alias for easier imports
 
 __all__ = [
     "Conduit",
+    "ConduitCache",
     "Message",
     "Model",
     "Prompt",
