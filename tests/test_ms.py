@@ -4,7 +4,7 @@ from pathlib import Path
 from rich.console import Console
 
 console = Console()
-verbosity = Verbosity.PROGRESS
+verbosity = Verbosity.COMPLETE
 
 history_file = Path(__file__).parent / "test_history.json"
 

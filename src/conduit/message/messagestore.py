@@ -19,7 +19,7 @@ from rich.rule import Rule
 from pydantic import BaseModel, Field
 from pathlib import Path
 from tinydb import TinyDB
-from typing import Optional
+from typing import ClassVar, override
 from datetime import datetime
 import os
 
@@ -38,16 +38,18 @@ class MessageStore(Messages):
     """
 
     # Add Pydantic fields (Messages inherits from BaseModel)
-    console: Optional[Console] = Field(default=None, exclude=True, repr=False)
+    console: Console | None = Field(default=None, exclude=True, repr=False)
     auto_save: bool = Field(default=True, exclude=True)
     persistent: bool = Field(default=False, exclude=True)
     logging: bool = Field(default=False, exclude=True)
     pruning: bool = Field(default=False, exclude=True)
-    history_file: Optional[Path] = Field(default=None, exclude=True, repr=False)
-    log_file: Optional[Path] = Field(default=None, exclude=True, repr=False)
-    db: Optional[TinyDB] = Field(default=None, exclude=True, repr=False)
+    history_file: Path | None = Field(default=None, exclude=True, repr=False)
+    log_file: Path | None = Field(default=None, exclude=True, repr=False)
+    db: TinyDB | None = Field(default=None, exclude=True, repr=False)
 
-    model_config = {"arbitrary_types_allowed": True}  # Allow Console and TinyDB types
+    model_config: ClassVar = {
+        "arbitrary_types_allowed": True
+    }  # Allow Console and TinyDB types
 
     def __init__(
         self,
@@ -92,6 +94,8 @@ class MessageStore(Messages):
             self.persistent = True
             # Initialize TinyDB
             self.db = TinyDB(self.history_file)
+            # Load existing messages from database
+            self.load()
         else:
             self.history_file = Path()
             self.persistent = False
@@ -121,12 +125,14 @@ class MessageStore(Messages):
             self.write_to_log(message)
 
     # Override Messages methods to add persistence and logging
+    @override
     def append(self, message: Message) -> None:
         """Add a message to the end of the list with persistence."""
         super().append(message)
         self._log_message_if_enabled(message)
         self._auto_save_if_enabled()
 
+    @override
     def extend(self, messages: list[Message]) -> None:
         """Extend the list with multiple messages with persistence."""
         super().extend(messages)
@@ -134,28 +140,33 @@ class MessageStore(Messages):
             self._log_message_if_enabled(message)
         self._auto_save_if_enabled()
 
+    @override
     def insert(self, index: int, message: Message) -> None:
         """Insert a message at the specified index with persistence."""
         super().insert(index, message)
         self._log_message_if_enabled(message)
         self._auto_save_if_enabled()
 
+    @override
     def remove(self, message: Message) -> None:
         """Remove the first occurrence of a message with persistence."""
         super().remove(message)
         self._auto_save_if_enabled()
 
+    @override
     def pop(self, index: int = -1) -> Message:
         """Remove and return message at index with persistence."""
         message = super().pop(index)
         self._auto_save_if_enabled()
         return message
 
+    @override
     def clear(self) -> None:
         """Remove all messages with persistence."""
         super().clear()
         self._auto_save_if_enabled()
 
+    @override
     def __setitem__(self, key, value):
         """Set message(s) by index or slice with persistence."""
         super().__setitem__(key, value)
@@ -167,11 +178,13 @@ class MessageStore(Messages):
                     self._log_message_if_enabled(msg)
         self._auto_save_if_enabled()
 
+    @override
     def __delitem__(self, key):
         """Delete message(s) by index or slice with persistence."""
         super().__delitem__(key)
         self._auto_save_if_enabled()
 
+    @override
     def __iadd__(self, other) -> "MessageStore":
         """In-place concatenation with persistence."""
         result = super().__iadd__(other)
@@ -242,7 +255,7 @@ class MessageStore(Messages):
         """
         Saves the current messages to TinyDB.
         """
-        if not self.persistent or not self.db:
+        if not self.persistent or not isinstance(self.db, TinyDB):
             return
 
         try:
@@ -369,7 +382,7 @@ class MessageStore(Messages):
                 print(f"Error deleting database: {e}")
 
     # Enhanced Methods
-    def get(self, index: int) -> Optional[Message]:
+    def get(self, index: int) -> Message | None:
         """Gets a message by 1-based index (convenience method)."""
         if 1 <= index <= len(self):
             return self[index - 1]
