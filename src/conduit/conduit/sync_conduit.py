@@ -18,17 +18,13 @@ from conduit.message.messagestore import MessageStore
 from conduit.progress.verbosity import Verbosity
 
 from conduit.logs.logging_config import configure_logging
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 import logging
 
-# Our TYPE_CHECKING imports, these ONLY load for IDEs, so you can still lazy load in production.
 if TYPE_CHECKING:
     from rich.console import Console
 
 logger = configure_logging(
-    # level=logging.INFO,
-    # level=logging.NOTSET,
-    # level=logging.DEBUG,
     level=logging.CRITICAL,
 )
 
@@ -42,13 +38,15 @@ class SyncConduit:
     - a parser (a function that takes a string and returns a string)
     """
 
-    # If you want logging, initialize a message store with log_file_path parameter, and assign it to your Conduit class as a singleton.
-    _message_store: Optional[MessageStore] = None
-    # If you want rich progress reporting, add a rich.console.Console object to Conduit. (also can be added at Model level)
-    _console: Optional["Console"] = None
+    _message_store: MessageStore | None = None
+    _console: "Console | None" = None
 
     def __init__(
-        self, model: Model, prompt: Prompt | None = None, parser: Parser | None = None
+        self,
+        model: Model,
+        prompt: Prompt | None = None,
+        parser: Parser | None = None,
+        pretty: bool = True,
     ):
         self.prompt = prompt
         self.model = model
@@ -57,11 +55,15 @@ class SyncConduit:
             self.input_schema = self.prompt.input_schema  # this is a set
         else:
             self.input_schema = set()
+        if pretty:
+            from rich.console import Console
+
+            SyncConduit._console = Console()
 
     def run(
         self,
         # Inputs
-        input_variables: dict | None = None,
+        input_variables: dict[str, str] | None = None,
         messages: Messages | list[Message] | None = None,
         parser: Parser | None = None,
         # Configs
