@@ -7,7 +7,7 @@ _loggers = {}
 _configured = False
 
 
-def get_logger(name=None, level=None):
+def get_logger(name=None, level=None) -> logging.Logger:
     """
     Returns the logger with the specified name, creating it if necessary.
     Using this function ensures the same logger instance is returned for the same name.
