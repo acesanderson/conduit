@@ -60,14 +60,17 @@ class SyncConduit:
 
     def run(
         self,
+        # Inputs
         input_variables: dict | None = None,
         messages: Messages | list[Message] | None = None,
         parser: Parser | None = None,
+        # Configs
         verbose: Verbosity = Verbosity.PROGRESS,
         stream: bool = False,
         cache: bool = True,
         index: int = 0,
         total: int = 0,
+        nopersist: bool = False,
     ) -> ConduitResult:
         """
         Executes the Conduit, processing the prompt and interacting with the language model.
@@ -99,6 +102,9 @@ class SyncConduit:
             total (int): The total number of items in a batch operation. Used
                 for progress display (e.g., "[1/100]"). Requires `index` to be
                 provided. Defaults to 0.
+            nopersist (bool): If True, the response will not be saved to the
+                message store, if one is associated with the Conduit. Defaults
+                to False.
 
         Returns:
             Response: A `Response` object containing the model's output, status,
@@ -146,7 +152,7 @@ class SyncConduit:
         )
         logger.info(f"Model query completed, return type: {type(result)}.")
         # Save to messagestore if we have one and if we have a response.
-        if SyncConduit._message_store:
+        if SyncConduit._message_store and not nopersist:
             if isinstance(result, Response):
                 logger.info("Saving response to message store.")
                 SyncConduit._message_store.append(result.message)
