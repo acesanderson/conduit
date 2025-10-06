@@ -1,4 +1,3 @@
-from typing import Optional
 from collections.abc import Iterator
 from pydantic import BaseModel, Field, ValidationError
 from conduit.message.message import Message
@@ -6,6 +5,7 @@ from conduit.message.textmessage import TextMessage
 from conduit.message.imagemessage import ImageMessage
 from conduit.message.audiomessage import AudioMessage
 from conduit.logs.logging_config import get_logger
+from typing import override
 
 MessageUnion = TextMessage | ImageMessage | AudioMessage
 
@@ -48,8 +48,6 @@ class Messages(BaseModel):
 
         This is called on init and whenever messages are added.
         """
-        if not self.messages:
-            return True
 
         def create_dialog_signature(messages: list[Message]) -> str:
             """
@@ -60,15 +58,15 @@ class Messages(BaseModel):
         dialog_signature = create_dialog_signature(self.messages)
         # Check for exactly one system message
         if dialog_signature.count("s") > 1:
-            raise ValidationError(
+            raise ValueError(
                 "Only one 'system' message is allowed in the conversation history."
             )
         # Check for alternating user and assistant messages
         if "uu" in dialog_signature or "aa" in dialog_signature:
-            raise ValidationError(
+            raise ValueError(
                 "Messages must alternate between 'user' and 'assistant' roles."
             )
-        return True
+        pass
 
     # List-like interface methods
     def append(self, message: Message) -> None:
@@ -96,9 +94,7 @@ class Messages(BaseModel):
         """Remove all messages."""
         self.messages.clear()
 
-    def index(
-        self, message: Message, start: int = 0, stop: Optional[int] = None
-    ) -> int:
+    def index(self, message: Message, start: int = 0, stop: int | None = None) -> int:
         """Return the index of the first occurrence of message."""
         if stop is None:
             return self.messages.index(message, start)
@@ -113,11 +109,37 @@ class Messages(BaseModel):
         self.messages.reverse()
 
     # Dunder methods for list-like behavior
+    @override
+    def __repr__(self) -> str:
+        """String representation for debugging."""
+        return str(self.messages)
+
+    @override
+    def __str__(self) -> str:
+        """
+        String representation showing message count and types.
+        """
+        return self.__repr__()
+
+    @override
+    def __iter__(self) -> Iterator[Message]:
+        """Iterate over messages."""
+        return iter(self.messages)
+
+    @override
+    def __eq__(self, other) -> bool:
+        """Check equality with another Messages object or list."""
+        if isinstance(other, Messages):
+            return self.messages == other.messages
+        elif isinstance(other, list):
+            return self.messages == other
+        return False
+
     def __len__(self) -> int:
         """Return the number of messages."""
         return len(self.messages)
 
-    def __getitem__(self, key):
+    def __getitem__(self, key) -> "Message | Messages":
         """Get message(s) by index or slice."""
         result = self.messages[key]
         if isinstance(key, slice):
@@ -132,10 +154,6 @@ class Messages(BaseModel):
         """Delete message(s) by index or slice."""
         del self.messages[key]
 
-    def __iter__(self) -> Iterator[Message]:
-        """Iterate over messages."""
-        return iter(self.messages)
-
     def __reversed__(self) -> Iterator[Message]:
         """Iterate over messages in reverse order."""
         return reversed(self.messages)
@@ -147,14 +165,6 @@ class Messages(BaseModel):
     def __bool__(self) -> bool:
         """Return True if there are any messages."""
         return bool(self.messages)
-
-    def __eq__(self, other) -> bool:
-        """Check equality with another Messages object or list."""
-        if isinstance(other, Messages):
-            return self.messages == other.messages
-        elif isinstance(other, list):
-            return self.messages == other
-        return False
 
     def __add__(self, other) -> "Messages":
         """Concatenate with another Messages object or list."""
@@ -197,9 +207,14 @@ class Messages(BaseModel):
             role: Message role (user, assistant, system)
             content: Message content
         """
-        self.append(TextMessage(role=role, content=content))
+        if role == "system" and self.system_message is not None:
+            raise ValueError(
+                "Only one 'system' message is allowed in the conversation."
+            )
+        else:
+            self.append(TextMessage(role=role, content=content))
 
-    def last(self) -> Optional[Message]:
+    def last(self) -> Message | None:
         """
         Get the last message in the list.
 
@@ -232,15 +247,11 @@ class Messages(BaseModel):
         """Get all system messages."""
         return self.get_by_role("system")
 
-    def __repr__(self) -> str:
-        """String representation for debugging."""
-        return str(self.messages)
-
-    def __str__(self) -> str:
-        """
-        String representation showing message count and types.
-        """
-        return self.__repr__()
+    @property
+    def system_message(self) -> Message | None:
+        """Get the system message, if any."""
+        systems = self.get_by_role("system")
+        return systems[0] if systems else None
 
     # Serialization methods
     def to_cache_dict(self) -> list:
