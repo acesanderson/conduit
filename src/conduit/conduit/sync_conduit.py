@@ -19,7 +19,6 @@ from conduit.progress.verbosity import Verbosity
 
 from conduit.logs.logging_config import get_logger
 from typing import TYPE_CHECKING
-import logging
 
 if TYPE_CHECKING:
     from rich.console import Console
@@ -70,7 +69,9 @@ class SyncConduit:
         cache: bool = True,
         index: int = 0,
         total: int = 0,
-        nopersist: bool = False,
+        # History / messagestore-related
+        include_history: bool = True,
+        save: bool = True,
     ) -> ConduitResult:
         """
         Executes the Conduit, processing the prompt and interacting with the language model.
@@ -102,9 +103,12 @@ class SyncConduit:
             total (int): The total number of items in a batch operation. Used
                 for progress display (e.g., "[1/100]"). Requires `index` to be
                 provided. Defaults to 0.
-            nopersist (bool): If True, the response will not be saved to the
-                message store, if one is associated with the Conduit. Defaults
-                to False.
+            include_history (bool): If True, the full message history will be
+                included in the query. Defaults to True; does not apply if no
+                message store is associated with the Conduit.
+            save (bool): If True, history is saved to the message store.
+                Defaults to True, as that is the main purpose of message store.
+                If false, this is an ephemeral query that will not be saved.
 
         Returns:
             Response: A `Response` object containing the model's output, status,
@@ -125,14 +129,20 @@ class SyncConduit:
         else:
             logger.info("No prompt provided, using None.")
             prompt = None
-        # Resolve messages: messagestore or user-provided messages.
-        if SyncConduit.message_store:
+        # Resolve messages: messagestore or user-provided messages. Are we including history?
+        if SyncConduit.message_store and include_history:
             if messages is not None:
                 raise ValueError(
                     "Both messages and message store are provided, please use only one."
                 )
             logger.info("Using message store for messages.")
             messages = SyncConduit.message_store.messages
+        else:
+            if messages is None:
+                logger.info("No message store or messages provided, starting fresh.")
+                messages = []
+            else:
+                logger.info("Using user-provided messages.")
         # Coerce messages and query_input into a list of Message objects
         logger.info("Coercing messages and prompt into a list of Message objects.")
         messages = self._coerce_messages_and_prompt(prompt=prompt, messages=messages)
@@ -140,7 +150,6 @@ class SyncConduit:
         # Route input; if string, if message
         logger.info("Querying model.")
         # Save this for later
-        user_message = messages[-1]
         result = self.model.query(
             query_input=messages,
             response_model=self.parser.pydantic_model if self.parser else None,
@@ -152,13 +161,18 @@ class SyncConduit:
         )
         logger.info(f"Model query completed, return type: {type(result)}.")
         # Save to messagestore if we have one and if we have a response.
-        if SyncConduit.message_store and not nopersist:
+        if SyncConduit.message_store and save:
             if isinstance(result, Response):
                 logger.info("Saving response to message store.")
                 SyncConduit.message_store.append(result.message)
             elif isinstance(result, ConduitError):
                 logger.error("ConduitError encountered, not saving to message store.")
                 SyncConduit.message_store.query_failed()  # Remove the last message if it was a query failure.
+        else:
+            if not SyncConduit.message_store:
+                logger.info("No message store associated with conduit, skipping save.")
+            if not save:
+                logger.info("'save' is False, skipping save to message store.")
         if not isinstance(result, ConduitResult):
             logger.warning(
                 "Result is not a Response or ConduitError: type {type(result)}."
