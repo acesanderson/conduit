@@ -46,7 +46,7 @@ class Chat:
     def __init__(
         self,
         model: Model = Model("claude-3-5-haiku-20241022"),
-        messagestore: Optional[MessageStore] = SyncConduit._message_store,
+        messagestore: Optional[MessageStore] = SyncConduit.message_store,
         console: Optional[Console] = SyncConduit._console,
     ):
         """

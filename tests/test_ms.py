@@ -9,8 +9,8 @@ verbosity = Verbosity.COMPLETE
 history_file = Path(__file__).parent / "test_history.json"
 
 ms = MessageStore(history_file=history_file, console=console)
-Conduit._message_store = ms
-Model._conduit_cache = ConduitCache()
+Conduit.message_store = ms
+Model.conduit_cache = ConduitCache()
 Model._console = console
 
 # Stage one of conversation

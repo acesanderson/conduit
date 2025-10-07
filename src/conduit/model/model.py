@@ -31,7 +31,7 @@ logger = get_logger(__name__)
 class Model:
     # Class singletons
     _clients = {}  # Store lazy-loaded client instances at the class level
-    _conduit_cache: Optional["ConduitCache"] = (
+    conduit_cache: Optional["ConduitCache"] = (
         None  # If you want to add a cache, add it at class level as a singleton.
     )
     _console: Optional["Console"] = (
@@ -230,8 +230,8 @@ class Model:
 
             # Check cache first
             logger.info("Checking cache for existing results.")
-            if cache and self._conduit_cache:
-                cached_result = self._conduit_cache.check_for_model(request)
+            if cache and self.conduit_cache:
+                cached_result = self.conduit_cache.check_for_model(request)
                 if isinstance(cached_result, ConduitResult):
                     return cached_result  # This should be a Response (part of ConduitResult)
                 elif cached_result == None:
@@ -327,8 +327,8 @@ class Model:
 
             # Update cache after successful query
             logger.info("Updating cache with the new response.")
-            if cache and self._conduit_cache:
-                self._conduit_cache.store_for_model(request, response)
+            if cache and self.conduit_cache:
+                self.conduit_cache.store_for_model(request, response)
 
             return response  # Return Response (part of ConduitResult)
 
