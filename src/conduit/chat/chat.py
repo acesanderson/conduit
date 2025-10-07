@@ -27,7 +27,6 @@ from conduit.message.messagestore import MessageStore
 from conduit.message.textmessage import TextMessage
 from conduit.message.message import Message
 from conduit.message.messages import Messages
-from conduit.cache.cache import ConduitCache
 from conduit.logs.logging_config import get_logger
 from rich.console import Console
 from rich.markdown import Markdown
@@ -47,7 +46,7 @@ class Chat:
         self,
         model: Model = Model("claude-3-5-haiku-20241022"),
         messagestore: Optional[MessageStore] = SyncConduit.message_store,
-        console: Optional[Console] = SyncConduit._console,
+        console: Optional[Console] = SyncConduit.console,
     ):
         """
         User can inject their own messagestore, console, and model, otherwise defaults are used.
