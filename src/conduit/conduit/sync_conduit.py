@@ -164,10 +164,17 @@ class SyncConduit:
         if SyncConduit.message_store and save:
             if isinstance(result, Response):
                 logger.info("Saving response to message store.")
+                if not include_history:
+                    # For a one-off query, the user message that initiated it was not
+                    # in the message store. We must add it now to maintain history integrity.
+                    user_message = messages[
+                        -1
+                    ]  # The user message is the last in the list sent to the model
+                    SyncConduit.message_store.append(user_message)
                 SyncConduit.message_store.append(result.message)
             elif isinstance(result, ConduitError):
                 logger.error("ConduitError encountered, not saving to message store.")
-                SyncConduit.message_store.query_failed()  # Remove the last message if it was a query failure.
+                SyncConduit.message_store.query_failed()
         else:
             if not SyncConduit.message_store:
                 logger.info("No message store associated with conduit, skipping save.")
