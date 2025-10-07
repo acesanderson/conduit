@@ -64,7 +64,7 @@ class Messages(BaseModel):
         # Check for alternating user and assistant messages
         if "uu" in dialog_signature or "aa" in dialog_signature:
             raise ValueError(
-                "Messages must alternate between 'user' and 'assistant' roles."
+                f"Messages must alternate between 'user' and 'assistant' roles. Dialog signature: {dialog_signature}"
             )
         pass
 
