@@ -14,6 +14,7 @@ from conduit.message.textmessage import TextMessage
 from conduit.message.imagemessage import ImageMessage
 from conduit.message.audiomessage import AudioMessage
 from conduit.message.messages import Messages
+from conduit.logs.logging_config import get_logger
 from rich.console import Console
 from rich.rule import Rule
 from pydantic import BaseModel, Field
@@ -22,6 +23,8 @@ from tinydb import TinyDB
 from typing import ClassVar, override
 from datetime import datetime
 import os
+
+logger = get_logger(__name__)
 
 
 class MessageStore(Messages):
@@ -71,6 +74,7 @@ class MessageStore(Messages):
             pruning: Whether to automatically prune old messages
             auto_save: Whether to automatically save changes to database
         """
+        logger.info("Initializing MessageStore class.")
         # Coerce Messages object to list for parent class
         if isinstance(messages, Messages):
             messages = messages.messages  # Extract the list
@@ -116,11 +120,13 @@ class MessageStore(Messages):
 
     def _auto_save_if_enabled(self):
         """Save to database if auto_save is enabled."""
+        logger.debug("Auto-save check.")
         if self.auto_save and self.persistent:
             self.save()
 
     def _log_message_if_enabled(self, message: Message):
         """Log message if logging is enabled."""
+        logger.debug("Logging check.")
         if self.logging:
             self.write_to_log(message)
 
@@ -128,6 +134,7 @@ class MessageStore(Messages):
     @override
     def append(self, message: Message) -> None:
         """Add a message to the end of the list with persistence."""
+        logger.debug("Appending message with persistence.")
         super().append(message)
         self._log_message_if_enabled(message)
         self._auto_save_if_enabled()
@@ -135,6 +142,7 @@ class MessageStore(Messages):
     @override
     def extend(self, messages: list[Message]) -> None:
         """Extend the list with multiple messages with persistence."""
+        logger.debug("Extending messages with persistence.")
         super().extend(messages)
         for message in messages:
             self._log_message_if_enabled(message)
@@ -143,6 +151,7 @@ class MessageStore(Messages):
     @override
     def insert(self, index: int, message: Message) -> None:
         """Insert a message at the specified index with persistence."""
+        logger.debug("Inserting message with persistence.")
         super().insert(index, message)
         self._log_message_if_enabled(message)
         self._auto_save_if_enabled()
@@ -150,12 +159,14 @@ class MessageStore(Messages):
     @override
     def remove(self, message: Message) -> None:
         """Remove the first occurrence of a message with persistence."""
+        logger.debug("Removing message with persistence.")
         super().remove(message)
         self._auto_save_if_enabled()
 
     @override
     def pop(self, index: int = -1) -> Message:
         """Remove and return message at index with persistence."""
+        logger.debug("Popping message with persistence.")
         message = super().pop(index)
         self._auto_save_if_enabled()
         return message
@@ -163,12 +174,14 @@ class MessageStore(Messages):
     @override
     def clear(self) -> None:
         """Remove all messages with persistence."""
+        logger.debug("Clearing all messages with persistence.")
         super().clear()
         self._auto_save_if_enabled()
 
     @override
     def __setitem__(self, key, value):
         """Set message(s) by index or slice with persistence."""
+        logger.debug("Setting item(s) with persistence.")
         super().__setitem__(key, value)
         if isinstance(value, Message):
             self._log_message_if_enabled(value)
@@ -181,12 +194,14 @@ class MessageStore(Messages):
     @override
     def __delitem__(self, key):
         """Delete message(s) by index or slice with persistence."""
+        logger.debug("Deleting item(s) with persistence.")
         super().__delitem__(key)
         self._auto_save_if_enabled()
 
     @override
     def __iadd__(self, other) -> "MessageStore":
         """In-place concatenation with persistence."""
+        logger.debug("In-place addition with persistence.")
         result = super().__iadd__(other)
         if isinstance(other, (list, Messages)):
             for message in other:
@@ -200,6 +215,7 @@ class MessageStore(Messages):
         """
         Create and add a new message (convenience method).
         """
+        logger.debug("Adding new message via convenience method.")
         message = TextMessage(role=role, content=content)
         self.append(message)  # This will handle persistence and logging
 
@@ -208,6 +224,7 @@ class MessageStore(Messages):
         Update the store for a successful Response.
         This adds two messages: one for the user and one for the assistant.
         """
+        logger.debug("Adding messages from Response object.")
         if not isinstance(response.params.messages[-1], Message):
             raise ValueError(
                 "Last message in params.messages must be a Message object."
@@ -255,6 +272,7 @@ class MessageStore(Messages):
         """
         Saves the current messages to TinyDB.
         """
+        logger.debug("Saving messages to TinyDB.")
         if not self.persistent or not isinstance(self.db, TinyDB):
             return
 
@@ -273,12 +291,14 @@ class MessageStore(Messages):
                     self.db.insert(doc)
 
         except Exception as e:
+            logger.error(f"Error saving history: {e}")
             print(f"Error saving history: {e}")
 
     def load(self):
         """
         Loads messages from TinyDB, replacing current messages.
         """
+        logger.debug("Loading messages from TinyDB.")
         if not self.persistent or self.db == None:
             print("This message store is not persistent.")
             return
@@ -316,6 +336,7 @@ class MessageStore(Messages):
                 self.prune()
 
         except Exception as e:
+            logger.error(f"Error loading history: {e}")
             print(f"Error loading history: {e}. Starting with empty history.")
             super().clear()  # Don't trigger auto_save for error case
 
@@ -323,6 +344,7 @@ class MessageStore(Messages):
         """
         Prunes the history to the last 20 messages.
         """
+        logger.debug("Pruning message history.")
         if len(self) > 20:
             # Keep last 20 messages
             pruned_messages = list(self)[-20:]
@@ -344,6 +366,7 @@ class MessageStore(Messages):
         """
         Removes the last message if it's a user message (handles failed queries).
         """
+        logger.debug("Handling query failure by removing last user message if present.")
         if self and self.last() and self.last().role == "user":
             self.pop()  # This will auto-save
             if self.logging:
@@ -353,6 +376,7 @@ class MessageStore(Messages):
         """
         Pretty prints the history.
         """
+        logger.debug("Viewing message history.")
         if len(self) == 0:
             self.console.print("No history (yet).", style="bold red")
             return
@@ -372,6 +396,7 @@ class MessageStore(Messages):
 
     def delete_database(self):
         """Deletes the TinyDB database file."""
+        logger.debug("Deleting TinyDB database file.")
         if self.persistent and self.history_file.exists():
             try:
                 if self.db:
@@ -384,12 +409,14 @@ class MessageStore(Messages):
     # Enhanced Methods
     def get(self, index: int) -> Message | None:
         """Gets a message by 1-based index (convenience method)."""
+        logger.debug(f"Getting message at 1-based index {index}.")
         if 1 <= index <= len(self):
             return self[index - 1]
         return None
 
     def copy(self) -> "MessageStore":
         """Return a copy of the MessageStore (without persistence)."""
+        logger.debug("Copying MessageStore (without persistence).")
         return MessageStore(
             messages=list(self.messages),
             console=self.console,

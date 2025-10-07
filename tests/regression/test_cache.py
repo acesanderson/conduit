@@ -53,7 +53,7 @@ def sample_image_message():
 
 def test_model_cache_text_query(cache_db):
     """Test Model caching with simple text query"""
-    Model._chain_cache = cache_db
+    Model.chain_cache = cache_db
     
     model = Model("gpt3")
     query = "What is 2+2?"
@@ -73,7 +73,7 @@ def test_model_cache_text_query(cache_db):
 
 def test_model_cache_disabled(cache_db):
     """Test Model with caching disabled"""
-    Model._chain_cache = cache_db
+    Model.chain_cache = cache_db
     
     model = Model("gpt3")
     query = "What is 3+3?"
@@ -88,7 +88,7 @@ def test_model_cache_disabled(cache_db):
 
 def test_model_cache_with_parser(cache_db):
     """Test Model caching with structured output"""
-    Model._chain_cache = cache_db
+    Model.chain_cache = cache_db
     
     model = Model("gpt")
     parser = Parser(PydanticTestFrog)
@@ -110,7 +110,7 @@ def test_model_cache_with_parser(cache_db):
 
 def test_model_cache_audio_message(cache_db, sample_audio_message):
     """Test Model caching with AudioMessage"""
-    Model._chain_cache = cache_db
+    Model.chain_cache = cache_db
     
     model = Model("gpt-4o-audio-preview")
     # model = Model("gemini")
@@ -130,7 +130,7 @@ def test_model_cache_audio_message(cache_db, sample_audio_message):
 
 def test_model_cache_image_message(cache_db, sample_image_message):
     """Test Model caching with ImageMessage"""
-    Model._chain_cache = cache_db
+    Model.chain_cache = cache_db
     
     model = Model("gpt-4o")
     
@@ -152,7 +152,7 @@ def test_model_cache_image_message(cache_db, sample_image_message):
 
 def test_chain_cache_text_completion(cache_db):
     """Test Chain caching with text completion"""
-    Model._chain_cache = cache_db
+    Model.chain_cache = cache_db
     
     model = Model("gpt3")
     prompt = Prompt("What is the capital of France?")
@@ -173,7 +173,7 @@ def test_chain_cache_text_completion(cache_db):
 
 def test_chain_cache_with_variables(cache_db):
     """Test Chain caching with input variables"""
-    Model._chain_cache = cache_db
+    Model.chain_cache = cache_db
     
     model = Model("gpt3")
     prompt = Prompt("What is the capital of {{country}}?")
@@ -196,7 +196,7 @@ def test_chain_cache_with_variables(cache_db):
 
 def test_chain_cache_with_parser(cache_db):
     """Test Chain caching with structured output"""
-    Model._chain_cache = cache_db
+    Model.chain_cache = cache_db
     
     model = Model("gpt3")
     prompt = Prompt("Create a frog")
@@ -219,7 +219,7 @@ def test_chain_cache_with_parser(cache_db):
 
 def test_chain_cache_with_messages(cache_db, sample_image_message):
     """Test Chain caching with message list"""
-    Model._chain_cache = cache_db
+    Model.chain_cache = cache_db
     
     model = Model("gpt-4o")
     chain = Chain(model=model)
@@ -243,7 +243,7 @@ def test_chain_cache_with_messages(cache_db, sample_image_message):
 
 def test_modelasync_cache_text_query(cache_db):
     """Test ModelAsync caching with simple text query"""
-    ModelAsync._chain_cache = cache_db
+    ModelAsync.chain_cache = cache_db
     
     model = ModelAsync("gpt3")
     chain = AsyncChain(model=model)
@@ -269,7 +269,7 @@ def test_modelasync_cache_text_query(cache_db):
 
 def test_asyncchain_cache_with_variables(cache_db):
     """Test AsyncChain caching with input variables"""
-    ModelAsync._chain_cache = cache_db
+    ModelAsync.chain_cache = cache_db
     
     model = ModelAsync("gpt3")
     prompt = Prompt("What is the capital of {{country}}?")
@@ -296,7 +296,7 @@ def test_asyncchain_cache_with_variables(cache_db):
 
 def test_asyncchain_cache_with_parser(cache_db):
     """Test AsyncChain caching with structured output"""
-    ModelAsync._chain_cache = cache_db
+    ModelAsync.chain_cache = cache_db
     
     model = ModelAsync("gpt3")
     parser = Parser(PydanticTestFrog)
@@ -324,7 +324,7 @@ def test_asyncchain_cache_with_parser(cache_db):
 
 def test_asyncchain_cache_multiple_queries(cache_db):
     """Test AsyncChain caching with multiple queries"""
-    ModelAsync._chain_cache = cache_db
+    ModelAsync.chain_cache = cache_db
     
     model = ModelAsync("gpt3")
     chain = AsyncChain(model=model)
@@ -354,7 +354,7 @@ def test_asyncchain_cache_multiple_queries(cache_db):
 
 def test_cache_different_queries(cache_db):
     """Test that different queries don't hit same cache"""
-    Model._chain_cache = cache_db
+    Model.chain_cache = cache_db
     
     model = Model("gpt3")
     
@@ -369,7 +369,7 @@ def test_cache_different_queries(cache_db):
 
 def test_cache_different_temperatures(cache_db):
     """Test that different temperatures create different cache entries"""
-    Model._chain_cache = cache_db
+    Model.chain_cache = cache_db
     
     model = Model("gpt3")
     query = "Tell me a joke"

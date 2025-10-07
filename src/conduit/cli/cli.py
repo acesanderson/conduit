@@ -155,7 +155,7 @@ class ConduitCLI(CLI):
         self.messagestore = MessageStore(
             console=self.console, history_file=history_file, pruning=True
         )
-        SyncConduit._message_store = self.messagestore
+        SyncConduit.message_store = self.messagestore
         if history_file:
             self.messagestore.load()
 

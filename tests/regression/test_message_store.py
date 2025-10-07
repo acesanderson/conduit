@@ -153,7 +153,7 @@ def test_chain_messagestore_integration():
     messagestore = MessageStore()
     
     # Set Chain to use our messagestore
-    Chain._message_store = messagestore
+    Chain.message_store = messagestore
     
     model = Model("gpt3")
     chain = Chain(model=model)
@@ -173,7 +173,7 @@ def test_chain_messagestore_integration():
     assert len(messagestore) >= 1  # At least the response should be there
     
     # Clean up
-    Chain._message_store = None
+    Chain.message_store = None
 
 def test_messagestore_add_response():
     """Test add_response method with Chain Response objects"""

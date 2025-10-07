@@ -268,20 +268,20 @@ def test_command_wipe_image_no_image():
     except Exception as e:
         assert False, f"command_wipe_image raised {e}"
 
-# Integration with Chain._message_store
+# Integration with Chain.message_store
 # --------------------------------------
 
-def test_chain_message_store_integration():
-    """Test that Chat sets Chain._message_store during chat setup"""
+def test_chainmessage_store_integration():
+    """Test that Chat sets Chain.message_store during chat setup"""
     from Chain.chain.chain import Chain
     
     messagestore = MessageStore(auto_save=False)
     chat = Chat(messagestore=messagestore)
     
     # Simulate what happens in chat() method
-    Chain._message_store = chat.messagestore
+    Chain.message_store = chat.messagestore
     
-    assert Chain._message_store == messagestore
+    assert Chain.message_store == messagestore
 
 # Error handling
 # --------------------------------------
