@@ -49,6 +49,7 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/conduit"]
 sources = ["src"]
+include = ["src/conduit/py.typed"]
 
 # If you ship non-.py files inside the package (configs, prompts, assets),
 # list them so they’re included in wheels and sdists.
