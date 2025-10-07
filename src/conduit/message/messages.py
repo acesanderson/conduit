@@ -48,11 +48,13 @@ class Messages(BaseModel):
 
         This is called on init and whenever messages are added.
         """
+        logger.debug(f"Validating message turn order: {self.messages}")
 
         def create_dialog_signature(messages: list[Message]) -> str:
             """
             Create a signature string for the message order.
             """
+            logger.debug("Creating dialog signature")
             return "".join(msg.role[0].lower() for msg in messages)
 
         dialog_signature = create_dialog_signature(self.messages)
