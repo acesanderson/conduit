@@ -17,7 +17,7 @@ logger = get_logger(__name__)
 
 class ModelAsync(Model):
     _async_clients = {}  # Separate from Model._clients
-    _conduit_cache: Optional[ConduitCache] = None
+    conduit_cache: Optional[ConduitCache] = None
 
     def _get_client_type(self, model: str) -> tuple:
         """
@@ -103,8 +103,8 @@ class ModelAsync(Model):
                 return sample_error
 
             # Check cache first
-            if cache and self._conduit_cache:
-                cached_result = self._conduit_cache.check_for_model(request)
+            if cache and self.conduit_cache:
+                cached_result = self.conduit_cache.check_for_model(request)
                 if cached_result is not None:
                     return cached_result  # This should be a Response
 
@@ -139,8 +139,8 @@ class ModelAsync(Model):
                 )
 
             # Update cache after successful query
-            if cache and self._conduit_cache:
-                self._conduit_cache.store_for_model(request, response)
+            if cache and self.conduit_cache:
+                self.conduit_cache.store_for_model(request, response)
 
             return response  # Always return Response (part of ConduitResult)
 

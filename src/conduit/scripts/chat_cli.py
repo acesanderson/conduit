@@ -16,10 +16,10 @@ logger = get_logger(__name__)  # Our logger
 console = Console()
 SyncConduit._console = console
 Model._console = console
-Model._conduit_cache = ConduitCache(
+Model.conduit_cache = ConduitCache(
     db_path=dir_path / ".chat_cache.db"
 )  # Caching set up.
-SyncConduit._message_store = MessageStore(
+SyncConduit.message_store = MessageStore(
     pruning=True
 )  # Non-persistant, but we should prune
 

@@ -19,7 +19,7 @@ logger = configure_logging(
 
 
 class AsyncConduit(SyncConduit):
-    _message_store: Optional[MessageStore] = None
+    message_store: Optional[MessageStore] = None
     # If you want rich progress reporting, add a rich.console.Console object to Conduit. (also can be added at Model level)
     _console: Optional["Console"] = None
 
