@@ -10,7 +10,7 @@ class ConduitCache:
     Automatically handles serialization/deserialization of Response and Request objects.
     """
 
-    def __init__(self, db_path: str | Path = "conduit_cache.db"):
+    def __init__(self, db_path: str | Path = ".conduit_cache.db"):
         """
         Initialize cache with SQLite database.
 
