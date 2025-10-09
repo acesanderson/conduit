@@ -19,3 +19,4 @@ tests/assets/*
 multimodal/tts/asset/*
 *.npz
 multimodal/tts/audio_files/*
+uv.lock
