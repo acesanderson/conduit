@@ -58,7 +58,7 @@ class RichProgressHandler:
             self.console.print(
                 f"✓ {model_name} | {query_preview} | ({duration:.1f}s)", style="green"
             )
-        elif verbosity >= Verbosity.SUMMARY and response_obj:
+        elif verbosity >= Verbosity.SUMMARY and response_obj != None:
             # New behavior - use object display methods
             # First show the progress line
             self.console.print(
