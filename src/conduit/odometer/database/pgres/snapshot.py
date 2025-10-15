@@ -10,7 +10,6 @@ from conduit.odometer.database.pgres.PostgresBackend import PostgresBackend
 from datetime import date
 from rich.console import Console
 from rich.table import Table
-from rich.text import Text
 import sys
 
 
@@ -21,27 +20,20 @@ def format_large_number(num):
 
 def print_usage_stats(console, backend):
     """Print usage statistics as a single line"""
-    events = backend.get_events()
+    stats = backend.get_overall_stats()
 
-    if not events:
+    if not stats:
         console.print("[red]No usage data found[/red]")
         return
 
-    total_input = sum(event.input_tokens for event in events)
-    total_output = sum(event.output_tokens for event in events)
-    total_tokens = total_input + total_output
-    total_requests = len(events)
-    unique_providers = len(set(event.provider for event in events))
-    unique_models = len(set(event.model for event in events))
-
-    console.print(f"[bold gold3]Usage Statistics[/bold gold3]")
+    console.print("[bold gold3]Usage Statistics[/bold gold3]")
     console.print(
-        f"[cyan]Requests:[/cyan] {format_large_number(total_requests)}    "
-        f"[cyan]Tokens:[/cyan] {format_large_number(total_tokens)}    "
-        f"[cyan]Input:[/cyan] [green]{format_large_number(total_input)}[/green]    "
-        f"[cyan]Output:[/cyan] [yellow]{format_large_number(total_output)}[/yellow]    "
-        f"[cyan]Providers:[/cyan] {unique_providers}    "
-        f"[cyan]Models:[/cyan] {unique_models}"
+        f"[cyan]Requests:[/cyan] {format_large_number(stats['requests'])}    "
+        f"[cyan]Tokens:[/cyan] {format_large_number(stats['total_tokens'])}    "
+        f"[cyan]Input:[/cyan] [green]{format_large_number(stats['input'])}[/green]    "
+        f"[cyan]Output:[/cyan] [yellow]{format_large_number(stats['output'])}[/yellow]    "
+        f"[cyan]Providers:[/cyan] {stats['providers']}    "
+        f"[cyan]Models:[/cyan] {stats['models']}"
     )
 
 
