@@ -417,7 +417,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
-    { name = "database-clients" },
+    { name = "dbclients" },
     { name = "fastapi" },
     { name = "google-generativeai" },
     { name = "instructor", extra = ["perplexity"] },
@@ -448,7 +448,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic" },
-    { name = "database-clients", editable = "../database-clients" },
+    { name = "dbclients", editable = "../dbclients-project" },
     { name = "fastapi" },
     { name = "google-generativeai" },
     { name = "instructor", extras = ["perplexity"] },
@@ -474,9 +474,9 @@ requires-dist = [
 provides-extras = ["dev"]
 
 [[package]]
-name = "database-clients"
+name = "dbclients"
 version = "0.1.0"
-source = { editable = "../database-clients" }
+source = { editable = "../dbclients-project" }
 dependencies = [
     { name = "chromadb" },
     { name = "motor" },
