@@ -34,7 +34,7 @@ dependencies = [
     "ruff>=0.12.4",
     "ty>=0.0.1a15",
     # database
-    "database-clients",
+    "dbclients",
 ]
 
 [project.optional-dependencies]
@@ -113,7 +113,7 @@ members = [
 
 # ── uv sources (local/editable deps) ───────────────────────────────────────────
 [tool.uv.sources]
-database-clients = { path = "../database-clients", editable = true }
+dbclients = { path = "../dbclients-project", editable = true }
 
 [project.scripts]
 update = "conduit.scripts.update_modelstore:main"
