@@ -270,3 +270,32 @@ class PostgresBackend(PersistenceBackend):
         except Exception as e:
             logger.error(f"Failed to get total events: {e}")
             return 0
+
+    def get_overall_stats(self) -> dict:
+        """Get overall statistics without fetching individual events"""
+        query = """
+        SELECT 
+            COUNT(*) as requests,
+            SUM(input_tokens) as total_input,
+            SUM(output_tokens) as total_output,
+            COUNT(DISTINCT provider) as unique_providers,
+            COUNT(DISTINCT model) as unique_models
+        FROM token_events
+        """
+
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(query)
+                    row = cursor.fetchone()
+                    return {
+                        "requests": row[0],
+                        "input": row[1],
+                        "output": row[2],
+                        "total_tokens": row[1] + row[2],
+                        "providers": row[3],
+                        "models": row[4],
+                    }
+        except Exception as e:
+            logger.error(f"Failed to get overall stats: {e}")
+            raise
