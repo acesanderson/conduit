@@ -15,6 +15,7 @@ from conduit.message.imagemessage import ImageMessage
 from conduit.message.audiomessage import AudioMessage
 from conduit.message.messages import Messages
 from conduit.logs.logging_config import get_logger
+from xdg_base_dirs import xdg_data_home, xdg_state_home
 from rich.console import Console
 from rich.rule import Rule
 from pydantic import BaseModel, Field
@@ -25,6 +26,9 @@ from datetime import datetime
 import os
 
 logger = get_logger(__name__)
+
+DEFAULT_HISTORY_FILE = xdg_data_home() / "conduit" / "history.json"
+DEFAULT_LOG_FILE = xdg_state_home() / "conduit" / "conduit.log"
 
 
 class MessageStore(Messages):
@@ -46,8 +50,10 @@ class MessageStore(Messages):
     persistent: bool = Field(default=False, exclude=True)
     logging: bool = Field(default=False, exclude=True)
     pruning: bool = Field(default=False, exclude=True)
-    history_file: Path | None = Field(default=None, exclude=True, repr=False)
-    log_file: Path | None = Field(default=None, exclude=True, repr=False)
+    history_file: Path | None = Field(
+        default=DEFAULT_HISTORY_FILE, exclude=True, repr=False
+    )
+    log_file: Path | None = Field(default=DEFAULT_LOG_FILE, exclude=True, repr=False)
     db: TinyDB | None = Field(default=None, exclude=True, repr=False)
 
     model_config: ClassVar = {

@@ -1,7 +1,11 @@
 from conduit.result.response import Response
 from typing import Optional, Any
 from pathlib import Path
-import sqlite3, json
+from xdg_base_dirs import xdg_cache_home
+import sqlite3
+import json
+
+DEFAULT_CACHE = Path(xdg_cache_home()) / "cache.db"
 
 
 class ConduitCache:
@@ -10,7 +14,7 @@ class ConduitCache:
     Automatically handles serialization/deserialization of Response and Request objects.
     """
 
-    def __init__(self, db_path: str | Path = ".conduit_cache.db"):
+    def __init__(self, db_path: str | Path = DEFAULT_CACHE):
         """
         Initialize cache with SQLite database.
 
