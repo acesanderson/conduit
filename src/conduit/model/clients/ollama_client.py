@@ -10,12 +10,15 @@ from conduit.model.clients.client import Client, Usage
 from conduit.request.request import Request
 from pydantic import BaseModel
 from openai import OpenAI, AsyncOpenAI, Stream
+from xdg_base_dirs import xdg_state_home, xdg_config_home
 from pathlib import Path
 from collections import defaultdict
 import instructor, ollama, json
 
 
-dir_path = Path(__file__).resolve().parent
+DIR_PATH = Path(__file__).resolve().parent
+OLLAMA_MODELS_PATH = xdg_state_home() / "conduit" / "ollama_models.json"
+OLLAMA_CONTEXT_SIZES_PATH = xdg_config_home() / "conduit" / "ollama_context_sizes.json"
 
 
 class OllamaClient(Client):
@@ -25,7 +28,7 @@ class OllamaClient(Client):
     """
 
     # Load Ollama context sizes from the JSON file
-    with open(dir_path.parent / "models" / "ollama_context_sizes.json") as f:
+    with open(OLLAMA_CONTEXT_SIZES_PATH) as f:
         _ollama_context_data = json.load(f)
 
     # Use defaultdict to set default context size to 4096 if not specified
@@ -55,11 +58,9 @@ class OllamaClient(Client):
         """
         # Lazy load ollama module
         ollama_models = [m["model"] for m in ollama.list()["models"]]
-        with open(dir_path.parent / "models" / "models.json", "r") as f:
-            model_list = json.load(f)
-        model_list["ollama"] = ollama_models
-        with open(dir_path.parent / "models" / "models.json", "w") as f:
-            json.dump(model_list, f)
+        ollama_model_dict = {"ollama": ollama_models}
+        with open(OLLAMA_MODELS_PATH, "w") as f:
+            json.dump(ollama_model_dict, f)
 
     def tokenize(self, model: str, text: str) -> int:
         """
