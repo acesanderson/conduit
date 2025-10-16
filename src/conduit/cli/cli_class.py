@@ -70,6 +70,7 @@ class ConduitCLI(HandlerMixin):
         console: Console = DEFAULT_CONSOLE,
         cache: bool = DEFAULT_CACHE_SETTING,
         persistent: bool = DEFAULT_PERSISTENT_SETTING,
+        system_message: str | None = None,  # If None, load from config or default to ""
     ):
         # Parameters
         self.name: str = name  # Name of the CLI application
@@ -93,6 +94,11 @@ class ConduitCLI(HandlerMixin):
         self.history_file, self.config_dir, self.cache_file = (
             self._construct_xdg_paths()
         )
+        # System message: three options:
+        if system_message is not None:
+            self.system_message = system_message
+        else:
+            self.system_message = self._get_system_message()
         # Persistence
         if persistent:
             logger.info(f"Using persistent history at {self.history_file}")
@@ -139,6 +145,23 @@ class ConduitCLI(HandlerMixin):
             sys.exit(1)
         # Parse args
         self._parse_args()
+
+    def _get_system_message(self) -> str:
+        """
+        Get the system message from config if it exists, otherwise return "".
+        """
+        try:
+            system_message_file = (
+                xdg_config_home() / self.name / "system_message.jinja2"
+            )
+            system_message = system_message_file.read_text()
+            logger.info(f"Loaded system message from {system_message_file}")
+            return system_message
+        except Exception as e:
+            logger.info(
+                "No system message file found in .config, assuming no system message."
+            )
+            return ""
 
     def _preconfigure_logging(self):
         """Quick arg scan to set log level before full parsing."""
