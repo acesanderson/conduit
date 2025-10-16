@@ -136,6 +136,16 @@ class MessageStore(Messages):
         if self.logging:
             self.write_to_log(message)
 
+    def ensure_system_message(self, system_message_content: str) -> None:
+        """
+        Ensure system message exists. Idempotent.
+        """
+        if not self.system_message:
+            from conduit.message.textmessage import create_system_message
+
+            msg = create_system_message(system_message_content)[0]
+            self.insert(0, msg)
+
     # Override Messages methods to add persistence and logging
     @override
     def append(self, message: Message) -> None:
