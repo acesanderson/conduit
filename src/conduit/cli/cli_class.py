@@ -16,6 +16,7 @@ from conduit.cli.config_loader import ConfigLoader
 from conduit.cli.handlers import HandlerMixin
 from conduit.cli.query_function import QueryFunctionProtocol, default_query_function
 from conduit.progress.verbosity import Verbosity
+from conduit.model.models.modelstore import ModelStore
 from xdg_base_dirs import xdg_data_home, xdg_config_home, xdg_cache_home
 from pathlib import Path
 import sys
@@ -28,10 +29,10 @@ DEFAULT_NAME = "conduit"
 DEFAULT_DESCRIPTION = "Conduit: The LLM CLI"
 DEFAULT_QUERY_FUNCTION = default_query_function
 DEFAULT_VERBOSITY = Verbosity.COMPLETE
-DEFAULT_PREFERRED_MODEL = "claude"
 DEFAULT_CONSOLE = Console()
 DEFAULT_CACHE_SETTING = True
 DEFAULT_PERSISTENT_SETTING = True
+DEFAULT_PREFERRED_MODEL = "claude"  # But can be overridden by config
 
 
 class ConduitCLI(HandlerMixin):
@@ -66,11 +67,11 @@ class ConduitCLI(HandlerMixin):
         description: str = DEFAULT_DESCRIPTION,
         query_function: QueryFunctionProtocol = DEFAULT_QUERY_FUNCTION,
         verbosity: Verbosity = DEFAULT_VERBOSITY,
-        preferred_model: str = DEFAULT_PREFERRED_MODEL,
         console: Console = DEFAULT_CONSOLE,
         cache: bool = DEFAULT_CACHE_SETTING,
         persistent: bool = DEFAULT_PERSISTENT_SETTING,
         system_message: str | None = None,  # If None, load from config or default to ""
+        preferred_model: str | None = None,
     ):
         # Parameters
         self.name: str = name  # Name of the CLI application
@@ -84,7 +85,6 @@ class ConduitCLI(HandlerMixin):
         )
         # Configs
         self.verbosity: Verbosity = verbosity  # verbosity level for LLM responses
-        self.preferred_model: str = preferred_model  # default LLM model
         self.console: Console = console  # rich console for output
         self.cache: bool = cache  # whether to use caching for LLM responses
         # Get XDG paths
@@ -94,6 +94,9 @@ class ConduitCLI(HandlerMixin):
         self.history_file, self.config_dir, self.cache_file = (
             self._construct_xdg_paths()
         )
+        # Preferred models
+        self.preferred_model = preferred_model
+        self.preferred_model = self._get_preferred_model(preferred_model)
         # System message: three options:
         if system_message is not None:
             self.system_message = system_message
@@ -145,6 +148,40 @@ class ConduitCLI(HandlerMixin):
             sys.exit(1)
         # Parse args
         self._parse_args()
+
+    def _get_preferred_model(self, preferred_model: str | None) -> str:
+        """
+        Validate preferred_model if provided, otherwise load from config or use default.
+        """
+        model_store = ModelStore()
+        if preferred_model:
+            # Validate provided preferred_model
+            if model_store._validate_model(preferred_model):
+                return model_store._validate_model(preferred_model)
+            else:
+                logger.warning(
+                    f"Preferred model '{preferred_model}' is not available. Falling back to config or default."
+                )
+        # Load from config if available
+        try:
+            preferred_model_file = xdg_config_home() / self.name / "preferred_model"
+            preferred_model_from_config = preferred_model_file.read_text().strip()
+            if model_store._validate_model(preferred_model_from_config):
+                logger.info(
+                    f"Loaded preferred model '{preferred_model_from_config}' from config file."
+                )
+                return model_store._validate_model(preferred_model_from_config)
+            else:
+                logger.warning(
+                    f"Preferred model '{preferred_model_from_config}' from config file is not available. Falling back to default."
+                )
+        except Exception as e:
+            logger.info(
+                "No preferred model file found in .config, assuming default preferred model."
+            )
+        # Default preferred model
+        logger.info(f"Using default preferred model '{DEFAULT_PREFERRED_MODEL}'")
+        return DEFAULT_PREFERRED_MODEL
 
     def _get_system_message(self) -> str:
         """
