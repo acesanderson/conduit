@@ -47,8 +47,16 @@ def default_query_function(
         else ""
     )
     append: str = inputs.get("append", "")
+
     # ConduitCLI's default POSIX philosophy: embrace pipes and redirection
     combined_query = "\n\n".join([query_input, context, append])
+
+    # Inject system message if provided and message store exists
+    if Conduit.message_store:
+        system_message = inputs.get("system_message", "")
+        if system_message:
+            Conduit.message_store.ensure_system_message(system_message)
+
     # Our chain
     model = Model(preferred_model)
     prompt = Prompt(combined_query)
