@@ -5,7 +5,7 @@ Need to figure out where to automatically implement this in my Conduit package t
 """
 
 from conduit.logs.logging_config import get_logger
-from conduit.model.model import Model
+from conduit.model.clients.ollama_client import OllamaClientSync
 from conduit.model.models.modelstore import ModelStore
 from rich import console
 
@@ -15,8 +15,8 @@ console = console.Console(width=80)
 
 def main():
     console.print("[green]Updating Ollama Models...[/green]")
-    m = Model("llama3.1:latest")
-    m._client.update_ollama_models()
+    client = OllamaClientSync()
+    client.update_ollama_models()
     console.print(
         f"[green]Model list updated: [/green][yellow]{ModelStore.models()['ollama']}[/yellow]"
     )
