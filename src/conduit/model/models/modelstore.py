@@ -1,3 +1,9 @@
+"""
+Our list of API llm models is in models.json, in our repo, as is the list of aliases.
+The list of ollama models is host-specific, and therefore in our state directory.
+Ollama context sizes is user-configurable, and therefore in our config directory.
+"""
+
 from conduit.model.models.providerstore import ProviderStore
 from conduit.model.models.provider import Provider
 from conduit.model.models.modelspec import ModelSpec
@@ -9,15 +15,18 @@ from conduit.model.models.modelspecs_CRUD import (
 )
 from conduit.model.models.research_models import create_modelspec
 from conduit.logs.logging_config import get_logger
+from xdg_base_dirs import xdg_state_home, xdg_config_home
 from pathlib import Path
 import json, itertools
 
-# Our data stores
-dir_path = Path(__file__).parent
-models_path = dir_path / "models.json"
-aliases_path = dir_path / "aliases.json"
-ollama_context_sizes_path = dir_path / "ollama_context_sizes.json"
 logger = get_logger(__name__)
+
+# Our data stores
+DIR_PATH = Path(__file__).parent
+MODELS_PATH = DIR_PATH / "models.json"
+OLLAMA_MODELS_PATH = xdg_state_home() / "conduit" / "ollama_models.json"
+OLLAMA_CONTEXT_SIZES_PATH = xdg_config_home() / "conduit" / "ollama_context_sizes.json"
+ALIASES_PATH = DIR_PATH / "aliases.json"
 
 
 class ModelStore:
@@ -28,9 +37,16 @@ class ModelStore:
 
     @classmethod
     def models(cls):
-        """Definitive list of models supported by Conduit library."""
-        with open(models_path) as f:
-            return json.load(f)
+        """
+        Definitive list of models supported by Conduit library, as well as the local list of ollama models.
+        """
+        with open(MODELS_PATH) as f:
+            models_json = json.load(f)
+        if OLLAMA_MODELS_PATH.exists():
+            with open(OLLAMA_MODELS_PATH) as f:
+                ollama_models = json.load(f)
+            models_json["ollama"] = ollama_models["ollama"]
+        return models_json
 
     @classmethod
     def list_models(cls) -> list[str]:
@@ -73,7 +89,7 @@ class ModelStore:
     @classmethod
     def aliases(cls):
         """Definitive list of model aliases supported by Conduit library."""
-        with open(aliases_path) as f:
+        with open(ALIASES_PATH) as f:
             return json.load(f)
 
     @classmethod
@@ -111,8 +127,8 @@ class ModelStore:
         Get the preferred num_ctx for a given ollama model.
         """
         default_value = 32768
-        if ollama_context_sizes_path.exists():
-            with open(ollama_context_sizes_path) as f:
+        if OLLAMA_CONTEXT_SIZES_PATH.exists():
+            with open(OLLAMA_CONTEXT_SIZES_PATH) as f:
                 context_sizes = json.load(f)
             if ollama_model in context_sizes:
                 return context_sizes[ollama_model]
