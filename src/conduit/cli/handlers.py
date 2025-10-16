@@ -163,6 +163,7 @@ class HandlerMixin:
         self.flags: dict
         self.stdin: str
         self.verbosity: Verbosity
+        self.preferred_model: str
 
         # Assemble the parts of the query
         logger.debug("Assembling query parts...")
@@ -178,7 +179,8 @@ class HandlerMixin:
         ## NOTE: we need to implement temperature, image, and other flags here.
         chat = self.flags["chat"]
         raw = self.flags["raw"]
-        preferred_model = self.flags["model"]
+        user_defined_model = self.flags["model"]
+        model_to_use = user_defined_model or self.preferred_model
         # Start our spinner
         with self.console.status(
             "[bold green]Thinking...[/bold green]", spinner="dots"
@@ -189,7 +191,7 @@ class HandlerMixin:
                     logger.debug("Chat (with history), pretty print...")
                     response = self.query_function(
                         inputs,
-                        preferred_model=preferred_model,
+                        preferred_model=model_to_use,
                         verbose=self.verbosity,
                         include_history=True,
                     )
@@ -199,7 +201,7 @@ class HandlerMixin:
                     logger.debug("Chat (with history), raw print...")
                     response = self.query_function(
                         inputs,
-                        preferred_model=preferred_model,
+                        preferred_model=model_to_use,
                         verbose=self.verbosity,
                         include_history=True,
                     )
@@ -209,7 +211,7 @@ class HandlerMixin:
                     logger.debug("One-off request, pretty print...")
                     response = self.query_function(
                         inputs,
-                        preferred_model=preferred_model,
+                        preferred_model=model_to_use,
                         verbose=self.verbosity,
                         include_history=False,
                     )

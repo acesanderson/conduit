@@ -22,8 +22,7 @@
       "abbrev": "-m",
       "name": "--model",
       "type": "str",
-      "help": "Specify the model to use; defaults to 'claude'",
-      "default": "claude"
+      "help": "Specify the model to use. Empty for default model."
     },
     {
       "abbrev": "-L",
