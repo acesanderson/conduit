@@ -108,6 +108,12 @@
       "type": "int",
       "help": "Get a specific message from history",
       "handler": "handle_get"
+    },
+    {
+      "name": "--config",
+      "action": "store_true",
+      "help": "View current configuration",
+      "handler": "handle_config"
     }
   ]
 }

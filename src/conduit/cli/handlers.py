@@ -149,6 +149,25 @@ class HandlerMixin:
     def handle_get(self, index: int):
         pass
 
+    def handle_config(self):
+        """
+        Print the current configuration and exit.
+        """
+        preferred_model = getattr(self, "preferred_model", "")
+        system_message = getattr(self, "system_message", "")[:50]
+        logger.info("Viewing configuration...")
+        config_md = f"""
+# Current Configuration
+| Setting | Value |
+|---------|-------|
+| Preferred Model | {preferred_model} |
+| System Message | {system_message}... |
+| Message History | {"Enabled" if self.flags.get("chat") else "Disabled"} |
+| Verbosity | {self.verbosity.name} |
+"""
+        md = Markdown(config_md)
+        self.console.print(md)
+
     def query_handler(self):
         """
         Handle a query by combining query input, context, and append, then sending to model.
