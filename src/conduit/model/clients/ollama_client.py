@@ -8,6 +8,7 @@ We define preferred defaults for context sizes in a separate json file.
 
 from conduit.model.clients.client import Client, Usage
 from conduit.request.request import Request
+from conduit.logs.logging_config import get_logger
 from pydantic import BaseModel
 from openai import OpenAI, AsyncOpenAI, Stream
 from xdg_base_dirs import xdg_state_home, xdg_config_home
@@ -15,6 +16,7 @@ from pathlib import Path
 from collections import defaultdict
 import instructor, ollama, json
 
+logger = get_logger(__name__)
 
 DIR_PATH = Path(__file__).resolve().parent
 OLLAMA_MODELS_PATH = xdg_state_home() / "conduit" / "ollama_models.json"
@@ -28,12 +30,19 @@ class OllamaClient(Client):
     """
 
     # Load Ollama context sizes from the JSON file
-    with open(OLLAMA_CONTEXT_SIZES_PATH) as f:
-        _ollama_context_data = json.load(f)
+    try:
+        Path(OLLAMA_CONTEXT_SIZES_PATH).parent.mkdir(parents=True, exist_ok=True)
+        with open(OLLAMA_CONTEXT_SIZES_PATH) as f:
+            _ollama_context_data = json.load(f)
 
-    # Use defaultdict to set default context size to 4096 if not specified
-    _ollama_context_sizes = defaultdict(lambda: 32768)
-    _ollama_context_sizes.update(_ollama_context_data)
+        # Use defaultdict to set default context size to 4096 if not specified
+        _ollama_context_sizes = defaultdict(lambda: 32768)
+        _ollama_context_sizes.update(_ollama_context_data)
+    except Exception:
+        logger.warning(
+            f"Could not load Ollama context sizes from {OLLAMA_CONTEXT_SIZES_PATH}. Using default of 32768."
+        )
+        _ollama_context_sizes = defaultdict(lambda: 32768)
 
     def __init__(self):
         self._client = self._initialize_client()
@@ -56,6 +65,8 @@ class OllamaClient(Client):
         Updates the list of Ollama models.
         We run is every time ollama is initialized.
         """
+        # Ensure the directory exists
+        Path(OLLAMA_MODELS_PATH).parent.mkdir(parents=True, exist_ok=True)
         # Lazy load ollama module
         ollama_models = [m["model"] for m in ollama.list()["models"]]
         ollama_model_dict = {"ollama": ollama_models}

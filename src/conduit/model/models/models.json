@@ -49,5 +49,6 @@
     "sonar-reasoning",
     "sonar-pro",
     "sonar"
-  ]
+  ],
+  "ollama": []
 }
