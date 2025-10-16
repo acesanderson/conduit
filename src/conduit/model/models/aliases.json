@@ -9,7 +9,7 @@
   "gpt-oss": "gpt-oss:latest",
   "gpt3": "gpt-3.5-turbo-0125",
   "groq": "mixtral-8x7b-32768",
-  "haiku": "claude-3-5-haiku-20241022",
+  "haiku": "claude-haiku-4-5-20251001",
   "llama": "llama3.1:latest",
   "nano": "gpt-5-mini",
   "ollama": "mistral:latest",
