@@ -2,6 +2,8 @@
 OpenAI research example with web search tool.
 Expand to Gemini deep research.
 Try out exa.ai.
+
+Docs: https://platform.openai.com/docs/guides/deep-research
 """
 
 from openai import OpenAI
