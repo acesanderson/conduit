@@ -17,7 +17,8 @@ console = Console()
 
 api_key = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=api_key)
-QUERY = "What are concrete ways people are starting to implement skills validation / assessment with generative AI and related technologies? Find concrete case studies that could be relevant to a corporate training context."
+# QUERY = "What are concrete ways people are starting to implement skills validation / assessment with generative AI and related technologies? Find concrete case studies that could be relevant to a corporate training context."
+QUERY = "Provide a comprehensive description of Performance Based Testing (PBT) in corporate training, its applicability to skills validation and assessment, and real world examples of generative AI being used for this very purpose. Include references to case studies, articles, and any relevant data that provides useful and transferable examples of AI being used for this."
 SAVE_FILE = Path("research_response.md")
 
 # Progress spinner
@@ -54,4 +55,4 @@ with console.status("[bold green]Waiting for response...") as status:
         time.sleep(2)  # Wait before checking again
 
 console.print(response.output)
-_ = SAVE_FILE.write_text(response.output)
+_ = SAVE_FILE.write_text(str(response.output))
