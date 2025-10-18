@@ -57,6 +57,32 @@ class SyncConduit:
 
             SyncConduit._console = Console()
 
+    def _validate_input_variables(self, input_variables: dict[str, str]) -> None:
+        """
+        Validates that the provided input variables match the expected input schema.
+
+        Args:
+            input_variables (dict): A dictionary of input variables to validate.
+
+        Raises:
+            ValueError: If any required input variables are missing.
+            ValueError: If any extra input variables are provided that are not
+                expected by the prompt.
+        """
+        # Determine if prompt is expecting variables that are not provided
+        missing_vars: set = self.input_schema - input_variables.keys()
+        if missing_vars:
+            raise ValueError(
+                f'Prompt is missing required input variable(s): "{'", "'.join(missing_vars)}"'
+            )
+        # Determine if extra variables are provided that the prompt does not expect
+        extra_vars: set = input_variables.keys() - self.input_schema
+        if extra_vars:
+            raise ValueError(
+                f'Provided input variable(s) are not referenced in prompt: "{'", "'.join(extra_vars)}"'
+            )
+        return
+
     def run(
         self,
         # Inputs
@@ -121,6 +147,7 @@ class SyncConduit:
         """
         # Render our prompt with the input_variables if variables are passed.
         if input_variables and self.prompt:
+            self._validate_input_variables(input_variables)
             logger.info("Rendering prompt with input variables: %s", input_variables)
             prompt = self.prompt.render(input_variables=input_variables)
         elif self.prompt:
