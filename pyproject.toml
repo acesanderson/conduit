@@ -36,6 +36,8 @@ dependencies = [
     # database
     "dbclients",
     "xdg-base-dirs>=6.0.2",
+    "torch>=2.9.0",
+    "transformers>=4.57.1",
 ]
 
 [project.optional-dependencies]
