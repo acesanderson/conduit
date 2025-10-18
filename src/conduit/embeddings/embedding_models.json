@@ -1,0 +1,7 @@
+{
+  "embedding_models": [
+    "sentence-transformers/all-MiniLM-L6-v2",
+    "mixedbread-ai/mxbai-embed-large-v1",
+    "nomic-ai/nomic-embed-text-v1"
+  ]
+}
