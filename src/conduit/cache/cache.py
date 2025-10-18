@@ -5,7 +5,7 @@ from xdg_base_dirs import xdg_cache_home
 import sqlite3
 import json
 
-DEFAULT_CACHE = Path(xdg_cache_home()) / "cache.db"
+DEFAULT_NAME = "conduit"
 
 
 class ConduitCache:
@@ -14,16 +14,24 @@ class ConduitCache:
     Automatically handles serialization/deserialization of Response and Request objects.
     """
 
-    def __init__(self, db_path: str | Path = DEFAULT_CACHE):
+    def __init__(self, name: str = DEFAULT_NAME):
         """
         Initialize cache with SQLite database.
 
         Args:
             db_path: Path to SQLite database file
         """
-        self.db_path = str(db_path)
-        self._connection = None
+        self.name: str = name
+        self.db_path: Path = self._create_db_path()
+        self._connection: sqlite3.Connection | None = None
         self._create_table()
+
+    def _create_db_path(self) -> Path:
+        """Ensure the database directory exists."""
+        cache_dir = xdg_cache_home()
+        db_path = cache_dir / self.name / "cache.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        return db_path
 
     @property
     def connection(self):

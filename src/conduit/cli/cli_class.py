@@ -120,7 +120,7 @@ class ConduitCLI(HandlerMixin):
             from conduit.cache.cache import ConduitCache
 
             self.cache_file.parent.mkdir(parents=True, exist_ok=True)
-            Model.conduit_cache = ConduitCache(db_path=self.cache_file)
+            Model.conduit_cache = ConduitCache()
         else:
             logger.info("Caching disabled")
         # Set up config
