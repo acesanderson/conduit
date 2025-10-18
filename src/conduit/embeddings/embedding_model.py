@@ -12,21 +12,21 @@ class EmbeddingModel:
         from transformers import AutoModel, AutoTokenizer
 
         self.model_name = model_name
-        if model_name not in self.embedding_models:
+        if model_name not in self.models():
             raise ValueError(
                 f"Model '{model_name}' is not in the list of supported models."
             )
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-        self.model = AutoModel.from_pretrained(self.model_name).to(self.device)
+        self.model = AutoModel.from_pretrained(self.model_name).to(self.device())
 
-    @cached_property
-    def embedding_models(self) -> list[str]:
+    @classmethod
+    def models(cls) -> list[str]:
         embedding_models_dict = json.loads(EMBEDDING_MODELS_FILE.read_text())
         embedding_models: list[str] = embedding_models_dict["embedding_models"]
         return embedding_models
 
-    @cached_property
-    def device(self) -> str:
+    @classmethod
+    def device(cls) -> str:
         global _DEVICE_CACHE
         if _DEVICE_CACHE is None:
             import torch
@@ -53,10 +53,10 @@ class EmbeddingModel:
         inputs = self.tokenizer(
             batch.documents, padding=True, truncation=True, return_tensors="pt"
         )
-        inputs = {k: v.to(device) for k, v in inputs.items()}
+        inputs = {k: v.to(self.device()) for k, v in inputs.items()}
 
         with torch.no_grad():
-            outputs = model(**inputs)
+            outputs = self.model(**inputs)
             embeddings = outputs.last_hidden_state.mean(dim=1).cpu().tolist()
 
         new_batch = ChromaBatch(
