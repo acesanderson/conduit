@@ -38,6 +38,10 @@ dependencies = [
     "xdg-base-dirs>=6.0.2",
     "torch>=2.7.1",
     "transformers>=4.57.1",
+    "exa-py>=1.16.1",
+    "markdownify>=1.2.0",
+    "requests-cache>=1.2.1",
+    "hishel>=0.1.5",
 ]
 
 [project.optional-dependencies]
