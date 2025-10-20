@@ -81,22 +81,22 @@ def get_research_task(researchId: str) -> dict:
         while True:
             elapsed = int(time.time() - start_time)
             status.update(f"[bold green]Researching... {elapsed}s elapsed")
-            url = f"https://api.exa.ai/research//v1/{researchId}"
+            url = f"https://api.exa.ai/research/v1/{researchId}"  # Also fixed double slash
             headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {EXA_API_KEY}",
             }
-            response = requests.get(url, headers=headers).json()
+            response = requests.get(url, headers=headers)
+            data = response.json()  # Parse once
 
-            if response["status"] == "completed":
-                return response.json()
-            elif response["status"] == "failed":
+            if data["status"] == "completed":
+                return data
+            elif data["status"] == "failed":
                 print(f"Error: Research task {researchId} failed.")
-                break
-            elif response["status"] == "running":
+                return data  # Return the failed response data
+            elif data["status"] == "running":
                 pass
-            time.sleep(2)  # Wait before checking again
-        return response.json()
+            time.sleep(2)
 
 
 if __name__ == "__main__":
