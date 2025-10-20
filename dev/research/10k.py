@@ -7,11 +7,54 @@ from functools import cached_property
 from markdownify import markdownify as md
 from rich.console import Console
 from rich.markdown import Markdown
+from conduit.sync import Model, Prompt, Conduit, Response, Verbosity, ConduitCache
 
+# Configs
 requests_cache.install_cache(".sec_cache")
 console = Console()
+cache = ConduitCache(name="research")
+Model.conduit_cache = cache
+Model.console = console
+
+# Constants
+PREFERRED_MODEL = "sonar"
+
+# Prompt strings
+cik_prompt_str = """
+Given the company name, return the Central Index Key (CIK) used by the U.S. Securities and Exchange Commission (SEC) to identify the company. Only return the CIK number without any additional text.
+
+If the company is not publicly traded or does not have a CIK, respond with "N/A".
+
+<company_name>
+{{company_name}}
+</company_name>
+""".strip()
 
 
+# Functions
+def is_valid_cik(cik: str) -> bool:
+    return cik.isdigit() and len(cik) <= 10
+
+
+def get_cik(company_name: str) -> str:
+    """
+    Given a company name, return its Central Index Key (CIK) from the SEC.
+    """
+    prompt = Prompt(cik_prompt_str)
+    model = Model(PREFERRED_MODEL)
+    conduit = Conduit(model=model, prompt=prompt)
+    response = conduit.run(
+        input_variables={"company_name": company_name}, verbose=Verbosity.SILENT
+    )
+    assert isinstance(response, Response), f"Expected Response, got {type(response)}"
+    if is_valid_cik(str(response.content)):
+        return str(response.content)
+    raise ValueError(
+        f"Invalid CIK returned for {company_name}: {response.content}. Are you sure this company is publicly traded?"
+    )
+
+
+# Dataclasses
 class SECFiling(BaseModel):
     url: str = Field(..., description="The URL of the SEC filing")
     date: str = Field(..., description="The filing date of the SEC filing")
@@ -72,6 +115,19 @@ class Companies(BaseModel):
         return cls(companies=company_objs)
 
 
+def get_company_filing(company_name: str) -> SECFiling:
+    cik = get_cik(company_name)
+    company = Company(name=company_name, cik=cik)
+    filings = company.filings
+    if filings:
+        return filings[0]
+    else:
+        raise ValueError(f"No filings found for company {company_name}")
+
+
 if __name__ == "__main__":
-    companies = Companies.from_markdown(Path(__file__).parent / "10k_companies.md")
-    companies.companies[-1].filings[0].print()
+    company = "Coursera"
+    filing = get_company_filing(company)
+    print(f"Latest filing for {company} ({filing.date}):")
+    # companies = Companies.from_markdown(Path(__file__).parent / "10k_companies.md")
+    # companies.companies[-1].filings[0].print()
