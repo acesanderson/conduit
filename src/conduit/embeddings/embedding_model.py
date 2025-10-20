@@ -70,7 +70,7 @@ class EmbeddingModel:
 
 if __name__ == "__main__":
     # Example usage
-    model = EmbeddingModel("sentence-transformers/all-MiniLM-L6-v2")
+    model = EmbeddingModel("sentence-transformers/all-mpnet-base-v2")
     batch = ChromaBatch(
         ids=["1", "2"],
         documents=["This is a test document.", "This is another test document."],
