@@ -40,11 +40,11 @@ list [
 """
 
 from openai import OpenAI
+from openai.types.responses.response_output_message import ResponseOutputMessage
 import os
 import time
 from rich.console import Console
 from pathlib import Path
-import shelve
 
 console = Console()
 
@@ -100,28 +100,52 @@ def get_research_task(response_id: str):
     return status_check
 
 
-def retrieve_output_text(response) -> str:
+def retrieve_content(response) -> tuple[str, list]:
     """
-    Not implemented yet.
+    Extract text and citations from the response output.
+
+    Returns
+    -------
+    tuple[str, list]
+        The extracted text and list of citations.
     """
-    raise NotImplementedError
     output = response.output
-    for item in output:
-        if item["type"] == "ResponseOutputMessage":
-            content = item["content"]
-            for content_item in content:
-                if content_item["type"] == "ResponseOutputText":
-                    return content_item["text"]
-            annotations = []
+    for o in output:
+        if isinstance(o, ResponseOutputMessage):
+            content = o.content[0]  # One item in list
+            text = content.text
+            citations = content.annotations
+            break
+    return text, citations
+
+
+def format_citations(citations: list) -> str:
+    """
+    Format citations into a single markdown string.
+    """
+    output = ""
+    citation_lines = []
+    for cite in citations:
+        citation_lines.append(f"- [{cite.title}]({cite.url})")
+    output += "# Citations\n"
+    output += "\n".join(citation_lines)
+    return output
+
+
+def retrieve_answer(response) -> str:
+    """
+    Extract the final answer text from the response output.
+    """
+    text, citations = retrieve_content(response)
+    output = ""
+    output += "# Research Answer\n"
+    output += text + "\n\n"
+    output += format_citations(citations)
+    return output
 
 
 if __name__ == "__main__":
     response_id = start_research_task(QUERY_STRING)
     response = get_research_task(response_id)
     console.print(response.output)
-    _ = OBSIDIAN_RESEARCH_NOTE.write_text(str(response.output))
-    # Shelve response, query as key, + response object as value
-    with shelve.open("research_shelve.db") as db:
-        db[QUERY_STRING] = response
-    console.print(f"Research note saved to {OBSIDIAN_RESEARCH_NOTE}")
-    console.print("Research response shelved in research_shelve.db")
+    _ = OBSIDIAN_RESEARCH_NOTE.write_text(retrieve_answer(response))
