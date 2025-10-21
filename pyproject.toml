@@ -36,6 +36,7 @@ dependencies = [
     # database
     "dbclients",
     "xdg-base-dirs>=6.0.2",
+<<<<<<< HEAD
     "torch>=2.7.1",
     "transformers>=4.57.1",
     "exa-py>=1.16.1",
@@ -44,6 +45,15 @@ dependencies = [
     "hishel>=0.1.5",
     "newspaper3k>=0.2.8",
     "lxml-html-clean>=0.4.3",
+||||||| parent of c0d4166 (mv'd research to aquifer)
+    "torch>=2.7.1",
+    "transformers>=4.57.1",
+    "exa-py>=1.16.1",
+    "markdownify>=1.2.0",
+    "requests-cache>=1.2.1",
+    "hishel>=0.1.5",
+=======
+>>>>>>> c0d4166 (mv'd research to aquifer)
 ]
 
 [project.optional-dependencies]
