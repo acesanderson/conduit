@@ -50,6 +50,7 @@ class MessageStore(Messages):
     persistent: bool = Field(default=False, exclude=True)
     logging: bool = Field(default=False, exclude=True)
     pruning: bool = Field(default=False, exclude=True)
+    name: str = Field(default="MessageStore", exclude=True)
     history_file: Path | None = Field(
         default=DEFAULT_HISTORY_FILE, exclude=True, repr=False
     )

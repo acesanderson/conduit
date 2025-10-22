@@ -20,7 +20,7 @@ from pathlib import Path
 class PromptLoader:
     """Lazy-loading prompt registry for jinja/jinja2 template files."""
 
-    def __init__(self, base_dir, keys=None):
+    def __init__(self, base_dir: str | Path, keys=None):
         self.base_dir = Path(base_dir)
 
         # Ensure base_dir exists
@@ -69,3 +69,6 @@ class PromptLoader:
 
     def __contains__(self, key):
         return key in self.file_map
+
+    def __str__(self):
+        return f"PromptLoader(base_dir={self.base_dir}, keys={self.keys})"
