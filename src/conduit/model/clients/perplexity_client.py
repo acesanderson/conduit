@@ -115,10 +115,20 @@ class PerplexityClientAsync(PerplexityClient):
     ) -> tuple:
         result = await self._client.chat.completions.create(**request.to_perplexity())
         # Capture usage
-        usage = Usage(
-            input_tokens=result.usage.prompt_tokens,
-            output_tokens=result.usage.completion_tokens,
-        )
+        # Handle instructor vs raw response
+        if hasattr(result, "usage"):
+            # Raw OpenAI response
+            usage = Usage(
+                input_tokens=result.usage.prompt_tokens,
+                output_tokens=result.usage.completion_tokens,
+            )
+        else:
+            # Instructor wrapped response - need to get usage from _raw_response
+            raw_response = result._raw_response  # instructor stores original here
+            usage = Usage(
+                input_tokens=raw_response.usage.prompt_tokens,
+                output_tokens=raw_response.usage.completion_tokens,
+            )
         if isinstance(result, ChatCompletion):
             # Construct a PerplexityContent object from the response
             citations = result.search_results
