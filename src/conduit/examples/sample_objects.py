@@ -1,10 +1,10 @@
-from Chain.result.error import ChainError, ErrorInfo, ErrorDetail
-from Chain.result.response import Response
-from Chain.request.request import Request
-from Chain.message.textmessage import TextMessage
-from Chain.message.imagemessage import ImageMessage
-from Chain.message.audiomessage import AudioMessage
-from Chain.message.messages import Messages
+from conduit.result.error import ConduitError, ErrorInfo, ErrorDetail
+from conduit.result.response import Response
+from conduit.request.request import Request
+from conduit.message.textmessage import TextMessage
+from conduit.message.imagemessage import ImageMessage
+from conduit.message.audiomessage import AudioMessage
+from conduit.message.messages import Messages
 from datetime import datetime
 from pathlib import Path
 
@@ -33,7 +33,7 @@ sample_image_message = ImageMessage.from_image_file(
     image_file=sample_image_file,
 )
 # Requests, results, etc.
-sample_error = ChainError(
+sample_error = ConduitError(
     info=ErrorInfo(
         code="ERR001",
         message="An unexpected error occurred",
