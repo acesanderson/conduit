@@ -4,6 +4,7 @@ Define your own for customization.
 """
 
 from conduit.sync import Prompt, Model, Conduit, Response, Verbosity
+from conduit.model.models.modelstore import ModelStore
 from typing import Protocol, runtime_checkable
 import logging
 
@@ -47,6 +48,7 @@ def default_query_function(
         else ""
     )
     append: str = inputs.get("append", "")
+    local: bool = inputs.get("local", False)
 
     # ConduitCLI's default POSIX philosophy: embrace pipes and redirection
     combined_query = "\n\n".join([query_input, context, append])
@@ -58,9 +60,22 @@ def default_query_function(
             Conduit.message_store.ensure_system_message(system_message)
 
     # Our chain
-    model = Model(preferred_model)
-    prompt = Prompt(combined_query)
-    conduit = Conduit(prompt=prompt, model=model)
-    response = conduit.run(verbose=verbose, include_history=include_history)
+    if local:
+        from conduit.model.remote_model import RemoteModel
+
+        logger.info("Using local model.")
+        if preferred_model not in ModelStore().local_models():
+            preferred_model = "gpt-oss:latest"
+        logger.info(f"Using model: {preferred_model}")
+        model = RemoteModel(preferred_model)
+        prompt_str = combined_query
+        response = model.query(query_input=prompt_str, verbose=verbose)
+    else:
+        logger.info("Using remote model.")
+        model = Model(preferred_model)
+        logger.info(f"Using model: {preferred_model}")
+        prompt = Prompt(combined_query)
+        conduit = Conduit(prompt=prompt, model=model)
+        response = conduit.run(verbose=verbose, include_history=include_history)
     assert isinstance(response, Response), "Response is not of type Response"
     return response
