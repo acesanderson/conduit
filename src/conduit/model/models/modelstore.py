@@ -87,6 +87,16 @@ class ModelStore:
         raise ValueError(f"Provider not found for model: {model}")
 
     @classmethod
+    def local_models(cls) -> list[str]:
+        """List of all locally hosted models supported by Conduit library."""
+        models = cls.models()
+        local_models = []
+        for provider, model_list in models.items():
+            if provider in ["ollama", "local"]:
+                local_models.extend(model_list)
+        return local_models
+
+    @classmethod
     def aliases(cls):
         """Definitive list of model aliases supported by Conduit library."""
         with open(ALIASES_PATH) as f:

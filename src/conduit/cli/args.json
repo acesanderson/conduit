@@ -28,7 +28,7 @@
       "abbrev": "-L",
       "name": "--local",
       "action": "store_true",
-      "help": "Use local SiphonServer instead of remote API"
+      "help": "Use local HeadwaterServer instead of remote API"
     },
     {
       "abbrev": "-r",

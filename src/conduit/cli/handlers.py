@@ -191,6 +191,7 @@ class HandlerMixin:
             "context": f"<context>{self.stdin}</context>" if self.stdin else "",
             "append": self.flags.get("append") or "",
             "system_message": getattr(self, "system_message", ""),
+            "local": self.flags.get("local", False),
         }
 
         # Grab our flags
