@@ -30,6 +30,7 @@ dependencies = [
     "requests",
     "fastapi",
     "uvicorn",
+    "headwater_api",
     # Dev tools
     "ruff>=0.12.4",
     "ty>=0.0.1a15",
@@ -115,6 +116,7 @@ members = [
 # ── uv sources (local/editable deps) ───────────────────────────────────────────
 [tool.uv.sources]
 dbclients = { path = "../dbclients-project", editable = true }
+headwater_api = { path = "../headwater-api-project", editable = true }
 
 [project.scripts]
 chainserver = "conduit.api.server.run:main"
@@ -125,4 +127,3 @@ models = "conduit.scripts.models_cli:main"
 tokens = "conduit.odometer.database.pgres.snapshot:main"
 update = "conduit.scripts.update_modelstore:main"
 update_ollama = "conduit.scripts.update_ollama_list:main"
-
