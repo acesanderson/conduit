@@ -18,6 +18,7 @@ logger = get_logger(__name__)
 class ModelAsync(Model):
     _async_clients = {}  # Separate from Model._clients
     conduit_cache: Optional[ConduitCache] = None
+    cache = conduit_cache
 
     def _get_client_type(self, model: str) -> tuple:
         """
