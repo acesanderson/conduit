@@ -1,70 +1,69 @@
 """
-ClientModel - A server-based Model implementation that maintains protocol compatibility with Model class.
+RemoteModel - A server-based Model implementation that maintains protocol compatibility with Model class.
 
 Unlike ModelAsync, this does NOT inherit from Model, but implements the same interface.
 """
 
+from headwater_api.client.headwater_client import HeadwaterClient
+from headwater_api.api.conduit_api import ConduitAPI
+from headwater_api.classes import StatusResponse
 from conduit.progress.wrappers import progress_display
 from conduit.progress.verbosity import Verbosity
 from conduit.request.request import Request
 from conduit.result.result import ConduitResult
 from conduit.result.error import ConduitError
-from conduit.logs.logging_config import get_logger
 from conduit.request.outputtype import OutputType
 from conduit.message.message import Message
 from pydantic import ValidationError, BaseModel
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 from time import time
+import logging
 
 # Load only if type checking
 if TYPE_CHECKING:
     from rich.console import Console
 
-logger = get_logger(__name__)
+
+logger = logging.getLogger(__name__)
 
 
-class ModelClient:
+class RemoteModel:
     """
     Server-based model client that implements the same protocol as Model class.
     Works seamlessly with Conduit and other components.
     """
 
-    def __init__(
-        self, model: str = "gpt-oss:latest", console: Optional["Console"] = None
-    ):
+    def __init__(self, model: str = "gpt-oss:latest", console: "Console | None" = None):
         """
-        Initialize ClientModel with server connection.
+        Initialize RemoteModel with server connection.
 
         Args:
             model: Model name (must be available on server)
-            server_url: Optional server URL (defaults to SiphonClient default)
             console: Optional Rich console for progress display
         """
-        self.model = model
-        self._console = console
-        self._client = self._initialize_client()
+        self.model: str = model
+        self._console: Console = console
+        self._client: HeadwaterClient = self._initialize_client()
         self._validate_server_model()
 
-    def _initialize_client(self):
+    def _initialize_client(self) -> ConduitAPI:
         """Initialize SiphonClient connection"""
-        from SiphonServer.client.siphonclient import SiphonClient
-
-        client = SiphonClient()
+        client = HeadwaterClient()
 
         # Test connection
         try:
-            status = client.get_status()
-            if status.get("status") != "healthy":
+            status = client.ping()
+            if status == False:
                 raise ConnectionError("Server is not healthy")
             return client
         except Exception as e:
-            raise ConnectionError(f"Failed to connect to Siphon server: {e}")
+            raise ConnectionError(f"Failed to connect to Headwater server: {e}")
 
     def _validate_server_model(self):
         """Validate that the model is available on the server"""
         try:
-            status = self._client.get_status()
-            available_models = status.get("models_available", [])
+            status: StatusResponse = self._client.get_status()
+            available_models = getattr(status, "models_available", [])
 
             if self.model not in available_models:
                 raise ValueError(
@@ -84,17 +83,10 @@ class ModelClient:
 
         import sys
 
-        # Check for Model._console
-        if "conduit.model.model" in sys.modules:
-            Model = sys.modules["conduit.model.model"].Model
-            model_console = getattr(Model, "_console", None)
-            if model_console:
-                return model_console
-
         # Check for SyncConduit._console
         if "conduit.conduit.sync_conduit" in sys.modules:
             conduit = sys.modules["conduit.conduit.sync_conduit"].SyncConduit
-            conduit_console = getattr(conduit, "_console", None)
+            conduit_console = getattr(conduit, "console", None)
             if conduit_console:
                 return conduit_console
 
@@ -103,25 +95,25 @@ class ModelClient:
     @console.setter
     def console(self, console: "Console"):
         """Sets the console object for rich output"""
-        self._console = console
+        self.console = console
 
     @progress_display
     def query(
         self,
         # Standard parameters (match Model.query signature)
-        query_input: str | list | Message | None = None,
+        query_input: str | list[Message] | Message | None = None,
         response_model: type["BaseModel"] | None = None,
         cache=True,
-        temperature: Optional[float] = None,
+        temperature: float | None = None,
         stream: bool = False,
         output_type: OutputType = "text",
-        max_tokens: Optional[int] = None,
+        max_tokens: int | None = None,
         # For progress reporting decorator
         verbose: Verbosity = Verbosity.PROGRESS,
         index: int = 0,
         total: int = 0,
         # If we're hand-constructing Request params
-        request: Optional[Request] = None,
+        request: Request | None = None,
         # Options for debugging
         return_request: bool = False,
         return_error: bool = False,
@@ -171,7 +163,7 @@ class ModelClient:
             start_time = time()
 
             # Use SiphonClient's query_sync method
-            response = self._client.query_sync(request)
+            response = self._client.conduit.query_sync(request)
 
             stop_time = time()
             logger.info(
@@ -217,6 +209,6 @@ class ModelClient:
             # Fallback to word-based estimation
             return int(len(text.split()) * 1.3)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """String representation"""
-        return f"ClientModel(model='{self.model}', server_url='{self.server_url}')"
+        return f"ClientModel(model='{self.model}')"
