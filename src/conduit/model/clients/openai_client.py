@@ -4,7 +4,8 @@ from conduit.request.request import Request
 from conduit.logs.logging_config import get_logger
 from openai import OpenAI, AsyncOpenAI, Stream
 from pydantic import BaseModel
-import instructor, tiktoken
+import instructor
+import tiktoken
 
 
 logger = get_logger(__name__)
