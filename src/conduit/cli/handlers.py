@@ -6,8 +6,7 @@ Some guidelines for this Mixin:
 """
 
 from conduit.sync import Conduit, Verbosity
-from rich.markdown import Markdown
-from rich.console import Console
+from conduit.cli.printer import Printer
 import logging
 import sys
 
@@ -37,12 +36,7 @@ class HandlerMixin:
         """
         Prints formatted markdown to the console.
         """
-        # Create a Markdown object
-        border = "-" * 100
-        markdown_string = f"{border}\n{markdown_string}\n\n{border}"
-        md = Markdown(markdown_string)
-        self.console: Console
-        self.console.print(md)
+        self.printer.print_markdown(markdown_string)
 
     def grab_image_from_clipboard(self) -> tuple | None:
         """
@@ -52,7 +46,9 @@ class HandlerMixin:
         import os
 
         if "SSH_CLIENT" in os.environ or "SSH_TTY" in os.environ:
-            self.console.print("Image paste not available over SSH.", style="red")
+            self.printer.print_pretty(
+                "Image paste not available over SSH.", style="red"
+            )
             return
 
         import warnings
@@ -68,13 +64,13 @@ class HandlerMixin:
             image.save(buffer, format="PNG")  # type: ignore
             img_base64 = base64.b64encode(buffer.getvalue()).decode()
             # Save for next query
-            self.console.print("Image captured!", style="green")
+            self.printer.print_pretty("Image captured!", style="green")
             # Build our ImageMessage
             image_content = img_base64
             mime_type = "image/png"
             return mime_type, image_content
         else:
-            self.console.print("No image detected.", style="red")
+            self.printer.print_pretty("No image detected.", style="red")
 
             sys.exit()
 
@@ -119,9 +115,9 @@ class HandlerMixin:
         )
         if confirm:
             Conduit.message_store.clear()
-            self.console.print("[green]Message history wiped.[/green]")
+            self.printer.print_pretty("[green]Message history wiped.[/green]")
         else:
-            self.console.print("[yellow]Wipe cancelled.[/yellow]")
+            self.printer.print_pretty("[yellow]Wipe cancelled.[/yellow]")
 
     def handle_shell(self):
         pass
@@ -137,13 +133,10 @@ class HandlerMixin:
         last_message = Conduit.message_store.last()
         # If no messages, inform user
         if not last_message:
-            self.console.print("[red]No messages in history.[/red]")
+            self.printer.print_pretty("[red]No messages in history.[/red]")
             sys.exit()
         # Print last message
-        if self.flags["raw"]:
-            print(last_message)
-        else:
-            self.print_markdown(str(last_message))
+        self.printer.print_markdown(str(last_message))
         sys.exit()
 
     def handle_get(self, index: int):
@@ -165,8 +158,7 @@ class HandlerMixin:
 | Message History | {"Enabled" if self.flags.get("chat") else "Disabled"} |
 | Verbosity | {self.verbosity.name} |
 """
-        md = Markdown(config_md)
-        self.console.print(md)
+        self.printer.print_markdown(config_md)
 
     def query_handler(self):
         """
@@ -179,6 +171,7 @@ class HandlerMixin:
         """
         logger.info("Handling query...")
         # Type hints since mixins confuse IDEs
+        self.printer: Printer
         self.flags: dict
         self.stdin: str
         self.verbosity: Verbosity
@@ -198,16 +191,15 @@ class HandlerMixin:
         logger.debug("Grabbing flags...")
         ## NOTE: we need to implement temperature, image, and other flags here.
         chat = self.flags["chat"]
-        raw = self.flags["raw"]
         user_defined_model = self.flags["model"]
         model_to_use = user_defined_model or self.preferred_model
         # Start our spinner
-        with self.console.status(
+        with self.printer.status(
             "[bold green]Thinking...[/bold green]", spinner="dots"
         ):
             # Our switch logic
-            match (chat, raw):
-                case (True, False):  # Chat (with history), pretty print
+            match chat:
+                case True:  # Chat (with history), pretty print
                     logger.debug("Chat (with history), pretty print...")
                     response = self.query_function(
                         inputs,
@@ -217,17 +209,7 @@ class HandlerMixin:
                     )
                     self.print_markdown(str(response.content))
                     sys.exit()
-                case (True, True):  # Chat (with history), raw print
-                    logger.debug("Chat (with history), raw print...")
-                    response = self.query_function(
-                        inputs,
-                        preferred_model=model_to_use,
-                        verbose=self.verbosity,
-                        include_history=True,
-                    )
-                    print(response)
-                    sys.exit()
-                case (False, False):  # One-off request, pretty print
+                case False:  # One-off request, pretty print
                     logger.debug("One-off request, pretty print...")
                     response = self.query_function(
                         inputs,
@@ -236,14 +218,4 @@ class HandlerMixin:
                         include_history=False,
                     )
                     self.print_markdown(str(response.content))
-                    sys.exit()
-                case (False, True):  # One-off request, raw print
-                    logger.debug("One-off request, raw print...")
-                    response = self.query_function(
-                        inputs,
-                        preferred_model=preferred_model,
-                        verbose=self.verbosity,
-                        include_history=False,
-                    )
-                    print(response)
                     sys.exit()
