@@ -10,11 +10,11 @@ To customize:
 This allows you to tailor the behavior of ConduitCLI while leveraging its existing features.
 """
 
-from rich.console import Console
 from argparse import ArgumentParser, Namespace
 from conduit.cli.config_loader import ConfigLoader
 from conduit.cli.handlers import HandlerMixin
 from conduit.cli.query_function import QueryFunctionProtocol, default_query_function
+from conduit.cli.printer import Printer
 from conduit.progress.verbosity import Verbosity
 from conduit.model.models.modelstore import ModelStore
 from xdg_base_dirs import xdg_data_home, xdg_config_home, xdg_cache_home
@@ -29,7 +29,6 @@ DEFAULT_NAME = "conduit"
 DEFAULT_DESCRIPTION = "Conduit: The LLM CLI"
 DEFAULT_QUERY_FUNCTION = default_query_function
 DEFAULT_VERBOSITY = Verbosity.COMPLETE
-DEFAULT_CONSOLE = Console()
 DEFAULT_CACHE_SETTING = True
 DEFAULT_PERSISTENT_SETTING = True
 DEFAULT_PREFERRED_MODEL = "claude"  # But can be overridden by config
@@ -44,7 +43,6 @@ class ConduitCLI(HandlerMixin):
     - description: Description of the CLI application.
     - verbosity: Verbosity level for LLM responses.
     - preferred_model: Default LLM model to use.
-    - console: Instance of rich.console.Console for rich text output.
     - config: Configuration dictionary loaded from ConfigLoader.
     - attr_mapping: Maps command-line argument names to internal attribute names.
     - command_mapping: Maps command-line argument names to their respective handler method names.
@@ -67,7 +65,6 @@ class ConduitCLI(HandlerMixin):
         description: str = DEFAULT_DESCRIPTION,
         query_function: QueryFunctionProtocol = DEFAULT_QUERY_FUNCTION,
         verbosity: Verbosity = DEFAULT_VERBOSITY,
-        console: Console = DEFAULT_CONSOLE,
         cache: bool = DEFAULT_CACHE_SETTING,
         persistent: bool = DEFAULT_PERSISTENT_SETTING,
         system_message: str | None = None,  # If None, load from config or default to ""
@@ -85,7 +82,6 @@ class ConduitCLI(HandlerMixin):
         )
         # Configs
         self.verbosity: Verbosity = verbosity  # verbosity level for LLM responses
-        self.console: Console = console  # rich console for output
         self.cache: bool = cache  # whether to use caching for LLM responses
         # Get XDG paths
         self.history_file: Path
@@ -130,6 +126,7 @@ class ConduitCLI(HandlerMixin):
         self.args: Namespace | None = None
         self.flags: dict = {}  # This will hold all the flag values after parsing
         self.config: dict = ConfigLoader().config
+        self.printer: Printer = Printer()  # IO policy manager
         self._validate_handlers()  # from HandlerMixin
 
     def run(self):
@@ -201,7 +198,9 @@ class ConduitCLI(HandlerMixin):
             return ""
 
     def _preconfigure_logging(self):
-        """Quick arg scan to set log level before full parsing."""
+        """
+        Quick arg scan to set log level before full parsing.
+        """
         root = logging.getLogger()
 
         # If already configured (library usage), respect existing config
@@ -312,10 +311,21 @@ class ConduitCLI(HandlerMixin):
     def _parse_args(self):
         """
         Parse arguments and execute commands or prepare for query processing.
+        Note that three args are hardcoded specially:
+        - raw: sets overall IO policy to raw (impacts all output)
+        - log: sets logging level (handled earlier)
+        - query_input: positional arg for the query string
+
+        Everything else is dynamically mapped based on config (args.json + handlers.py).
         """
         logger.info("Parsing arguments")
         self.args = self.parser.parse_args()
         logger.debug(f"Parsed args: {self.args}")
+
+        # Set IO policy
+        if self.args.raw:
+            self.printer.set_raw(True)
+            logger.info(f"Printer policy set to raw.")
 
         # Create flags dictionary
         logger.info("Creating flags dictionary")
@@ -350,14 +360,12 @@ class ConduitCLI(HandlerMixin):
         """
         logger.info("Printing all attributes of the instance")
         if pretty:
-            from rich.pretty import Pretty
-
-            self.console.print(Pretty(vars(self)))
+            self.printer.print_pretty(vars(self))
             return
         else:
             attrs = vars(self)
             for attr, value in attrs.items():
-                print(f"{attr}: {value}")
+                self.printer.print_raw(f"{attr}: {value}")
 
     def _get_handler_for_command(self, command_name: str):
         """
