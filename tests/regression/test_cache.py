@@ -24,15 +24,8 @@ sample_image_file = fixtures_dir / "image.png"
 @fixture
 def cache_db():
     """Create a temporary cache database for testing"""
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-        cache_path = f.name
-
-    cache = ConduitCache(cache_path)
+    cache = ConduitCache(name="test")
     yield cache
-
-    # Cleanup
-    cache.close()
-    Path(cache_path).unlink(missing_ok=True)
 
 
 @fixture
