@@ -3,12 +3,12 @@ Customize ConduitCLI quickly with a query function, if you don't worry about cus
 A simple query_function that ONLY takes query_input and returns a Response object is enough.
 """
 
-from conduit.cli.conduit_class import (
+from conduit.cli.cli_class import (
     ConduitCLI,
     DEFAULT_PREFERRED_MODEL,
     DEFAULT_VERBOSITY,
 )
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
     from conduit.sync import Verbosity
@@ -35,6 +35,7 @@ def wrap_query_function(query_function):
 
     return wrapped
 
+def validate_protocol(query_function: Callable)
 
 def cli_factory(query_function) -> ConduitCLI:
     """
