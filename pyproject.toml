@@ -116,7 +116,7 @@ members = [
 # ── uv sources (local/editable deps) ───────────────────────────────────────────
 [tool.uv.sources]
 dbclients = { path = "../dbclients-project", editable = true }
-headwater_api = { path = "../headwater-api-project", editable = true }
+headwater_api = { path = "../headwater/headwater-api", editable = true }
 
 [project.scripts]
 chainserver = "conduit.api.server.run:main"
