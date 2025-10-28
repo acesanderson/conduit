@@ -2,7 +2,7 @@
 Generate raw embeddings for a list of texts using a specified embedding model.
 """
 
-from headwater_api.client.headwater_client import HeadwaterClient
+from headwater_client.client.headwater_client import HeadwaterClient
 from headwater_api.classes import (
     ChromaBatch,
     EmbeddingsRequest,
