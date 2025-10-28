@@ -48,6 +48,17 @@ def generate_embeddings(
     return response.embeddings
 
 
+def quick_embedding(query_string: str) -> list[list[float]]:
+    """
+    Get embedding for a single query (i.e. for querying chroma database).
+    """
+    embeddings = generate_embeddings(
+        ids=["quick_embedding"],
+        documents=[query_string],
+    )
+    return embeddings
+
+
 def validate_model(model_name: str) -> bool:
     embedding_models = load_embedding_models()
     return model_name in embedding_models
