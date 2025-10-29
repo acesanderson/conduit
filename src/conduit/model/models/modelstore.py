@@ -26,6 +26,7 @@ DIR_PATH = Path(__file__).parent
 MODELS_PATH = DIR_PATH / "models.json"
 OLLAMA_MODELS_PATH = xdg_state_home() / "conduit" / "ollama_models.json"
 OLLAMA_CONTEXT_SIZES_PATH = xdg_config_home() / "conduit" / "ollama_context_sizes.json"
+SERVER_MODELS_PATH = xdg_state_home() / "conduit" / "server_models.json"
 ALIASES_PATH = DIR_PATH / "aliases.json"
 
 
@@ -46,6 +47,10 @@ class ModelStore:
             with open(OLLAMA_MODELS_PATH) as f:
                 ollama_models = json.load(f)
             models_json["ollama"] = ollama_models["ollama"]
+        if SERVER_MODELS_PATH.exists():
+            with open(SERVER_MODELS_PATH) as f:
+                server_models = json.load(f)
+            models_json["ollama"] += server_models["ollama"]
         return models_json
 
     @classmethod

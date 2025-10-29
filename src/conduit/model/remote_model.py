@@ -16,6 +16,8 @@ from conduit.message.message import Message
 from pydantic import ValidationError, BaseModel
 from typing import TYPE_CHECKING
 from time import time
+import json
+from xdg_base_dirs import xdg_state_home
 import logging
 
 # Load only if type checking
@@ -24,6 +26,8 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+SERVER_MODELS_PATH = xdg_state_home() / "conduit" / "server_models.json"
 
 
 class RemoteModel:
@@ -63,6 +67,12 @@ class RemoteModel:
         try:
             status: StatusResponse = self._client.get_status()
             available_models = getattr(status, "models_available", [])
+            logger.info(f"Available models on server: {available_models}")
+            # Update server models file
+            with open(SERVER_MODELS_PATH, "w") as f:
+                json_dict = {"ollama": available_models}
+                _ = f.write(json.dumps(json_dict, indent=4))
+            logger.debug(f"Updated server models file at {SERVER_MODELS_PATH}")
 
             if self.model not in available_models:
                 raise ValueError(
@@ -71,6 +81,16 @@ class RemoteModel:
                 )
         except Exception as e:
             raise ValueError(f"Failed to validate model on server: {e}")
+
+    @property
+    def status(self) -> StatusResponse:
+        """Get server status"""
+        return self._client.get_status()
+
+    @property
+    def ping(self) -> bool:
+        """Ping server to check health"""
+        return self._client.ping()
 
     @property
     def console(self):
