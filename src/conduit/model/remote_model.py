@@ -4,8 +4,7 @@ RemoteModel - A server-based Model implementation that maintains protocol compat
 Unlike ModelAsync, this does NOT inherit from Model, but implements the same interface.
 """
 
-from headwater_api.client.headwater_client import HeadwaterClient
-from headwater_api.api.conduit_api import ConduitAPI
+from headwater_client.client.headwater_client import HeadwaterClient
 from headwater_api.classes import StatusResponse
 from conduit.progress.wrappers import progress_display
 from conduit.progress.verbosity import Verbosity
@@ -46,7 +45,7 @@ class RemoteModel:
         self._client: HeadwaterClient = self._initialize_client()
         self._validate_server_model()
 
-    def _initialize_client(self) -> ConduitAPI:
+    def _initialize_client(self) -> HeadwaterClient:
         """Initialize SiphonClient connection"""
         client = HeadwaterClient()
 
