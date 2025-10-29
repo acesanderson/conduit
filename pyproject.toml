@@ -31,6 +31,7 @@ dependencies = [
     "fastapi",
     "uvicorn",
     "headwater_api",
+    "headwater_client",
     # Dev tools
     "ruff>=0.12.4",
     "ty>=0.0.1a15",
@@ -117,6 +118,7 @@ members = [
 [tool.uv.sources]
 dbclients = { path = "../dbclients-project", editable = true }
 headwater_api = { path = "../headwater/headwater-api", editable = true }
+headwater_client = { path = "../headwater/headwater-client", editable = true }
 
 [project.scripts]
 chainserver = "conduit.api.server.run:main"

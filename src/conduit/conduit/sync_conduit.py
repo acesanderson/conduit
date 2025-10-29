@@ -7,6 +7,7 @@ Conduits are immutable, treat them like tuples.
 # The rest of our package.
 from conduit.prompt.prompt import Prompt
 from conduit.model.model import Model
+from conduit.model.remote_model import RemoteModel
 from conduit.result.response import Response
 from conduit.result.error import ConduitError
 from conduit.result.result import ConduitResult
@@ -40,7 +41,7 @@ class SyncConduit:
 
     def __init__(
         self,
-        model: Model,
+        model: Model | RemoteModel,
         prompt: Prompt | None = None,
         parser: Parser | None = None,
         pretty: bool = True,
