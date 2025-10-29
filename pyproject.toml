@@ -27,9 +27,6 @@ dependencies = [
     "pillow",
     "soundfile",
     # Web/HTTP
-    "requests",
-    "fastapi",
-    "uvicorn",
     "headwater_api",
     "headwater_client",
     # Dev tools
