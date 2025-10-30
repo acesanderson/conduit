@@ -5,13 +5,48 @@ Define your own for customization.
 
 from conduit.sync import Prompt, Model, Conduit, Response, Verbosity
 from conduit.model.models.modelstore import ModelStore
+from pydantic import BaseModel, Field
 from typing import Protocol, runtime_checkable
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-# First, our protocol
+# Our input schema for the query function
+class QueryFunctionInputs(BaseModel):
+    """
+    This has defaults, besides query_input, which is required.
+    All query functions need to accept this object.
+    Best to handle all possible inputs, so that CLI acts as user expects.
+    If not using a particular input, consider logging a warning to inform the user.
+    """
+
+    # Prompt inputs
+    query_input: str = Field(..., description="The main query input string.")
+    context: str = Field(
+        default="", description="Additional context to include in the query."
+    )
+    append: str = Field(default="", description="String to append to the query.")
+    system_message: str | None = Field(
+        None, description="System message for the model."
+    )
+    # Configs
+    local: bool | None = Field(
+        default=False, description="Flag to indicate if local processing is desired."
+    )
+    preferred_model: str = Field(
+        default="haiku", description="The preferred model to use for the query."
+    )
+    verbose: Verbosity = Field(
+        default=Verbosity.PROGRESS,
+        description="Verbosity level for logging during the query.",
+    )
+    include_history: bool = Field(
+        default=True, description="Whether to include message history in the query."
+    )
+
+
+# Our protocol
 @runtime_checkable
 class QueryFunctionProtocol(Protocol):
     """
@@ -20,35 +55,27 @@ class QueryFunctionProtocol(Protocol):
 
     def __call__(
         self,
-        inputs: dict[str, str],
-        preferred_model: str,
-        include_history: bool,
-        verbose: Verbosity = Verbosity.PROGRESS,
+        inputs: QueryFunctionInputs,
     ) -> Response: ...
 
 
 # Now, our default implementation -- the beauty of LLMs with POSIX philosophy
 def default_query_function(
-    inputs: dict[str, str],
-    preferred_model: str,
-    include_history: bool,
-    verbose: Verbosity = Verbosity.PROGRESS,
+    inputs: QueryFunctionInputs,
 ) -> Response:
     """
     Default query function.
-    Note that the input dict will contain keys for all possible inputs, from the positional query, piped in context, and a potential "append" string.
-    The simplest query functions will likely only want query_input.
     """
     logger.debug("Running default_query_function...")
     # Extract inputs from dict
-    query_input: str = inputs.get("query_input", "")
-    context: str = (
-        "<context>\n" + inputs.get("context", "") + "\n</context>"
-        if inputs.get("context")
-        else ""
-    )
-    append: str = inputs.get("append", "")
-    local: bool = inputs.get("local", False)
+    query_input: str = inputs.query_input
+    context: str | None = inputs.context
+    append: str | None = inputs.append
+    local: bool | None = inputs.local
+    preferred_model: str = inputs.preferred_model
+    verbose: int = inputs.verbose
+    include_history: bool = inputs.include_history
+    verbose = inputs.verbose
 
     # ConduitCLI's default POSIX philosophy: embrace pipes and redirection
     combined_query = "\n\n".join([query_input, context, append])
