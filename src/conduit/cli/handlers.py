@@ -7,6 +7,7 @@ Some guidelines for this Mixin:
 
 from conduit.sync import Conduit, Verbosity
 from conduit.cli.printer import Printer
+from conduit.cli.query_function import QueryFunctionInputs
 import logging
 import sys
 
@@ -172,20 +173,10 @@ class HandlerMixin:
         logger.info("Handling query...")
         # Type hints since mixins confuse IDEs
         self.printer: Printer
-        self.flags: dict
+        self.flags: dict[str, str | bool]
         self.stdin: str
         self.verbosity: Verbosity
         self.preferred_model: str
-
-        # Assemble the parts of the query
-        logger.debug("Assembling query parts...")
-        inputs = {
-            "query_input": self.flags.get("query_input", ""),
-            "context": f"<context>{self.stdin}</context>" if self.stdin else "",
-            "append": self.flags.get("append") or "",
-            "system_message": getattr(self, "system_message", ""),
-            "local": self.flags.get("local", False),
-        }
 
         # Grab our flags
         logger.debug("Grabbing flags...")
@@ -193,6 +184,17 @@ class HandlerMixin:
         chat = self.flags["chat"]
         user_defined_model = self.flags["model"]
         model_to_use = user_defined_model or self.preferred_model
+        # Assemble the parts of the query
+        logger.debug("Assembling query parts...")
+        inputs = QueryFunctionInputs(
+            query_input=self.flags.get("query_input", ""),
+            context=f"<context>{self.stdin}</context>" if self.stdin else "",
+            append=self.flags.get("append") or "",
+            system_message=getattr(self, "system_message", None),
+            local=self.flags.get("local", False),
+            preferred_model=model_to_use,
+            verbose=self.verbosity,
+        )
         # Start our spinner
         with self.printer.status(
             "[bold green]Thinking...[/bold green]", spinner="dots"
@@ -200,22 +202,16 @@ class HandlerMixin:
             # Our switch logic
             match chat:
                 case True:  # Chat (with history), pretty print
+                    inputs.include_history = True
                     logger.debug("Chat (with history), pretty print...")
-                    response = self.query_function(
-                        inputs,
-                        preferred_model=model_to_use,
-                        verbose=self.verbosity,
-                        include_history=True,
-                    )
+                    response = self.query_function(inputs)
                     self.print_markdown(str(response.content))
                     sys.exit()
                 case False:  # One-off request, pretty print
+                    inputs.include_history = False
                     logger.debug("One-off request, pretty print...")
                     response = self.query_function(
                         inputs,
-                        preferred_model=model_to_use,
-                        verbose=self.verbosity,
-                        include_history=False,
                     )
                     self.print_markdown(str(response.content))
-                    sys.exit()
+                    sys.exit(None)
