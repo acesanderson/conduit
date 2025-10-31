@@ -82,7 +82,7 @@ def default_query_function(
 
     # Inject system message if provided and message store exists
     if Conduit.message_store:
-        system_message = inputs.get("system_message", "")
+        system_message = inputs.system_message
         if system_message:
             Conduit.message_store.ensure_system_message(system_message)
 
