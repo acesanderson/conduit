@@ -17,7 +17,8 @@ from conduit.model.models.research_models import create_modelspec
 from conduit.logs.logging_config import get_logger
 from xdg_base_dirs import xdg_state_home, xdg_config_home
 from pathlib import Path
-import json, itertools
+import json
+import itertools
 
 logger = get_logger(__name__)
 
