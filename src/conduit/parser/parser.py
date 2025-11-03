@@ -12,9 +12,9 @@ Three purposes for this class:
 
 from typing import Union, Type
 from pydantic import BaseModel
-from conduit.logs.logging_config import get_logger
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class Parser:

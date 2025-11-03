@@ -1,14 +1,13 @@
 from conduit.model.clients.client import Client, Usage
 from conduit.model.clients.load_env import load_env
 from conduit.request.request import Request
-from conduit.logs.logging_config import get_logger
 from openai import OpenAI, AsyncOpenAI, Stream
 from pydantic import BaseModel
 import instructor
 import tiktoken
+import logging
 
-
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class OpenAIClient(Client):

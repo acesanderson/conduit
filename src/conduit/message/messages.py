@@ -1,15 +1,15 @@
 from collections.abc import Iterator
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 from conduit.message.message import Message
 from conduit.message.textmessage import TextMessage
 from conduit.message.imagemessage import ImageMessage
 from conduit.message.audiomessage import AudioMessage
-from conduit.logs.logging_config import get_logger
 from typing import override
+import logging
+
+logger = logging.getLogger(__name__)
 
 MessageUnion = TextMessage | ImageMessage | AudioMessage
-
-logger = get_logger(__name__)
 
 
 class Messages(BaseModel):

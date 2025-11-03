@@ -17,14 +17,13 @@ from conduit.message.textmessage import TextMessage
 from conduit.message.messages import Messages
 from conduit.message.messagestore import MessageStore
 from conduit.progress.verbosity import Verbosity
-
-from conduit.logs.logging_config import get_logger
 from typing import TYPE_CHECKING
+import logging
 
 if TYPE_CHECKING:
     from rich.console import Console
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class SyncConduit:

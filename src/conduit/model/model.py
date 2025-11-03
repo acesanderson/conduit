@@ -4,7 +4,6 @@ from conduit.progress.verbosity import Verbosity
 from conduit.request.request import Request
 from conduit.result.result import ConduitResult
 from conduit.result.error import ConduitError
-from conduit.logs.logging_config import get_logger
 from conduit.request.outputtype import OutputType
 from conduit.odometer.OdometerRegistry import OdometerRegistry
 from pydantic import ValidationError, BaseModel
@@ -12,6 +11,7 @@ from typing import Optional, TYPE_CHECKING
 from pathlib import Path
 from time import time
 import importlib
+import logging
 
 # Load only if type checking
 if TYPE_CHECKING:
@@ -23,9 +23,8 @@ if TYPE_CHECKING:
     from conduit.model.model_client import ModelClient
 
 
-# Constants
+logger = logging.getLogger(__name__)
 dir_path = Path(__file__).resolve().parent
-logger = get_logger(__name__)
 
 
 class Model:

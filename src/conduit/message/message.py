@@ -21,11 +21,11 @@ to_google()
 """
 
 from abc import abstractmethod, ABC
-from conduit.logs.logging_config import get_logger
 from pydantic import BaseModel
 from typing import Literal, Any
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # Useful type aliases
 Role = Literal["user", "assistant", "system"]

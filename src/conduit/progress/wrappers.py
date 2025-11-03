@@ -3,12 +3,14 @@ Enhanced progress wrappers with verbosity support.
 Maintains backwards compatibility while adding new verbosity parameter.
 """
 
-from conduit.logs.logging_config import get_logger
 from conduit.progress.verbosity import Verbosity
 from functools import wraps
-import time, sys, inspect
+import time
+import sys
+import inspect
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def extract_query_preview(input_data, max_length=30):

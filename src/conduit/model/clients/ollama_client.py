@@ -8,15 +8,17 @@ We define preferred defaults for context sizes in a separate json file.
 
 from conduit.model.clients.client import Client, Usage
 from conduit.request.request import Request
-from conduit.logs.logging_config import get_logger
 from pydantic import BaseModel
 from openai import OpenAI, AsyncOpenAI, Stream
 from xdg_base_dirs import xdg_state_home, xdg_config_home
 from pathlib import Path
 from collections import defaultdict
-import instructor, ollama, json
+import instructor
+import ollama
+import json
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 DIR_PATH = Path(__file__).resolve().parent
 OLLAMA_MODELS_PATH = xdg_state_home() / "conduit" / "ollama_models.json"

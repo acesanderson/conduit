@@ -2,20 +2,18 @@ from conduit.conduit.sync_conduit import SyncConduit, Prompt
 from conduit.model.model_async import ModelAsync
 from conduit.result.response import Response
 from conduit.result.error import ConduitError
-from conduit.logs.logging_config import configure_logging, logging
 from conduit.parser.parser import Parser
 from conduit.progress.verbosity import Verbosity
 from conduit.message.messagestore import MessageStore
 from typing import TYPE_CHECKING, Optional
 import asyncio
+import logging
 
 # Our TYPE_CHECKING imports, these ONLY load for IDEs, so you can still lazy load in production.
 if TYPE_CHECKING:
     from rich.console import Console
 
-logger = configure_logging(
-    level=logging.INFO,
-)
+logger = logging.getLogger(__name__)
 
 
 class AsyncConduit(SyncConduit):

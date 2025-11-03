@@ -2,17 +2,18 @@ from conduit.chat.chat import Chat
 from conduit.conduit.sync_conduit import SyncConduit
 from conduit.model.model import Model
 from conduit.message.messagestore import MessageStore
-from conduit.logs.logging_config import get_logger
 from conduit.cache.cache import ConduitCache
 from pathlib import Path
 from rich.console import Console
 import readline
 import argparse
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Constants
 dir_path = Path(__file__).parent
 _ = readline.get_current_history_length()  # Gaming the type hints.
-logger = get_logger(__name__)  # Our logger
 console = Console()
 SyncConduit._console = console
 Model._console = console

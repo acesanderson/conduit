@@ -3,12 +3,12 @@ Enhanced progress handlers with verbosity support.
 Maintains backwards compatibility while adding verbosity-aware methods.
 """
 
-from conduit.logs.logging_config import get_logger
 from conduit.progress.verbosity import Verbosity
 from datetime import datetime
 import time
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class RichProgressHandler:

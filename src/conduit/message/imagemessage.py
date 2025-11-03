@@ -9,12 +9,12 @@ We have a basic ImageMessage class, which is a wrapper for the OpenAI and Anthro
 from pydantic import BaseModel, Field
 from conduit.message.message import Message, MessageType, Role
 from conduit.message.convert_image import convert_image, convert_image_file
-from conduit.logs.logging_config import get_logger
 from pathlib import Path
 from typing import override
 import re
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # Map PIL formats to MIME types
 format_to_mime = {
