@@ -3,13 +3,13 @@ Prompt class -- coordinates templates, input variables, and rendering.
 """
 
 from jinja2 import Environment, StrictUndefined, meta
-from conduit.logs.logging_config import get_logger
 from typing import TYPE_CHECKING
+import logging
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # Define jinja2 environment that we will use across all prompts.
 env = Environment(

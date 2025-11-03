@@ -8,16 +8,15 @@ from conduit.message.audiomessage import AudioMessage
 from conduit.message.imagemessage import ImageMessage
 from conduit.message.messages import Messages
 from conduit.request.request import Request
-from conduit.logs.logging_config import get_logger
 from conduit.progress.display_mixins import (
     RichDisplayResponseMixin,
     PlainDisplayResponseMixin,
 )
 from pydantic import BaseModel, Field, model_validator
 from datetime import datetime
+import logging
 
-logger = get_logger(__name__)
-
+logger = logging.getLogger(__name__)
 
 MessageUnion = TextMessage | AudioMessage | ImageMessage
 

@@ -14,7 +14,6 @@ from conduit.message.textmessage import TextMessage
 from conduit.message.imagemessage import ImageMessage
 from conduit.message.audiomessage import AudioMessage
 from conduit.message.messages import Messages
-from conduit.logs.logging_config import get_logger
 from xdg_base_dirs import xdg_data_home, xdg_state_home
 from rich.console import Console
 from rich.rule import Rule
@@ -24,8 +23,9 @@ from tinydb import TinyDB
 from typing import ClassVar, override
 from datetime import datetime
 import os
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 DEFAULT_HISTORY_FILE = xdg_data_home() / "conduit" / "history.json"
 DEFAULT_LOG_FILE = xdg_state_home() / "conduit" / "conduit.log"

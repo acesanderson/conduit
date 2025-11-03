@@ -14,13 +14,13 @@ from conduit.model.models.modelspecs_CRUD import (
     get_all_model_names,
 )
 from conduit.model.models.research_models import create_modelspec
-from conduit.logs.logging_config import get_logger
 from xdg_base_dirs import xdg_state_home, xdg_config_home
 from pathlib import Path
 import json
 import itertools
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # Our data stores
 DIR_PATH = Path(__file__).parent

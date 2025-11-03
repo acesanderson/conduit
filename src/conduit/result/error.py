@@ -1,4 +1,3 @@
-from conduit.logs.logging_config import get_logger
 from conduit.progress.display_mixins import (
     RichDisplayConduitErrorMixin,
     PlainDisplayConduitErrorMixin,
@@ -7,8 +6,9 @@ from typing import Optional, Any
 from pydantic import BaseModel, Field
 import traceback
 from datetime import datetime
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ErrorInfo(BaseModel):

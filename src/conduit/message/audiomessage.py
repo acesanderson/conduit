@@ -1,12 +1,13 @@
 from conduit.message.message import Message, MessageType, Role
 from conduit.message.imagemessage import OpenAITextContent
-from conduit.logs.logging_config import get_logger
 from pydantic import BaseModel, Field
 from typing import Literal, override
 from pathlib import Path
-import base64, re
+import base64
+import re
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def is_base64_simple(s):

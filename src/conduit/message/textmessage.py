@@ -4,12 +4,11 @@ Our Message class is inherited from specialized types like AudioMessage, ImageMe
 """
 
 from conduit.prompt.prompt import Prompt
-from conduit.logs.logging_config import get_logger
 from conduit.message.message import Message, MessageType
 from pydantic import BaseModel, Field
+import logging
 
-
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class TextMessage(Message):
