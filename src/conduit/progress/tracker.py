@@ -1,11 +1,11 @@
-from conduit.logs.logging_config import get_logger
 from datetime import datetime
 from pydantic import BaseModel
 from typing import Protocol
 from datetime import datetime
 import time
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ProgressEvent(BaseModel):

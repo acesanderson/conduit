@@ -1,11 +1,12 @@
 from conduit.model.model import Model
 from conduit.prompt.prompt import Prompt
 from conduit.conduit.sync_conduit import SyncConduit
-from conduit.logs.logging_config import get_logger
 from collections.abc import Callable
-import inspect, re
+import inspect
+import re
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # Constants
 param_string_pattern = re.compile("{{(.+)}}")

@@ -27,12 +27,10 @@ from conduit.message.messagestore import MessageStore
 from conduit.message.textmessage import TextMessage
 from conduit.message.message import Message
 from conduit.message.messages import Messages
-from conduit.logs.logging_config import get_logger
 from rich.console import Console
 from rich.markdown import Markdown
 from instructor.exceptions import InstructorRetryException
 from functools import partial
-from typing import Callable, Optional
 from pathlib import Path
 import sys, inspect, readline  # Enables completion in the console
 

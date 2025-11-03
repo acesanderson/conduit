@@ -6,13 +6,13 @@ from conduit.message.textmessage import TextMessage
 from conduit.result.result import ConduitResult
 from conduit.result.response import Response
 from conduit.cache.cache import ConduitCache
-from conduit.logs.logging_config import get_logger
 from typing import Optional
 from time import time
 from pydantic import ValidationError, BaseModel
 import importlib
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ModelAsync(Model):
