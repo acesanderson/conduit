@@ -50,7 +50,6 @@ class PostgresBackend(PersistenceBackend):
                     self._initialized = True
         except Exception as e:
             logger.error(f"Failed to initialize database schema: {e}")
-            raise ValueError(f"Database initialization failed: {e}")
 
     @override
     def store_events(self, events: list[TokenEvent]) -> None:

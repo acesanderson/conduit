@@ -1,47 +1,30 @@
-from conduit.chat.chat import Chat
-from conduit.conduit.sync_conduit import SyncConduit
-from conduit.model.model import Model
-from conduit.message.messagestore import MessageStore
-from conduit.cache.cache import ConduitCache
-from pathlib import Path
 from rich.console import Console
-import readline
-import argparse
-import logging
+from conduit.sync import ConduitCache, Model
+from conduit.message.messagestore import MessageStore
+from conduit.chat.chat_class import ConduitChat
+from xdg_base_dirs import xdg_config_home
 
-logger = logging.getLogger(__name__)
 
 # Constants
-dir_path = Path(__file__).parent
-_ = readline.get_current_history_length()  # Gaming the type hints.
-console = Console()
-SyncConduit._console = console
-Model._console = console
-Model.conduit_cache = ConduitCache()  # Caching set up.
-SyncConduit.message_store = MessageStore(
-    pruning=True
-)  # Non-persistant, but we should prune
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Chat CLI")
-    parser.add_argument(
-        "--model",
-        type=str,
-        default="llama3.1:latest",
-        help="The model to use for chatting (default: llama3.1:latest)",
-    )
-    args = parser.parse_args()
-    model_name = args.model
-    # Validate model name
-    if Model.validate_model(model_name) is False:
-        console.print(f"[red]Invalid model name: {model_name}[/red]")
-        return
-
-    # Set the model based on command line argument
-    c = Chat(Model(model_name))
-    c.chat()
-
+PREFERRED_MODEL = "llama3.1:latest"
+MESSAGE_STORE = MessageStore()
+WELCOME_MESSAGE = "[green]Hello! Type /exit to exit.[/green]"
+SYSTEM_MESSAGE = (
+    (xdg_config_home() / "conduit" / "system_message.jinja2").read_text()
+    if (xdg_config_home() / "conduit" / "system_message.jinja2").exists()
+    else ""
+)
+CONSOLE = Console()
+# Attach our singletons
+CACHE = ConduitCache(name="conduit")
+Model.conduit_cache = CACHE
 
 if __name__ == "__main__":
-    main()
+    chat = ConduitChat(
+        preferred_model=PREFERRED_MODEL,
+        welcome_message=WELCOME_MESSAGE,
+        system_message=SYSTEM_MESSAGE,
+        message_store=MESSAGE_STORE,
+        console=CONSOLE,
+    )
+    chat.chat()
