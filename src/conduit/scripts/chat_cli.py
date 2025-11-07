@@ -19,7 +19,8 @@ CONSOLE = Console()
 CACHE = ConduitCache(name="conduit")
 Model.conduit_cache = CACHE
 
-if __name__ == "__main__":
+
+def main():
     chat = ConduitChat(
         preferred_model=PREFERRED_MODEL,
         welcome_message=WELCOME_MESSAGE,
@@ -28,3 +29,7 @@ if __name__ == "__main__":
         console=CONSOLE,
     )
     chat.chat()
+
+
+if __name__ == "__main__":
+    main()
