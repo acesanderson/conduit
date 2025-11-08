@@ -1,58 +1,87 @@
 """
-Mixin for our ConduitChat class.
-Similar mixins can be added if you want custom commands.
+Our base handlers.
+
+To extend, mixin your own class with this one on ChatApp; or inherit and override.
+Handlers must:
+
+(1) be decorated with @command to be registered.
+(2) have docstrings for help display.
+(3) avoid displaying output whenever possible; instead return strings to be printed.
 """
+
+from conduit.chat.command import command
 
 
 class Handlers:
+    """
+    Mixin providing command handler methods for chat applications.
+
+    Each handler method corresponds to a slash-prefixed chat command (e.g., /exit, /help, /set model).
+    Methods avoid direct console output where possible, returning strings instead for flexible display handling.
+
+    Requires mixed-in class to provide:
+    - self.console: Rich Console instance for output
+    - self.message_store: MessageStore for history operations (optional)
+    - self.model: Model instance for LLM interactions
+    - self.clipboard_image: Storage for image context (optional)
+    """
+
+    @command("exit", aliases=["quit", "q", "bye"])
     def command_exit(self):
         """
         Exit the chat.
         """
-        self.console.print("Goodbye!", style="green")
         exit()
 
+    @command("help", aliases=["h", "?"])
     def command_help(self):
-        """
-        Display the help message.
-        """
-        commands = sorted(self.get_commands())
-        help_message = "Commands:\n"
-        for command in commands:
-            command_name = command.replace("command_", "").replace("_", " ")
-            command_func = getattr(self, command)
-            try:
-                command_docs = command_func.__doc__.strip()
-            except AttributeError:
-                print(f"Command {command_name} is missing a docstring.")
-                sys.exit()
-            help_message += (
-                f"/[purple]{command_name}[/purple]: [green]{command_docs}[/green]\n"
-            )
-        self.console.print(help_message)
+        """Display available commands."""
+        from rich.table import Table
 
+        table = Table(show_header=True, header_style="bold cyan")
+        table.add_column("Command", style="green")
+        table.add_column("Description", style="yellow")
+
+        for cmd in self.get_all_commands():
+            aliases_str = f" ({', '.join(cmd.aliases)})" if cmd.aliases else ""
+            param_str = {0: "", 1: " <arg>", "multi": " <args...>"}[cmd.param_count]
+
+            command_name = f"/{cmd.name}{param_str}{aliases_str}"
+            description = cmd.description.strip()
+
+            table.add_row(command_name, description)
+
+        # Return None and print directly since Rich tables can't be returned as strings
+        self.console.print(table)
+        return None
+
+    @command("wipe")
     def command_wipe(self):
         """
         Clear the message history.
         """
         if self.message_store:
             self.message_store.clear()
-            self.console.print("Message history cleared.", style="green")
+            return "[green]Message history cleared.[/green]"
         else:
-            self.console.print("No message store available.", style="red")
+            return "[red]No message store available.[/red]"
 
+    @command("clear", aliases=["cls"])
     def command_clear(self):
         """
         Clear the screen.
         """
         self.console.clear()
 
+    @command("show log level", aliases=["log", "log level"])
     def command_show_log_level(self):
         raise NotImplementedError("Log level not implemented yet.")
 
+    @command("set log level", param_count=1, aliases=["set log"])
     def command_set_log_level(self, param: str):
         raise NotImplementedError("Log level not implemented yet.")
 
+    @command("show history", aliases=["history", "hi"])
     def command_show_history(self):
         """
         Display the chat history.
@@ -60,6 +89,7 @@ class Handlers:
         if self.message_store:
             self.message_store.view_history()
 
+    @command("show models", aliases=["models", "ms"])
     def command_show_models(self):
         """
         Display available models.
@@ -69,12 +99,14 @@ class Handlers:
         ms = ModelStore()
         ms.display()
 
+    @command("show model", aliases=["model", "m"])
     def command_show_model(self):
         """
         Display the current model.
         """
-        self.console.print(f"Current model: {self.model.model}", style="green")
+        return f"[green]Current model: {self.model.model}[/green]"
 
+    @command("set model", param_count=1, aliases=["sm"])
     def command_set_model(self, param: str):
         """
         Set the current model.
@@ -85,6 +117,7 @@ class Handlers:
         except ValueError:
             self.console.print(f"Invalid model: {param}", style="red")
 
+    @command("paste image", aliases=["pi"])
     def command_paste_image(self):
         """
         Use this when you have an image in clipboard that you want to submit as context for LLM.
@@ -132,12 +165,13 @@ class Handlers:
         else:
             self.console.print("No image detected.", style="red")
 
+    @command("wipe image", aliases=["wi"])
     def command_wipe_image(self):
         """
         Delete image from memory.
         """
         if self.clipboard_image:
             self.clipboard_image = None
-            self.console.print("Image deleted.", style="green")
+            return "[green]Image deleted.[/green]"
         else:
-            self.console.print("No image to delete.", style="red")
+            return "[red]No image to delete.[/red]"
