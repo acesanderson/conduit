@@ -7,9 +7,9 @@ Our existing REPL application uses a basic input prompt. We want to enhance it w
 - [x] 1.3 Multi-line Input
 - [ ] 1.4 Basic Key Bindings
 - [x] 2.1 Bottom Toolbar
-- [ ] 2.2 Dynamic Toolbar
+- [x] 2.2 Dynamic Toolbar
+    - [x] refreshing data
     - [ ] app state (i.e. model, tokens, etc.)
-    - [ ] refreshing data
 - [ ] 3.1 Nested Completers
 - [ ] 3.2 Fuzzy Command Matching
 - [ ] 4.2 History View Keybinding
@@ -33,7 +33,7 @@ from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.document import Document
 
 if TYPE_CHECKING:
-    from conduit.chat.registry import CommandRegistry
+    from conduit.chat.engine import ConduitEngine
 
 # Precompile regex pattern (copied from BasicInput)
 style_pattern = re.compile(r"\[/?[a-zA-Z0-9_ ]+\]")
@@ -47,8 +47,8 @@ class CommandCompleter(Completer):
     A prompt_toolkit completer that suggests commands from a CommandRegistry.
     """
 
-    def __init__(self, registry: "CommandRegistry"):
-        self.registry = registry
+    def __init__(self, engine: "ConduitEngine"):
+        self.engine = engine
         self._all_commands = None
         self._all_aliases = None
 
@@ -57,7 +57,7 @@ class CommandCompleter(Completer):
         if self._all_commands is None:
             self._all_commands = {}
             self._all_aliases = {}
-            commands = self.registry.get_all_commands()
+            commands = self.engine.get_all_commands()
             for cmd in commands:
                 self._all_commands[cmd.name] = cmd.description.strip().split("\n")[0]
                 for alias in cmd.aliases:
@@ -106,23 +106,20 @@ class EnhancedInput(InputInterface):
 
     def __init__(self, console: Console):
         self.console: Console = console
-        self.registry: "CommandRegistry" | None = None
+        # We need extra context about commands for tab completion, as well as the model name.
+        self.engine: "ConduitEngine | None" = None
 
-        def get_toolbar_text():
-            return [("class:bottom-toolbar", " Type /help for instructions. ")]
-
-        # 1.1: Create a session that uses a persistent file history
         self.session: PromptSession = PromptSession(
+            # Create a session that uses a persistent file history
             history=FileHistory(str(HISTORY_FILE)),
             vi_mode=True,
             # Tab Completion Setup
             completer=None,
             complete_while_typing=True,  # Show suggestions as you type
             # Multi-line Input Setup
-            multiline=True,  # <-- 1.3: Enable multi-line input
             prompt_continuation=".. ",  # Optional: Prompt for 2nd+ lines
             # Toolbar
-            bottom_toolbar=get_toolbar_text,
+            bottom_toolbar=self.get_toolbar_text,
         )
 
         # Basic styling for the prompt (approximates BasicInput's gold3)
@@ -138,13 +135,22 @@ class EnhancedInput(InputInterface):
             }
         )
 
-    def set_registry(self, registry: "CommandRegistry"):
+    def get_toolbar_text(self):
+        model = self.engine.model.model or "unknown model"
+        return [
+            (
+                "class:bottom-toolbar",
+                f" Type /help for instructions. | Using {model} ",
+            )
+        ]
+
+    def set_engine(self, engine: "ConduitEngine") -> None:
         """
-        Set the command registry to enable tab completion.
-        This is called by the factory after the registry is created.
+        Set the engine to enable tab completion.
+        This is called by the factory after the engine is created.
         """
-        self.registry = registry
-        self.session.completer = CommandCompleter(registry)
+        self.engine = engine
+        self.session.completer = CommandCompleter(engine)
 
     @override
     def get_input(self, prompt: str = ">> ") -> str:

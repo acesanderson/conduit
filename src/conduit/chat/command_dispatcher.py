@@ -14,29 +14,50 @@ by returning appropriate callables or partial functions for execution.
 
 Usage Example:
 ```python
-class ConduitChat(CommandRegistry, Handlers):
+class ConduitChat(CommandDispatcher, CommandHandlers):
     pass
 
-registry = ConduitChat()
-registry.execute_command("/help")
-registry.execute_command('/model "claude-sonnet-4"')
+dispatcher = ConduitChat()
+dispatcher.execute_command("/help")
+dispatcher.execute_command('/model "claude-sonnet-4"')
 ```
 """
 
 from conduit.chat.command import Command
+from conduit.sync import Model, Verbosity, Response
+from conduit.message.messagestore import MessageStore
 from rich.console import RenderableType
 import re
+from instructor.exceptions import InstructorRetryException
 
 
-class CommandRegistry:
-    """Registry and dispatcher for chat commands."""
+class CommandDispatcher:
+    """
+    Registry and dispatcher for chat commands.
+    Commands are dynamically registered via the @command decorator.
+    LLM dependencies must be passed on init.
+    """
 
-    def __init__(self):
+    def __init__(
+        self,
+        model: str,
+        message_store: MessageStore,
+        system_message: str,
+        verbosity: Verbosity,
+    ) -> None:
+        self.model: Model = Model(model)
+        self.message_store: MessageStore = message_store
+        self.system_message: str = system_message
+        self.verbosity: Verbosity = verbosity
+        # Dynamically registered commands
         self._commands: dict[str, Command] = {}
         self._register_commands()
 
+    # Dynamically register commands decorated with @command
     def _register_commands(self) -> None:
-        """Scan for decorated methods and register them."""
+        """
+        Scan for decorated methods and register them.
+        """
         for attr_name in dir(self):
             attr = getattr(self, attr_name)
             if hasattr(attr, "_command"):
@@ -59,7 +80,9 @@ class CommandRegistry:
                     self._commands[alias] = cmd
 
     def register_command(self, cmd: Command) -> None:
-        """Manually register a command (alternative to decorator-based registration)."""
+        """
+        Manually register a command (alternative to decorator-based registration).
+        """
         if cmd.name in self._commands:
             raise ValueError(f"Duplicate command name: {cmd.name}")
         self._commands[cmd.name] = cmd
@@ -68,9 +91,11 @@ class CommandRegistry:
                 raise ValueError(f"Duplicate command/alias: {alias}")
             self._commands[alias] = cmd
 
+    # Discover and route commands
     def _split_args(self, text: str) -> list[str]:
         """
         Split arguments respecting quoted strings.
+        shlex-like parsing.
 
         Examples:
             'arg1 arg2' → ['arg1', 'arg2']
@@ -152,3 +177,41 @@ class CommandRegistry:
                 seen.add(cmd.name)
                 commands.append(cmd)
         return sorted(commands, key=lambda c: c.name)
+
+    # Our query command, directly accessed by the chat app
+    def handle_query(self, user_input: str) -> RenderableType:
+        """
+        Send a query to the model and display the response.
+        """
+        # Ignore empty queries
+        if user_input.strip() == "":
+            return
+        # Send query to model
+        try:
+            # Ensure system message is set
+            if self.system_message:
+                self.message_store.ensure_system_message(self.system_message)
+            # Add user message to store
+            self.message_store.add_new(role="user", content=user_input)
+
+            # Query model with full message history
+            response = self.model.query(
+                self.message_store.messages, verbose=self.verbosity
+            )
+
+            assert isinstance(response, Response), "Expected Response from model query"
+
+            # Add assistant response to store
+            self.message_store.add_new(role="assistant", content=str(response))
+
+            # Display response
+            return str(response.content)
+
+        except InstructorRetryException:
+            # Network failure from instructor
+            return "[red]Network error. Please try again.[/red]"
+
+        except KeyboardInterrupt:
+            # Allow canceling during model query
+            print("\nQuery canceled.")
+            raise
