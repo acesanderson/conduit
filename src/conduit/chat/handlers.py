@@ -22,7 +22,7 @@ class Handlers:
     Methods avoid direct console output where possible, returning strings instead for flexible display handling.
 
     Requires mixed-in class to provide:
-    - self.console: Rich Console instance for output
+    - self.input_interface: InputInterface for user interactions
     - self.message_store: MessageStore for history operations (optional)
     - self.model: Model instance for LLM interactions
     - self.clipboard_image: Storage for image context (optional)
@@ -72,7 +72,7 @@ class Handlers:
         """
         Clear the screen.
         """
-        self.console.clear()
+        self.input_interface.clear_screen()
 
     @command("show log level", aliases=["log", "log level"])
     def show_log_level(self):

@@ -120,6 +120,8 @@ class ChatApp:
         """
         Send a query to the model and display the response.
         """
+        if user_input.strip() == "":
+            return  # Ignore empty queries
         try:
             # Add user message to store
             self.message_store.add_new(role="user", content=user_input)
