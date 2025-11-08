@@ -1,7 +1,5 @@
 """
-Tokenizer Factory for Multi-Provider LLM Token Counting
-
-This module provides a unified interface for accurate token counting across different LLM providers through provider-specific tokenizer implementations. It defines an abstract base class and concrete tokenizers for OpenAI (via tiktoken), Anthropic (approximate), Google Gemini (via transformers), and generic Hugging Face models, enabling consistent token estimation regardless of provider.
+Token estimation module for various LLM providers. NOTE: our odometer utilizes the token count provided in API response, which is more acccurate. This is for estimation only, primary usage is estimating window usage before making an API call.
 
 Example usage:
 
