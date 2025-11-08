@@ -24,6 +24,7 @@ registry.execute_command('/model "claude-sonnet-4"')
 """
 
 from conduit.chat.command import Command
+from rich.console import RenderableType
 import re
 
 
@@ -126,7 +127,7 @@ class CommandRegistry:
 
         return cmd, args
 
-    def execute_command(self, text: str) -> str | None:
+    def execute_command(self, text: str) -> RenderableType | None:
         """
         Parse and execute a command.
 

@@ -2,6 +2,7 @@ from rich.console import Console
 from conduit.sync import ConduitCache, Model, Verbosity
 from conduit.message.messagestore import MessageStore
 from conduit.chat.chat import create_chat_app
+from conduit.chat.ui.basic_input import BasicInput
 from xdg_base_dirs import xdg_config_home
 import logging
 import os
@@ -15,29 +16,29 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Constants
+INPUT_INTERFACE = BasicInput(console=Console())
 PREFERRED_MODEL = "haiku"
-WELCOME_MESSAGE = "[green]Conduit Chat. Type /exit to exit.[/green]"
+WELCOME_MESSAGE = "[bold cyan]Conduit Chat. Type /exit to exit.[/bold cyan]"
 MESSAGE_STORE = MessageStore()
 SYSTEM_MESSAGE = (
     (xdg_config_home() / "conduit" / "system_message.jinja2").read_text()
     if (xdg_config_home() / "conduit" / "system_message.jinja2").exists()
     else ""
 )
-CONSOLE = Console()
 VERBOSITY = Verbosity.PROGRESS
 # Attach our singletons
 CACHE = ConduitCache(name="conduit")
 Model.conduit_cache = CACHE
-Model.console = CONSOLE
+Model.console = Console()
 
 
 def main():
     app = create_chat_app(
+        input_interface=INPUT_INTERFACE,
         preferred_model=PREFERRED_MODEL,
         welcome_message=WELCOME_MESSAGE,
         system_message=SYSTEM_MESSAGE,
         message_store=MESSAGE_STORE,
-        console=CONSOLE,
         verbosity=VERBOSITY,
     )
     app.run()

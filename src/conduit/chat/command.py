@@ -18,6 +18,7 @@ Notes:
 
 from dataclasses import dataclass
 from typing import Literal
+from rich.console import RenderableType
 from collections.abc import Callable
 
 
@@ -67,7 +68,7 @@ class Command:
                 f"Command '{self.name}' with param_count='multi' must take exactly one parameter (list[str])"
             )
 
-    def execute(self, args: list[str] | None) -> str | None:
+    def execute(self, args: list[str] | None) -> RenderableType | None:
         """Execute command and return output string (if any)."""
         if self.param_count == 0:
             return self.func()
