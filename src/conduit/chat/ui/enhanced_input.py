@@ -6,7 +6,10 @@ Our existing REPL application uses a basic input prompt. We want to enhance it w
 - [x] 1.2 Tab Completion for Commands
 - [x] 1.3 Multi-line Input
 - [ ] 1.4 Basic Key Bindings
-- [ ] 2.1 Bottom Toolbar
+- [x] 2.1 Bottom Toolbar
+- [ ] 2.2 Dynamic Toolbar
+    - [ ] app state (i.e. model, tokens, etc.)
+    - [ ] refreshing data
 - [ ] 3.1 Nested Completers
 - [ ] 3.2 Fuzzy Command Matching
 - [ ] 4.2 History View Keybinding
