@@ -56,6 +56,10 @@ class MessageStore(Messages):
     )
     log_file: Path | None = Field(default=DEFAULT_LOG_FILE, exclude=True, repr=False)
     db: TinyDB | None = Field(default=None, exclude=True, repr=False)
+    # Tracking token usage; these need to be manually updated.
+    input_tokens: int = Field(default=0)
+    output_tokens: int = Field(default=0)
+    last_used_model_name: str = Field(default="", exclude=True)
 
     model_config: ClassVar = {
         "arbitrary_types_allowed": True
@@ -124,6 +128,26 @@ class MessageStore(Messages):
 
         # Set the prune flag
         self.pruning = pruning
+
+    @property
+    def context_length(self) -> int:
+        """Best estimate of current context usage"""
+        return self.input_tokens + self.output_tokens
+
+    @property
+    def context_window(self) -> int:
+        from conduit.model.models.modelstore import ModelStore
+
+        ms = ModelStore()
+        if not self.last_used_model_name:
+            return 0
+        try:
+            modelspec = ms.get_model(self.last_used_model_name)
+            return modelspec.context_window
+        except Exception:
+            raise ValueError from (
+                f"Model '{self.last_used_model_name}' not found in ModelStore."
+            )
 
     def _auto_save_if_enabled(self):
         """Save to database if auto_save is enabled."""
@@ -255,6 +279,10 @@ class MessageStore(Messages):
         # Add the messages
         self.append(last_user_message)
         self.append(last_assistant_message)
+        # Increment token usage
+        self.input_tokens += response.input_tokens
+        self.output_tokens += response.output_tokens
+        self.last_used_model_name = response.request.model
 
     def write_to_log(self, item: str | BaseModel) -> None:
         """
@@ -447,4 +475,12 @@ class MessageStore(Messages):
     def __repr__(self) -> str:
         """Enhanced representation showing persistence status."""
         persistent_info = f"persistent={self.persistent}"
-        return f"MessageStore({len(self)} messages, {persistent_info})"
+        token_info = (
+            f"input_tokens={self.input_tokens}, output_tokens={self.output_tokens}"
+        )
+        window_info = (
+            f"window={self.context_length}/{self.context_window}: percent={self.context_length / self.context_window:.2%}"
+            if self.context_window > 0
+            else "window=N/A"
+        )
+        return f"MessageStore({len(self)} messages, {persistent_info}, {token_info}, {window_info})"

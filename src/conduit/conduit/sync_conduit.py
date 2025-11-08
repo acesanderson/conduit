@@ -199,6 +199,10 @@ class SyncConduit:
                     ]  # The user message is the last in the list sent to the model
                     SyncConduit.message_store.append(user_message)
                 SyncConduit.message_store.append(result.message)
+                # Context window information
+                SyncConduit.message_store.input_tokens += result.input_tokens
+                SyncConduit.message_store.output_tokens += result.output_tokens
+                SyncConduit.message_store.last_used_model_name = self.model.model
             elif isinstance(result, ConduitError):
                 logger.error("ConduitError encountered, not saving to message store.")
                 SyncConduit.message_store.query_failed()
