@@ -5,22 +5,10 @@ The primary factory function `create_chat_app` instantiates a fully configured C
 """
 
 from conduit.progress.verbosity import Verbosity
-from conduit.chat.registry import CommandRegistry
-from conduit.chat.handlers import Handlers
 from conduit.chat.app import ChatApp
+from conduit.chat.engine import ConduitEngine
 from conduit.chat.ui.input_interface import InputInterface
-from conduit.model.model import Model
 from conduit.message.messagestore import MessageStore
-
-
-class ConduitChat(CommandRegistry, Handlers):
-    """
-    Command registry with handler methods mixed in.
-    This combines the command infrastructure (CommandRegistry)
-    with the actual command implementations (Handlers).
-    """
-
-    pass
 
 
 def create_chat_app(
@@ -45,33 +33,22 @@ def create_chat_app(
         Configured ChatApp ready to run
     """
     # Create dependencies
-    model = Model(preferred_model)
+    ## Message_store
     message_store = message_store or MessageStore()
-
-    # Create registry with handlers
-    registry = ConduitChat()
-
-    # Inject dependencies into registry (handlers need these)
-    registry.model = model
-    registry.input_interface = input_interface
-    registry.message_store = message_store
-    registry.system_message = system_message
-    registry.verbosity = verbosity
-
-    # Prompt toolkit based input interfaces need the registry
-    if hasattr(input_interface, "set_registry"):
-        # This check avoids breaking the InputInterface contract
-        # and allows for other UI implementations.
-        input_interface.set_registry(registry)
-    # Create app with all dependencies
-    app = ChatApp(
-        registry=registry,
-        model=model,
-        input_interface=input_interface,
+    ## Create dispatch with handlers
+    engine = ConduitEngine(
+        model=preferred_model,
         message_store=message_store,
-        welcome_message=welcome_message,
         system_message=system_message,
         verbosity=verbosity,
+    )
+
+    # Prompt toolkit based input interfaces need the registry
+    # Create app with all dependencies
+    app = ChatApp(
+        engine=engine,
+        input_interface=input_interface,
+        welcome_message=welcome_message,
     )
 
     return app
