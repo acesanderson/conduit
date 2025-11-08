@@ -14,7 +14,7 @@ Handlers must:
 from conduit.chat.command import command
 
 
-class Handlers:
+class CommandHandlers:
     """
     Mixin providing command handler methods for chat applications.
 
@@ -113,6 +113,8 @@ class Handlers:
         """
         Set the current model.
         """
+        from conduit.model.model import Model
+
         try:
             self.model = Model(param)
             self.input_interface.show_message(f"Set model to {param}", style="green")

@@ -11,22 +11,14 @@ message_store = MessageStore()
 app = ChatApp(
     registry=registry,
     input_interface=input_interface,
-    model=model,
-    message_store=message_store,
     welcome_message="Welcome to the ChatApp!",
-    system_message="You are a helpful assistant."
 )
 app.run()
 ```
 """
 
-from conduit.chat.registry import CommandRegistry
+from conduit.chat.engine import ConduitEngine
 from conduit.chat.ui.input_interface import InputInterface
-from conduit.model.model import Model
-from conduit.progress.verbosity import Verbosity
-from conduit.message.messagestore import MessageStore
-from rich.markdown import Markdown
-from instructor.exceptions import InstructorRetryException
 
 
 class ChatApp:
@@ -36,25 +28,19 @@ class ChatApp:
 
     def __init__(
         self,
-        # REPL components
-        registry: CommandRegistry,
+        engine: ConduitEngine,
         input_interface: InputInterface,
-        # LLM configs
-        model: Model,
-        message_store: MessageStore,
         welcome_message: str,
-        system_message: str,
-        verbosity: Verbosity,
     ):
-        # REPL components
-        self.registry = registry
-        self.input_interface = input_interface
-        # LLM configs
-        self.model = model
-        self.message_store = message_store
-        self.welcome_message = welcome_message
-        self.system_message = system_message
-        self.verbosity = verbosity
+        """
+        Initialize all our dependencies.
+        """
+        self.engine: ConduitEngine = engine
+        self.input_interface: InputInterface = input_interface
+        self.welcome_message: str = welcome_message
+        # Inject enginer into input interface if needed
+        if hasattr(input_interface, "set_engine"):
+            self.input_interface.set_engine(self.engine)
 
     def run(self) -> None:
         """
@@ -62,9 +48,6 @@ class ChatApp:
         """
         self.input_interface.clear_screen()
         self.input_interface.show_message(self.welcome_message)
-
-        if self.system_message:
-            self.message_store.ensure_system_message(self.system_message)
 
         while True:
             try:
@@ -84,8 +67,11 @@ class ChatApp:
                         )
                 else:
                     # Handle chat query
+                    if len(user_input.strip()) == 0:
+                        continue
                     try:
-                        self._handle_query(user_input)
+                        response = self.engine.handle_query(user_input)
+                        self.input_interface.show_message(response)
                     except KeyboardInterrupt:
                         self.input_interface.show_message(
                             "\nQuery canceled.", style="green"
@@ -109,41 +95,9 @@ class ChatApp:
         Execute a command and display any output.
         """
         try:
-            output = self.registry.execute_command(user_input)
+            output = self.engine.execute_command(user_input)
             if output:
                 self.input_interface.show_message(output)
         except SystemExit:
             self.input_interface.show_message("[bold cyan]Goodbye![/bold cyan]")
             raise
-
-    def _handle_query(self, user_input: str) -> None:
-        """
-        Send a query to the model and display the response.
-        """
-        if user_input.strip() == "":
-            return  # Ignore empty queries
-        try:
-            # Add user message to store
-            self.message_store.add_new(role="user", content=user_input)
-
-            # Query model with full message history
-            response = self.model.query(
-                self.message_store.messages, verbose=self.verbosity
-            )
-
-            # Add assistant response to store
-            self.message_store.add_new(role="assistant", content=str(response))
-
-            # Display response
-            self.input_interface.show_message(str(response.content))
-
-        except InstructorRetryException:
-            # Network failure from instructor
-            self.input_interface.show_message(
-                "Network error. Please try again.", style="red"
-            )
-
-        except KeyboardInterrupt:
-            # Allow canceling during model query
-            self.input_interface.show_message("\nQuery canceled.", style="green")
-            raise  # Re-raise to be caught by outer loop
