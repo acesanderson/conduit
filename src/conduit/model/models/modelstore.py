@@ -19,6 +19,7 @@ from pathlib import Path
 import json
 import itertools
 import logging
+from rich.console import RenderableType
 
 logger = logging.getLogger(__name__)
 
@@ -159,12 +160,14 @@ class ModelStore:
             )
 
     @classmethod
-    def display(cls):
+    def _generate_renderable_model_list(cls) -> RenderableType:
+        """
+        Generate a Rich renderable object displaying the list of models in three columns.
+        """
         from rich.console import Console
         from rich.columns import Columns
         from rich.text import Text
 
-        console = Console()
         models = cls.models()
 
         # Calculate total items and split points
@@ -195,11 +198,23 @@ class ModelStore:
             if model is None:  # Provider header
                 target_column.append(f"{provider.upper()}\n", style="bold cyan")
             else:  # Model name
-                target_column.append(f"  {model}\n", style="white")
+                target_column.append(f"  {model}\n", style="yellow")
 
-        console.print(
-            Columns([left_column, middle_column, right_column], equal=True, expand=True)
+        renderable_columns = Columns(
+            [left_column, middle_column, right_column], equal=True, expand=True
         )
+        return renderable_columns
+
+    @classmethod
+    def display(cls):
+        """
+        Display all available models in a formatted three-column layout to the console.
+        """
+        from rich.console import Console
+
+        console = Console()
+        renderable_columns = cls._generate_renderable_model_list()
+        console.print(renderable_columns)
 
     # Consistency
     @classmethod
