@@ -58,6 +58,11 @@ def create_chat_app(
     registry.system_message = system_message
     registry.verbosity = verbosity
 
+    # Prompt toolkit based input interfaces need the registry
+    if hasattr(input_interface, "set_registry"):
+        # This check avoids breaking the InputInterface contract
+        # and allows for other UI implementations.
+        input_interface.set_registry(registry)
     # Create app with all dependencies
     app = ChatApp(
         registry=registry,

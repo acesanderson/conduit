@@ -35,6 +35,7 @@ dependencies = [
     # database
     "dbclients",
     "xdg-base-dirs>=6.0.2",
+    "prompt-toolkit>=3.0.52",
 ]
 
 [project.optional-dependencies]
@@ -118,7 +119,8 @@ headwater_api = { path = "../headwater/headwater-api", editable = true }
 headwater_client = { path = "../headwater/headwater-client", editable = true }
 
 [project.scripts]
-chat = "conduit.scripts.chat_cli:main"
+bchat = "conduit.scripts.chat_cli:main"
+chat = "conduit.scripts.fchat_cli:main"
 conduit = "conduit.scripts.conduit_cli:main"
 imagegen = "conduit.scripts.imagegen_cli:main"
 models = "conduit.scripts.models_cli:main"
