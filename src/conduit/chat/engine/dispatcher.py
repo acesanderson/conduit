@@ -23,10 +23,9 @@ dispatcher.execute_command('/model "claude-sonnet-4"')
 ```
 """
 
-from conduit.chat.command import Command
+from conduit.chat.engine.command import Command, CommandResult
 from conduit.sync import Model, Verbosity, Response
 from conduit.message.messagestore import MessageStore
-from rich.console import RenderableType
 import re
 from instructor.exceptions import InstructorRetryException
 
@@ -152,7 +151,7 @@ class CommandDispatcher:
 
         return cmd, args
 
-    def execute_command(self, text: str) -> RenderableType | None:
+    def execute_command(self, text: str) -> CommandResult | None:
         """
         Parse and execute a command.
 
@@ -179,7 +178,7 @@ class CommandDispatcher:
         return sorted(commands, key=lambda c: c.name)
 
     # Our query command, directly accessed by the chat app
-    def handle_query(self, user_input: str) -> RenderableType:
+    def handle_query(self, user_input: str) -> CommandResult:
         """
         Send a query to the model and display the response.
         """

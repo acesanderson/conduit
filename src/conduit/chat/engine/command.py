@@ -1,6 +1,7 @@
 """
 All of our REPL commands for Chat are dynamically registered using decorators.
 This module defines the Command dataclass and the command decorator which registers commands.
+Commands can return either a string (to be printed) or a UICommand (to trigger UI actions).
 
 Example usage:
 ```python
@@ -17,12 +18,15 @@ Notes:
 """
 
 from dataclasses import dataclass
-from typing import Literal
-from rich.console import RenderableType
+from conduit.chat.ui.ui_command import UICommand
 from collections.abc import Callable
+from typing import Literal, Any
+from rich.console import RenderableType
 
 
-# Our class
+CommandResult = RenderableType | UICommand | tuple[UICommand, Any]
+
+
 @dataclass
 class Command:
     """
@@ -68,7 +72,7 @@ class Command:
                 f"Command '{self.name}' with param_count='multi' must take exactly one parameter (list[str])"
             )
 
-    def execute(self, args: list[str] | None) -> RenderableType | None:
+    def execute(self, args: list[str] | None) -> CommandResult:
         """Execute command and return output string (if any)."""
         if self.param_count == 0:
             return self.func()

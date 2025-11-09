@@ -17,8 +17,10 @@ app.run()
 ```
 """
 
-from conduit.chat.engine import ConduitEngine
+from conduit.chat.engine.engine import ConduitEngine
 from conduit.chat.ui.input_interface import InputInterface
+from conduit.chat.ui.ui_command import UICommand
+from rich.console import RenderableType
 
 
 class ChatApp:
@@ -97,7 +99,12 @@ class ChatApp:
         try:
             output = self.engine.execute_command(user_input)
             if output:
-                self.input_interface.show_message(output)
+                if isinstance(output, RenderableType):
+                    self.input_interface.show_message(output)
+                elif isinstance(output, UICommand):
+                    self.input_interface.execute_ui_command(output)
+                else:
+                    raise ValueError(f"Invalid command output type: {type(output)}")
         except SystemExit:
             self.input_interface.show_message("[bold cyan]Goodbye![/bold cyan]")
             raise
