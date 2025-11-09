@@ -200,6 +200,11 @@ class CommandDispatcher:
 
             assert isinstance(response, Response), "Expected Response from model query"
 
+            # Increment usage stats
+            self.message_store.input_tokens += response.input_tokens
+            self.message_store.output_tokens += response.output_tokens
+            self.message_store.last_used_model_name = self.model.model
+
             # Add assistant response to store
             self.message_store.add_new(role="assistant", content=str(response))
 

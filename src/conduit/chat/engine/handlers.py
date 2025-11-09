@@ -15,7 +15,6 @@ Handlers must:
 """
 
 from conduit.chat.engine.command import command, CommandResult
-from conduit.chat.ui.ui_command import UICommand
 
 
 class CommandHandlers:
@@ -30,13 +29,6 @@ class CommandHandlers:
     - self.model: Model instance for LLM interactions
     - self.clipboard_image: Storage for image context (optional)
     """
-
-    @command("exit", aliases=["quit", "q", "bye"])
-    def exit(self) -> CommandResult:
-        """
-        Exit the chat.
-        """
-        return UICommand.EXIT
 
     @command("help", aliases=["h", "?"])
     def help(self) -> CommandResult:
@@ -69,13 +61,6 @@ class CommandHandlers:
             return "[green]Message history cleared.[/green]"
         else:
             return "[red]No message store available.[/red]"
-
-    @command("clear", aliases=["cls"])
-    def clear(self) -> CommandResult:
-        """
-        Clear the screen.
-        """
-        return UICommand.CLEAR_SCREEN
 
     @command("show log level", aliases=["log", "log level"])
     def show_log_level(self) -> CommandResult:
