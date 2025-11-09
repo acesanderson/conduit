@@ -1,11 +1,10 @@
 """
 Our existing REPL application uses a basic input prompt. We want to enhance it with Prompt Toolkit features.
-
 - [ ] 1.0 Spinner
 - [x] 1.1 Command History with Persistence
 - [x] 1.2 Tab Completion for Commands
 - [x] 1.3 Multi-line Input
-- [ ] 1.4 Basic Key Bindings
+- [x] 1.4 Basic Key Bindings
 - [x] 2.1 Bottom Toolbar
 - [x] 2.2 Dynamic Toolbar
     - [x] refreshing data
@@ -21,17 +20,20 @@ Our existing REPL application uses a basic input prompt. We want to enhance it w
 
 from conduit.chat.ui.input_interface import InputInterface
 from conduit.chat.ui.ui_command import UICommand
+from conduit.chat.ui.keybindings import KeyBindingsRepo
 from rich.console import Console, RenderableType
 from rich.markdown import Markdown
 from typing import override, TYPE_CHECKING
 from collections.abc import Iterable
 import re
 from pathlib import Path
+
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.styles import Style
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.document import Document
+from prompt_toolkit.filters import Condition
 
 if TYPE_CHECKING:
     from conduit.chat.engine import ConduitEngine
@@ -100,15 +102,22 @@ class CommandCompleter(Completer):
                 )
 
 
-class EnhancedInput(InputInterface):
+class EnhancedInput(InputInterface, KeyBindingsRepo):
     """
     Enhanced input using Prompt Toolkit for features like persistent history.
     """
 
     def __init__(self, console: Console):
         self.console: Console = console
+
         # We need extra context about commands for tab completion, as well as the model name.
         self.engine: "ConduitEngine | None" = None
+
+        # Track multiline mode state
+        self.multiline_mode = False
+
+        # Create key bindings
+        self.kb = self._create_key_bindings()
 
         self.session: PromptSession = PromptSession(
             # Create a session that uses a persistent file history
@@ -118,9 +127,12 @@ class EnhancedInput(InputInterface):
             completer=None,
             complete_while_typing=True,  # Show suggestions as you type
             # Multi-line Input Setup
+            multiline=Condition(lambda: self.multiline_mode),
             prompt_continuation=".. ",  # Optional: Prompt for 2nd+ lines
             # Toolbar
             bottom_toolbar=self.get_toolbar_text,
+            # Key bindings
+            key_bindings=self.kb,
         )
 
         # Basic styling for the prompt (approximates BasicInput's gold3)
@@ -137,11 +149,17 @@ class EnhancedInput(InputInterface):
         )
 
     def get_toolbar_text(self):
-        model = self.engine.model.model or "unknown model"
+        model = (
+            self.engine.model.model or "unknown model" if self.engine else "no engine"
+        )
+        context_length = self.engine.message_store.context_length if self.engine else 0
+        context_window = self.engine.message_store.context_window if self.engine else 0
+        multiline_indicator = " [MULTILINE]" if self.multiline_mode else ""
+
         return [
             (
                 "class:bottom-toolbar",
-                f" Type /help for instructions. | Using {model} ",
+                f" <Esc>h for keybindings | {model} | Context: {context_length}/{context_window}{multiline_indicator} ",
             )
         ]
 
@@ -159,7 +177,6 @@ class EnhancedInput(InputInterface):
         Get user input using Prompt Toolkit.
         """
         styled_prompt_message = [("class:prompt", prompt)]
-
         return self.session.prompt(styled_prompt_message, style=self.style)
 
     @override
@@ -215,6 +232,7 @@ class EnhancedInput(InputInterface):
             self.console.print(
                 f"[yellow]No history file found at {HISTORY_FILE}.[/yellow]"
             )
+
         # Recreate empty history file
         HISTORY_FILE.touch()
 
