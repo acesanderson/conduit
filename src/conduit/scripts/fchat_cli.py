@@ -6,7 +6,7 @@ This is Enhanced Input (prompt toolkit)
 from rich.console import Console
 from conduit.sync import ConduitCache, Model, Verbosity
 from conduit.message.messagestore import MessageStore
-from conduit.chat.chat import create_chat_app
+from conduit.chat.create_app import create_chat_app
 from conduit.chat.ui.enhanced_input import EnhancedInput
 from xdg_base_dirs import xdg_config_home
 import logging

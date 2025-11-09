@@ -1,4 +1,6 @@
 from abc import ABC, abstractmethod
+from conduit.chat.ui.ui_command import UICommand
+from rich.console import RenderableType
 
 
 class InputInterface(ABC):
@@ -14,9 +16,17 @@ class InputInterface(ABC):
         pass
 
     @abstractmethod
-    def show_message(self, message: str, style: str = "info") -> None:
+    def show_message(self, message: RenderableType, style: str = "info") -> None:
         """
         Display message to user
+        """
+        pass
+
+    # UI commands
+    @abstractmethod
+    def execute_ui_command(self, command: UICommand) -> None:
+        """
+        Execute a UI command
         """
         pass
 
@@ -24,5 +34,19 @@ class InputInterface(ABC):
     def clear_screen(self) -> None:
         """
         Clear the screen
+        """
+        pass
+
+    @abstractmethod
+    def clear_history_file(self) -> None:
+        """
+        Clear the persistent history file
+        """
+        pass
+
+    @abstractmethod
+    def exit(self) -> None:
+        """
+        Exit the application
         """
         pass
