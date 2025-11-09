@@ -1,4 +1,5 @@
 from conduit.chat.ui.input_interface import InputInterface
+from conduit.chat.ui.ui_command import UICommand
 from rich.console import Console, RenderableType
 from rich.markdown import Markdown
 from typing import override
@@ -47,5 +48,30 @@ class BasicInput(InputInterface):
             self.console.print(message)
 
     @override
+    def execute_ui_command(self, command: UICommand) -> None:
+        if command == UICommand.CLEAR_SCREEN:
+            self.clear_screen()
+        elif command == UICommand.CLEAR_HISTORY_FILE:
+            self.clear_history_file()
+        elif command == UICommand.EXIT:
+            self.exit()
+        else:
+            raise NotImplementedError(
+                f"UI command {command} not implemented in BasicInput."
+            )
+
+    @override
     def clear_screen(self) -> None:
         self.console.clear()
+
+    @override
+    def clear_history_file(self) -> None:
+        self.console.print(
+            "[yellow]Clearing history file is not supported in BasicInput.[/yellow]"
+        )
+
+    @override
+    def exit(self) -> None:
+        import sys
+
+        sys.exit(0)

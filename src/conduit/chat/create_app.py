@@ -6,7 +6,7 @@ The primary factory function `create_chat_app` instantiates a fully configured C
 
 from conduit.progress.verbosity import Verbosity
 from conduit.chat.app import ChatApp
-from conduit.chat.engine import ConduitEngine
+from conduit.chat.engine.engine import ConduitEngine
 from conduit.chat.ui.input_interface import InputInterface
 from conduit.message.messagestore import MessageStore
 

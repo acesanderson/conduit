@@ -20,6 +20,7 @@ Our existing REPL application uses a basic input prompt. We want to enhance it w
 """
 
 from conduit.chat.ui.input_interface import InputInterface
+from conduit.chat.ui.ui_command import UICommand
 from rich.console import Console, RenderableType
 from rich.markdown import Markdown
 from typing import override, TYPE_CHECKING
@@ -179,9 +180,49 @@ class EnhancedInput(InputInterface):
         else:
             self.console.print(message)
 
+    # UI commands
+    @override
+    def execute_ui_command(self, command: UICommand) -> None:
+        if command == UICommand.CLEAR_SCREEN:
+            self.clear_screen()
+        elif command == UICommand.CLEAR_HISTORY_FILE:
+            self.clear_history_file()
+        elif command == UICommand.EXIT:
+            self.exit()
+        else:
+            raise NotImplementedError(
+                f"UI command {command} not implemented in EnhancedInput."
+            )
+
     @override
     def clear_screen(self) -> None:
         """
         Clear the screen (Copied from BasicInput)
         """
         self.console.clear()
+
+    @override
+    def clear_history_file(self) -> None:
+        """
+        Clear the persistent history file
+        """
+        try:
+            HISTORY_FILE.unlink()
+            self.console.print(
+                f"[green]Cleared history file at {HISTORY_FILE}.[/green]"
+            )
+        except FileNotFoundError:
+            self.console.print(
+                f"[yellow]No history file found at {HISTORY_FILE}.[/yellow]"
+            )
+        # Recreate empty history file
+        HISTORY_FILE.touch()
+
+    @override
+    def exit(self) -> None:
+        """
+        Exit the application (Copied from BasicInput)
+        """
+        import sys
+
+        sys.exit(0)

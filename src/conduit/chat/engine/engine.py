@@ -1,5 +1,5 @@
-from conduit.chat.command_dispatcher import CommandDispatcher
-from conduit.chat.command_handlers import CommandHandlers
+from conduit.chat.engine.dispatcher import CommandDispatcher
+from conduit.chat.engine.handlers import CommandHandlers
 
 
 class ConduitEngine(CommandDispatcher, CommandHandlers):
