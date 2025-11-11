@@ -7,9 +7,12 @@ from conduit.sync import Prompt, Model, Conduit, Response, Verbosity
 from conduit.model.models.modelstore import ModelStore
 from pydantic import BaseModel, Field
 from typing import Protocol, runtime_checkable
+from rich.console import Console
 import logging
 
 logger = logging.getLogger(__name__)
+console = Console()  # For pretty progress
+Conduit.console = console
 
 
 # Our input schema for the query function
