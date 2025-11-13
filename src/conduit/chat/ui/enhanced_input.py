@@ -197,6 +197,7 @@ class EnhancedInput(InputInterface, KeyBindingsRepo):
                     message = Markdown(message)
                     self.console.print(message)
             else:
+                message = Markdown(str(message))
                 self.console.print(message)
         except MarkupError:
             print(f"Error rendering this message: {message}")
