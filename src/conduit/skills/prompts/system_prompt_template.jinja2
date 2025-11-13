@@ -1,60 +1,50 @@
+<rules>
 {{system_prompt}}
+</rules>
 
-{# --- 1. Core Skill-Usage Instruction --- #}
-<skills>
-In order to help you achieve the highest-quality results, we have compiled "skills"
-which are folders with best practices.
+<available_tools>
+   <tool>
+      <name>
+         file_read
+      </name>
+      <description>
+         Reads the content of a specified file path. Use this to access skill definitions.
+      </description>
+      <parameters>
+         <param name="path" type="string" required="true">
+            The absolute file path to the skill's .md file.
+         </param>
+      </parameters>
+   </tool>
+</available_tools>
 
-Your first order of business should ALWAYS be to think about the skills
-available in <available_skills> and decide which are relevant.
-Then, you MUST use the `file_read` tool to read the appropriate
-SKILL.md files and follow their instructions.
+<available_skills>{% for skill in skills %}
+   <skill>
+      <name>
+         {{ skill.name }}
+      </name>
+      <description>
+         {{ skill.description }}
+      </description>
+      <location>
+         {{ skill.location }}
+      </location>
+   </skill>
+{% endfor %}</available_skills>
 
-For instance:
-User: Please read this document and fix any grammatical errors.
-AI: [immediately calls the file_read tool on /mnt/skills/public/docx/SKILL.md]
+<instructions>
+  Your first step is to analyze the user's query.
+  1.  Compare the query against the <available_skills> manifest.
+  2.  If, and only if, a skill's description is directly relevant to fulfilling the user's request, you MUST use the `file_read` tool (defined in <available_tools>) to read the file from its <location>.
+  3.  Follow the instructions within that skill file to formulate your response.
+  4.  If no skill is relevant, proceed to answer the query directly.
 
-This is extremely important. Please invest the extra effort to read the
-appropriate SKILL.md file before jumping in.
-
-{# --- NEW SECTION --- #}
-## Tool Call Formatting
-When you call a function, you MUST use this *exact* XML format.
-Do not nest <function_calls> tags.
-
-<function_calls>
-  <invoke name="tool_name">
-    <parameters>
-      <parameter name="param_name">value</parameter>
-    </parameters>
-  </invoke>
-</function_calls>
-
-For example, to read a skill:
-<function_calls>
-  <invoke name="file_read">
-    <parameters>
-      <parameter name="path">/path/to/SKILL.md</parameter>
-    </parameters>
-  </invoke>
-</function_calls>
-{# --- END NEW SECTION --- #}
-
-</skills>
-
-{# --- 2. Dynamic Skill List (L1 Metadata) --- #}
-<available_skills>
-{% for skill in skills %}
-<skill>
-<name>
-{{ skill.name }}
-</name>
-<description>
-{{ skill.description }}
-</description>
-<location>
-{{ skill.location }}
-</location>
-</skill>
-{% endfor %}
-</available_skills>
+  When calling any tool, you MUST use this exact XML format:
+  <function_calls>
+    <invoke name="tool_name">
+      <parameters>
+        <parameter name="param_name">value</parameter>
+      </parameters>
+    </invoke>
+  </function_calls>
+</instructions>
