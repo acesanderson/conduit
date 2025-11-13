@@ -134,6 +134,12 @@ class Skills(BaseModel):
                 return skill
         return None
 
+    def retrieve_skill_by_location(self, location: str) -> Skill | None:
+        for skill in self.skills:
+            if skill.location == location:
+                return skill
+        raise ValueError(f"No skill found at location: {location}")
+
 
 if __name__ == "__main__":
     skills = Skills()

@@ -6,17 +6,42 @@ from conduit.message.messages import Messages
 from pathlib import Path
 import logging
 import os
+from rich.logging import RichHandler
 
-# Set up logging
+
+class PackagePathFilter(logging.Filter):
+    """
+    Prepends the root package name to record.pathname so Rich shows it in the right column.
+    Example: my_app/utils/helpers.py -> my_app:helpers.py
+    """
+
+    def filter(self, record):
+        record.root_package = record.name.split(".")[0]
+        original_basename = os.path.basename(record.pathname)
+        new_basename = f"{record.root_package}:{original_basename}"
+        original_dirname = os.path.dirname(record.pathname)
+        record.pathname = os.path.join(original_dirname, new_basename)
+        return True
+
+
+# --- Setup ---
 log_level = int(os.getenv("PYTHON_LOG_LEVEL", "2"))  # Default to INFO
 levels = {1: logging.WARNING, 2: logging.INFO, 3: logging.DEBUG}
+
+rich_handler = RichHandler(rich_tracebacks=True, markup=True)
+rich_handler.addFilter(PackagePathFilter())
+
 logging.basicConfig(
-    level=levels.get(log_level, logging.INFO), format="%(levelname)s: %(message)s"
+    level=levels.get(log_level, logging.INFO),
+    format="%(message)s",
+    datefmt="%Y-%m-%d %H:%M",
+    handlers=[rich_handler],
 )
+
 logger = logging.getLogger(__name__)
 
 VERBOSITY = Verbosity.PROGRESS
-MODEL_NAME = "haiku"
+MODEL_NAME = "gpt-4o"
 SKILLS = Skills()
 
 SYSTEM_PROMPT_TEMPLATE = (
@@ -83,20 +108,23 @@ def call_tool(tool_call_xml: str) -> str:
         </invoke>
     </function_calls>
     """
-    # get name attribute from invoke
-    invoke = root.find("invoke")
-    if invoke is None:
-        raise ValueError("No <invoke> tag found in tool call XML.")
-    tool_name = invoke.get("name")
-    if tool_name is None:
-        raise ValueError("No name attribute found in <invoke> tag.")
-    logger.debug(f"Invoking tool: {tool_name}")
-    skill = SKILLS.retrieve_skill_by_name(tool_name)
-    if skill is None:
-        raise ValueError(f"Tool '{tool_name}' not found.")
-    # Extract parameters
-    assert skill.content is not None, "Skill content is None"
-    logger.debug(f"Tool '{tool_name}' content: {skill.content}")
+    # Get tool name, though it should only be "file_read"
+    invoke_elem = root.find("invoke")
+    tool_name = invoke_elem.attrib["name"]
+    logger.info(f"Invoking tool: {tool_name}")
+    assert tool_name == "file_read", (
+        f"Only file_read tool is supported in this example; got {tool_name}"
+    )
+    # Get parameter name "path", and its value (which will be the skill file location)
+    parameters_elem = invoke_elem.find("parameters")
+    param_elem = parameters_elem.find("parameter")
+    param_name = param_elem.attrib["name"]
+    assert param_name == "path", (
+        f"Only 'path' parameter is supported in this example; got {param_name}"
+    )
+    skill_path = param_elem.text.strip()
+    logger.info(f"Reading skill from path: {skill_path}")
+    skill = SKILLS.retrieve_skill_by_location(skill_path)
     return skill.content
 
 
@@ -127,11 +155,12 @@ def stream_query(query: str):
         logger.info("Parsing stream for tool calls...")
         parser = StreamToolParser(stream=stream)
         pre_tool, tool_call = parser.parse()
+        logger.debug(f"Pre-tool content: {pre_tool}")
+        logger.debug(f"Tool call content: {tool_call}")
         if tool_call:
             logger.info("Tool call detected, invoking tool...")
             tool_contents = call_tool(tool_call)
-            messages.add_new(role="user", content=pre_tool)
-            messages.add_new(role="assistant", content=tool_call)
+            messages.add_new(role="assistant", content=pre_tool + "\n" + tool_call)
             messages.add_new(role="user", content=tool_contents)
             logger.info("Tool call processed, continuing conversation...")
             continue
