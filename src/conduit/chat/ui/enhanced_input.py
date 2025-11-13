@@ -23,6 +23,7 @@ from conduit.chat.ui.ui_command import UICommand
 from conduit.chat.ui.keybindings import KeyBindingsRepo
 from rich.console import Console, RenderableType
 from rich.markdown import Markdown
+from rich.errors import MarkupError
 from typing import override, TYPE_CHECKING
 from collections.abc import Iterable
 import re
@@ -184,18 +185,22 @@ class EnhancedInput(InputInterface, KeyBindingsRepo):
         """
         Display a message (Copied from BasicInput)
         """
-        if isinstance(message, str):
-            if style:
-                self.console.print(message, style=style)
-                return
-            if style_pattern.search(message):
-                self.console.print(message)
-                return
+        try:
+            if isinstance(message, str):
+                if style:
+                    self.console.print(message, style=style)
+                    return
+                if style_pattern.search(message):
+                    self.console.print(message)
+                    return
+                else:
+                    message = Markdown(message)
+                    self.console.print(message)
             else:
-                message = Markdown(message)
                 self.console.print(message)
-        else:
-            self.console.print(message)
+        except MarkupError:
+            print(f"Error rendering this message: {message}")
+            raise
 
     # UI commands
     @override
