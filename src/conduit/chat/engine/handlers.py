@@ -105,7 +105,7 @@ class CommandHandlers:
 
         try:
             self.model = Model(param)
-            return f"[green]Set model to {param}[/green']"
+            return f"[green]Set model to {param}[/green]"
         except ValueError:
             return f"[red]Invalid model: {param}[/red]"
 
