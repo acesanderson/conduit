@@ -3,9 +3,12 @@ from typing import override
 
 
 class PerplexityCitation(BaseModel):
+    # Mandatory fields
     title: str
     url: str
-    date: str | None
+    # Optional fields
+    source: str | None = None
+    date: str | None = None
 
 
 class PerplexityContent(BaseModel):
