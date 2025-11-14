@@ -1,9 +1,24 @@
 import argparse
+from collections import namedtuple
 from conduit.model.models.modelstore import ModelStore
 
 models = ModelStore.list_models()
 modeltypes = ModelStore.list_model_types()
 providers = ModelStore.list_providers()
+
+Match = namedtuple("Match", ["title", "score", "rank"])
+
+
+def fuzzy_search(query: str, limit: int = 3):
+    from rapidfuzz import process, fuzz
+
+    choices = models
+    results = process.extract(query, choices, scorer=fuzz.WRatio, limit=limit)
+    matches = [
+        Match(title=title, score=score, rank=rank + 1)
+        for rank, (title, score, _) in enumerate(results)
+    ]
+    return matches
 
 
 def main():
@@ -37,8 +52,17 @@ def main():
             )
     # Run commands
     if args.model:
-        modelspec = ModelStore.get_model(args.model)
-        modelspec.card
+        try:
+            modelspec = ModelStore.get_model(args.model)
+            modelspec.card
+        except ValueError:
+            matches = fuzzy_search(args.model)
+            from rich.console import Console
+
+            console = Console()
+            console.print(f"[red]Model '{args.model}' not found. Did you mean:[/red]")
+            for match in matches:
+                console.print(f"  {match.rank}. {match.title}")
     elif args.type:
         modelspecs = ModelStore.by_type(args.type)
         for model in modelspecs:
