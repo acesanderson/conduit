@@ -5,7 +5,7 @@ from typing import override
 class PerplexityCitation(BaseModel):
     title: str
     url: str
-    date: str | None
+    date: str | None = None
 
 
 class PerplexityContent(BaseModel):
