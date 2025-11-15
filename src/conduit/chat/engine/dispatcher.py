@@ -51,6 +51,10 @@ class CommandDispatcher:
         # Dynamically registered commands
         self._commands: dict[str, Command] = {}
         self._register_commands()
+        # Set up console singleton on Model
+        from rich.console import Console
+
+        Model.console = Console()
 
     # Dynamically register commands decorated with @command
     def _register_commands(self) -> None:
@@ -214,8 +218,3 @@ class CommandDispatcher:
         except InstructorRetryException:
             # Network failure from instructor
             return "[red]Network error. Please try again.[/red]"
-
-        except KeyboardInterrupt:
-            # Allow canceling during model query
-            print("\nQuery canceled.")
-            raise

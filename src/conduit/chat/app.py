@@ -6,8 +6,6 @@ Usage:
 ```python
 registry = CommandRegistry()
 input_interface = BasicInput()
-model = Model(...)
-message_store = MessageStore()
 app = ChatApp(
     registry=registry,
     input_interface=input_interface,
