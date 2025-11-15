@@ -24,6 +24,7 @@ from conduit.chat.ui.keybindings import KeyBindingsRepo
 from rich.console import Console, RenderableType
 from rich.markdown import Markdown
 from rich.table import Table
+from rich.columns import Columns
 from rich.errors import MarkupError
 from typing import override, TYPE_CHECKING
 from collections.abc import Iterable
@@ -197,7 +198,7 @@ class EnhancedInput(InputInterface, KeyBindingsRepo):
                 else:
                     message = Markdown(message)
                     self.console.print(message)
-            elif isinstance(message, Table):
+            elif isinstance(message, Table | Columns | Markdown):
                 self.console.print(message)
             else:
                 message = Markdown(str(message))
