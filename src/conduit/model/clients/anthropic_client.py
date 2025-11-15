@@ -64,6 +64,12 @@ class AnthropicClientSync(AnthropicClient):
             )
         else:
             result = self._client.chat.completions.create(**request.to_anthropic())
+        # Handle streaming response
+        if isinstance(result, Stream):
+            usage = Usage(
+                input_tokens=0,
+                output_tokens=0,
+            )
         # Capture usage
         usage = Usage(
             input_tokens=result.usage.input_tokens,
@@ -114,6 +120,13 @@ class AnthropicClientAsync(AnthropicClient):
                 **request.to_anthropic()
             )
         # Capture usage
+        if isinstance(result, Stream):
+            usage = Usage(
+                input_tokens=0,
+                output_tokens=0,
+            )
+            # Handle streaming response if needed
+            return result, usage
         usage = Usage(
             input_tokens=result.usage.input_tokens,
             output_tokens=result.usage.output_tokens,
@@ -128,9 +141,6 @@ class AnthropicClientAsync(AnthropicClient):
         except AttributeError:
             pass
         if isinstance(result, BaseModel):
-            return result, usage
-        elif isinstance(result, Stream):
-            # Handle streaming response if needed
             return result, usage
         else:
             raise ValueError(
