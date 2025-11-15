@@ -15,6 +15,7 @@ Handlers must:
 """
 
 from conduit.chat.engine.command import command, CommandResult
+from conduit.chat.engine.exceptions import CommandError
 
 
 class CommandHandlers:
@@ -48,7 +49,6 @@ class CommandHandlers:
 
             table.add_row(name, description)
 
-        # Return None and print directly since Rich tables can't be returned as strings
         return table
 
     @command("wipe")
@@ -60,15 +60,7 @@ class CommandHandlers:
             self.message_store.clear()
             return "[green]Message history cleared.[/green]"
         else:
-            return "[red]No message store available.[/red]"
-
-    @command("show log level", aliases=["log", "log level"])
-    def show_log_level(self) -> CommandResult:
-        raise NotImplementedError("Log level not implemented yet.")
-
-    @command("set log level", param_count=1, aliases=["set log"])
-    def set_log_level(self, param: str) -> CommandResult:
-        raise NotImplementedError("Log level not implemented yet.")
+            raise CommandError("No message store available to wipe history.")
 
     @command("show history", aliases=["history", "hi"])
     def show_history(self):
@@ -77,6 +69,8 @@ class CommandHandlers:
         """
         if self.message_store:
             self.message_store.view_history()
+        else:
+            raise CommandError("No message store available to show history.")
 
     @command("show models", aliases=["models", "ms"])
     def show_models(self) -> CommandResult:
@@ -107,7 +101,55 @@ class CommandHandlers:
             self.model = Model(param)
             return f"[green]Set model to {param}[/green]"
         except ValueError:
-            return f"[red]Invalid model: {param}[/red]"
+            raise CommandError(f"Invalid model: {param}")
+
+    def _latest_response(self) -> str:
+        """
+        Helper to get the latest response from message store.
+        """
+        if self.message_store:
+            for message in reversed(self.message_store.messages):
+                if message.role == "assistant":
+                    return str(message.content)
+        else:
+            raise CommandError("No message store available to retrieve responses.")
+
+    @command("clip")
+    def clip(self) -> CommandResult:
+        import pyperclip
+
+        """
+        Copy the latest LLM response to clipboard.
+        """
+        latest_response = self._latest_response()
+        if latest_response:
+            pyperclip.copy(latest_response)
+            return "[green]Latest response copied to clipboard.[/green]"
+        else:
+            raise CommandError("No assistant response found to copy.")
+
+    @command("note", 1, aliases=["no", "obsidian"])
+    def note(self, name: str) -> CommandResult:
+        """
+        Save the latest LLM response as a note in Obsidian.
+        """
+        from pathlib import Path
+        import os
+
+        latest_response = self._latest_response()
+        if not latest_response:
+            raise CommandError("No assistant response found to save as note.")
+
+        obsidian_vault_path = os.getenv("OBSIDIAN_PATH")
+        if not obsidian_vault_path:
+            raise CommandError("OBSIDIAN_PATH environment variable not set.")
+
+        obsidian_vault_dir = Path(obsidian_vault_path)
+        note_path = obsidian_vault_dir / f"{name}.md"
+        if note_path.exists():
+            raise CommandError(f"Note '{name}.md' already exists in Obsidian vault.")
+        _ = note_path.write_text(latest_response, encoding="utf-8")
+        return f"[green]Note saved to {note_path}[/green]"
 
     @command("paste image", aliases=["pi"])
     def paste_image(self) -> CommandResult:

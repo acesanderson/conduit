@@ -18,6 +18,7 @@ app.run()
 """
 
 from conduit.chat.engine.engine import ConduitEngine
+from conduit.chat.engine.exceptions import ConduitChatError
 from conduit.chat.ui.input_interface import InputInterface
 from conduit.chat.ui.ui_command import UICommand
 from rich.console import RenderableType
@@ -105,6 +106,16 @@ class ChatApp:
                     self.input_interface.execute_ui_command(output)
                 else:
                     raise ValueError(f"Invalid command output type: {type(output)}")
+        except ConduitChatError as e:
+            self.input_interface.show_message(str(e), style="red")
+        except NotImplementedError:
+            self.input_interface.show_message(
+                "Command not implemented yet.", style="deep-pink3"
+            )
+        except ValueError as e:
+            self.input_interface.show_message(
+                f"Unexpected value error: {e}", style="red"
+            )
         except SystemExit:
             self.input_interface.show_message("[bold cyan]Goodbye![/bold cyan]")
             raise
