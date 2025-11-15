@@ -25,7 +25,7 @@ class MockChunk:
     usage: MockUsage | None = None
 
 
-class TestStream:
+class MockStream:
     """
     Mock stream object that matches SyncStream protocol.
 
@@ -165,9 +165,9 @@ EMPTY_CHUNKS = [
 # === Test Stream Factory ===
 
 
-def create_test_stream(chunks: list[MockChunk]) -> TestStream:
+def create_test_stream(chunks: list[MockChunk]) -> MockStream:
     """Factory function to create test streams."""
-    return TestStream(chunks)
+    return MockStream(chunks)
 
 
 # === Pre-built Test Streams ===
