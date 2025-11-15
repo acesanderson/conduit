@@ -39,6 +39,7 @@ dependencies = [
     "transformers>=4.57.1",
     "sentencepiece>=0.2.1",
     "rapidfuzz>=3.14.3",
+    "pyperclip>=1.11.0",
 ]
 
 [project.optional-dependencies]
