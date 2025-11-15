@@ -76,6 +76,10 @@ class GoogleClientSync(GoogleClient):
         else:
             # Use the standard completion method
             result = self._client.chat.completions.create(**request.to_openai())
+        # Handle streaming response if needed
+        if isinstance(result, Stream):
+            usage = Usage(input_tokens=0, output_tokens=0)
+            return result, usage
         # Capture usage
         usage = Usage(
             input_tokens=result.usage.prompt_tokens,
@@ -91,9 +95,6 @@ class GoogleClientSync(GoogleClient):
         except AttributeError:
             pass
         if isinstance(result, BaseModel):
-            return result, usage
-        elif isinstance(result, Stream):
-            # Handle streaming response if needed
             return result, usage
 
     def _generate_image(self, request: Request) -> tuple:
@@ -142,6 +143,9 @@ class GoogleClientAsync(GoogleClient):
         else:
             # Use the standard completion method
             result = await self._client.chat.completions.create(**request.to_openai())
+        # Handle streaming response if needed
+        if isinstance(result, Stream):
+            return result, usage
         # Capture usage
         usage = Usage(
             input_tokens=result.usage.prompt_tokens,
@@ -157,7 +161,4 @@ class GoogleClientAsync(GoogleClient):
         except AttributeError:
             pass
         if isinstance(result, BaseModel):
-            return result, usage
-        elif isinstance(result, Stream):
-            # Handle streaming response if needed
             return result, usage
