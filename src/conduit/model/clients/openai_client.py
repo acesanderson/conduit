@@ -70,12 +70,17 @@ class OpenAIClientSync(OpenAIClient):
             # Use the standard completion method
             result = self._client.chat.completions.create(**request.to_openai())
         # Capture usage
+        if isinstance(result, Stream):
+            # Handle streaming response if needed; usage is handled by StreamParser
+            usage = Usage(input_tokens=0, output_tokens=0)
+            return result, usage
         usage = Usage(
             input_tokens=result.usage.prompt_tokens,
             output_tokens=result.usage.completion_tokens,
         )
         if structured_response is not None:
             # If we have a structured response, return it along with usage
+            # TBD: whether we handle STREAMING structured responses
             return structured_response, usage
         # First try to get text content from the result
         try:
@@ -84,11 +89,7 @@ class OpenAIClientSync(OpenAIClient):
         except AttributeError:
             # If the result is a BaseModel or Stream, handle accordingly
             pass
-        if isinstance(result, BaseModel):
-            return result, usage
-        elif isinstance(result, Stream):
-            # Handle streaming response if needed
-            return result, usage
+        return result, usage
 
     def _generate_image(self, request: Request) -> tuple:
         response = self._client.images.generate(
@@ -132,6 +133,10 @@ class OpenAIClientAsync(OpenAIClient):
             # Use the standard completion method
             result = await self._client.chat.completions.create(**request.to_openai())
         # Capture usage
+        if isinstance(result, Stream):
+            # Handle streaming response if needed; usage is handled by StreamParser
+            usage = Usage(input_tokens=0, output_tokens=0)
+            return result, usage
         usage = Usage(
             input_tokens=result.usage.prompt_tokens,
             output_tokens=result.usage.completion_tokens,
