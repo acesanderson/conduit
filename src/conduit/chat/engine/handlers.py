@@ -151,6 +151,18 @@ class CommandHandlers:
         _ = note_path.write_text(latest_response, encoding="utf-8")
         return f"[green]Note saved to {note_path}[/green]"
 
+    @command("tangent", aliases=["tan"])
+    def tangent(self) -> CommandResult:
+        """
+        Start a tangent conversation, preserving current context but branching off.
+        """
+        # if self.message_store:
+        #     self.message_store.start_tangent() # Implement tangent logic in MessageStore
+        #     return "[green]Tangent conversation started.[/green]"
+        # else:
+        #     raise CommandError("No message store available to start tangent.")
+        raise NotImplementedError("Tangent conversations not implemented yet.")
+
     @command("paste image", aliases=["pi"])
     def paste_image(self) -> CommandResult:
         """
