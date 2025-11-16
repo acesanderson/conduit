@@ -171,6 +171,23 @@ class MessageStore(Messages):
             msg = create_system_message(system_message_content)[0]
             self.insert(0, msg)
 
+    def branch(self, start_index: int = 0) -> "MessageStore":
+        """
+        Create a new MessageStore branching from a specific index.
+        """
+        # logger.debug(f"Branching MessageStore from index {start_index}.")
+        # # Branching needs to happen from an assistant message
+        # if start_index < 0 or start_index >= len(self):
+        #     raise IndexError("start_index out of range.")
+        # if self[start_index].role != "assistant":
+        #     raise ValueError("start_index must point to an assistant message.")
+        # # Create new MessageStore with messages up to start_index
+        # new_store = MessageStore(
+        #     messages=list(self.messages[: start_index + 1]), console=self.console
+        # )
+        # return new_store
+        raise NotImplementedError("Branching is not yet implemented.")
+
     # Override Messages methods to add persistence and logging
     @override
     def append(self, message: Message) -> None:
