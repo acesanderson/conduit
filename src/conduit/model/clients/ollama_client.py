@@ -114,6 +114,10 @@ class OllamaClientSync(OllamaClient):
         else:
             # Use the standard completion method
             result = self._client.chat.completions.create(**request.to_openai())
+        # Handle streaming response if needed
+        if isinstance(result, Stream):
+            usage = Usage(input_tokens=0, output_tokens=0)
+            return result, usage
         # Capture usage
         usage = Usage(
             input_tokens=result.usage.prompt_tokens,
@@ -129,9 +133,6 @@ class OllamaClientSync(OllamaClient):
             # If the result is not in the expected format, return the raw result
             pass
         if isinstance(result, BaseModel):
-            return result, usage
-        if isinstance(result, Stream):
-            # Handle streaming response if needed
             return result, usage
 
 
@@ -162,6 +163,10 @@ class OllamaClientAsync(OllamaClient):
         else:
             # Use the standard completion method
             result = await self._client.chat.completions.create(**request.to_openai())
+        # Handle streaming response if needed
+        if isinstance(result, Stream):
+            usage = Usage(input_tokens=0, output_tokens=0)
+            return result, usage
         # Capture usage
         usage = Usage(
             input_tokens=result.usage.prompt_tokens,
