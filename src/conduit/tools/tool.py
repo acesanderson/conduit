@@ -1,5 +1,13 @@
-from typing import get_args
-from pydantic import BaseModel
+from typing import get_args, Protocol
+from pydantic import BaseModel, ConfigDict
+from collections.abc import Callable
+import json
+
+
+class ToolCallError(Exception):
+    """Custom exception for ToolCall errors."""
+
+    pass
 
 
 class ToolCall(BaseModel):
@@ -58,16 +66,39 @@ class ToolCall(BaseModel):
         return cls.model_validate({"tool_name": tool_name, "parameters": parameters})
 
 
-"""
-Example:
+class ToolFunction(Protocol):
+    """
+    Tool functions need to return a string and accept a single ToolCall argument.
+    """
 
-class FileReadParameters(BaseModel):
-    path: str = Field(description="Absolute file path")
+    def __call__(self, tool_call: ToolCall) -> str: ...
 
 
-class FileReadToolCall(ToolCall):
-    \"\"\"Read a file's contents.\"\"\"
+class Tool(BaseModel):
+    """Tool registry object."""
 
-    tool_name: Literal["file_read"]
-    parameters: FileReadParameters
-"""
+    tool_call_schema: type[ToolCall]
+    function: Callable[[ToolCall], str]
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    @property
+    def name(self) -> str:
+        """Get the tool's name."""
+        tool_name_field = self.tool_call_schema.model_fields["tool_name"]
+        return get_args(tool_name_field.annotation)[0]
+
+    @property
+    def xml_schema(self) -> str:
+        """Get the tool's XML schema."""
+        return self.tool_call_schema.to_xml_schema()
+
+    @property
+    def json_schema(self) -> str:
+        """Get the tool's JSON schema."""
+        schema_dict: dict = self.tool_call_schema.model_json_schema()
+        return json.dumps(schema_dict, indent=2)
+
+    def execute(self, call: ToolCall) -> str:
+        """Execute this tool with a validated call."""
+        return self.function(call)
