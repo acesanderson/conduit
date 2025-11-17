@@ -8,7 +8,8 @@ from conduit.request.request import Request
 from conduit.model.clients.load_env import load_env
 from anthropic import Anthropic, AsyncAnthropic, Stream
 from pydantic import BaseModel
-import instructor, os
+import instructor
+import os
 
 
 class AnthropicClient(Client):
