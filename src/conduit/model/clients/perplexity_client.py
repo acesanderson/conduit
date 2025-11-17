@@ -102,22 +102,34 @@ class PerplexityClientSync(PerplexityClient):
 class PerplexityClientAsync(PerplexityClient):
     def _initialize_client(self):
         """
-        We use the Instructor library by default, as this offers a great interface for doing function calling and working with pydantic objects.
+        We use the Instructor library by default, as this offers a great interface
+        for doing function calling and working with pydantic objects.
         """
-        perplexity_client = AsyncOpenAI(
+        # Keep both raw and instructor clients
+        self._raw_client = AsyncOpenAI(
             api_key=self._get_api_key(), base_url="https://api.perplexity.ai"
         )
-        return instructor.from_perplexity(perplexity_client)
+        return instructor.from_perplexity(self._raw_client)
 
-    async def query(
-        self,
-        request: Request,
-    ) -> tuple:
-        result = await self._client.chat.completions.create(**request.to_perplexity())
+    async def query(self, request: Request) -> tuple:
+        structured_response = None
+        if request.response_model is not None:
+            # Use instructor for structured responses
+            (
+                structured_response,
+                result,
+            ) = await self._client.chat.completions.create_with_completion(
+                **request.to_perplexity()
+            )
+        else:
+            # Use raw client for unstructured responses
+            perplexity_params = request.to_perplexity()
+            perplexity_params.pop("response_model", None)  # Remove None response_model
+            result = await self._raw_client.chat.completions.create(**perplexity_params)
+
         # Capture usage
-        # Handle instructor vs raw response
         if hasattr(result, "usage"):
-            # Raw OpenAI response
+            # Raw OpenAI/Perplexity response
             usage = Usage(
                 input_tokens=result.usage.prompt_tokens,
                 output_tokens=result.usage.completion_tokens,
@@ -129,6 +141,11 @@ class PerplexityClientAsync(PerplexityClient):
                 input_tokens=raw_response.usage.prompt_tokens,
                 output_tokens=raw_response.usage.completion_tokens,
             )
+
+        if structured_response is not None:
+            # If we have a structured response, return it along with usage
+            return structured_response, usage
+
         if isinstance(result, ChatCompletion):
             # Construct a PerplexityContent object from the response
             citations = result.search_results
