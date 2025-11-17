@@ -1,11 +1,23 @@
 from conduit.tools.tool import ToolCall, Tool
 from pathlib import Path
+import logging
+import os
+
+# Set up logging
+log_level = int(os.getenv("PYTHON_LOG_LEVEL", "2"))  # Default to INFO
+levels = {1: logging.WARNING, 2: logging.INFO, 3: logging.DEBUG}
+logging.basicConfig(
+    level=levels.get(log_level, logging.INFO),
+    format="%(asctime)s [%(levelname)s] %(filename)s:%(lineno)d - %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 TOOLS_DIR = Path(__file__).parent / "tools"
 
 
 class ToolRegistry:
     def __init__(self):
+        logger.info("Initializing ToolRegistry")
         self._tools: list[Tool] = []
         self._tool_map: dict[str, Tool] = {}  # Fast lookup
 
@@ -32,8 +44,21 @@ class ToolRegistry:
         """
         Register a callable executor function for a given tool name.
         """
+        logger.debug(f"Registering tool: {tool.name}")
         self._tools.append(tool)
         self._tool_map[tool.name] = tool
+
+    def register_all(self) -> None:
+        """
+        Register all tools found in the tools directory.
+        NOTE: this will be get very large as more tools are added; consider specifically only
+        loading the tools you need.
+        """
+        logger.info("Registering all tools from conduit.tools.tools")
+        from conduit.tools.tools import AllTools
+
+        for tool in AllTools:
+            self.register(tool)
 
     def parse_and_execute(self, tool_name: str, parameters: dict) -> str:
         """
@@ -41,6 +66,7 @@ class ToolRegistry:
 
         This is your main entry point from the stream parser.
         """
+        logger.info(f"Parsing and executing tool call for tool: {tool_name}")
         if tool_name not in self._tool_map:
             raise ValueError(f"Tool '{tool_name}' is not registered.")
 
@@ -59,18 +85,3 @@ class ToolRegistry:
                 return tool.execute(call)
 
         raise ValueError(f"Tool '{call.tool_name}' is not registered.")
-
-
-if __name__ == "__main__":
-    from conduit.tools.tools.file_read import FileReadTool
-
-    # Create registry and register a tool
-    registry = ToolRegistry()
-    registry.register("file_read", file_read)
-
-    # Execute a tool call
-    params = FileReadParameters(path=str(Path(__file__)))
-    tool_call = FileReadToolCall(tool_name="file_read", parameters=params)
-    # print(tool_call.model_dump_json(indent=2))
-    # result = registry.execute(tool_call)
-    # print(f"Result: {result}")
