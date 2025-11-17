@@ -7,7 +7,12 @@ If XMLStreamingParser has a hit:
 
 from conduit.tools.tool import ToolCallError
 from conduit.tools.registry import ToolRegistry
-from conduit.tools.tools.file_read import FileReadTool
+from conduit.tools.tools import (
+    FileReadTool,
+    FileReadChunkTool,
+    FileSearchTool,
+    ListFilesTool,
+)
 from xml.etree import ElementTree as ET
 from pathlib import Path
 
@@ -57,6 +62,9 @@ if __name__ == "__main__":
     path = Path(__file__)
     tool_registry = ToolRegistry()
     tool_registry.register(FileReadTool)
+    tool_registry.register(FileReadChunkTool)
+    tool_registry.register(FileSearchTool)
+    tool_registry.register(ListFilesTool)
 
     original_xml = f"""
     <tool_call>
