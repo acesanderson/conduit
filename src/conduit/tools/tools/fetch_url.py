@@ -6,7 +6,7 @@ import readabilipy
 
 
 # Our pydantic classes
-class FetchURLParameters(BaseModel):
+class FetchUrlParameters(BaseModel):
     url: str = Field(description="The URL of the web page to fetch")
 
     @field_validator("url")
@@ -16,7 +16,7 @@ class FetchURLParameters(BaseModel):
         return v
 
 
-class FetchURLToolCall(ToolCall):
+class FetchUrlToolCall(ToolCall):
     """
     Fetch the content of a web page.
     """
@@ -85,4 +85,4 @@ async def fetch_url(
     )
 
 
-FetchURLTool = Tool(tool_call_schema=FetchURLToolCall, function=fetch_url)
+FetchUrlTool = Tool(tool_call_schema=FetchUrlToolCall, function=fetch_url)
