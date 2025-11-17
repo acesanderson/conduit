@@ -1,58 +1,68 @@
-# Example of a function schema
+# Function schema for a tool that reads a file from a given path
 {
-    "type": "function",
-    "function": {
-        "name": "file_read",
-        "description": "Reads the content of a specified file path. Use this to access skill definitions.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "The absolute file path to the skill's .md file.",
-                }
-            },
-            "required": ["path"],
-        },
+  "type": "object",
+  "properties": {
+    "tool_name": {
+      "type": "string",
+      "enum": ["file_read"]
     },
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": ["path"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["tool_name", "parameters"],
+  "additionalProperties": false
 }
+
 
 # Example of a tool call using the function schema
 {
-  "role": "assistant",
-  "content": null,
-  "tool_calls": [
-    {
-      "id": "call_abc123xyz",
-      "type": "function",
-      "function": {
-        "name": "file_read",
-        "arguments": "{\"path\": \"/path/to/my_skill/SKILL.md\"}"
-      }
+    "tool_name": "file_read",
+    "parameters": {
+        "path": "/skills/docx/SKILL.md"
     }
-  ]
 }
 
-# Example of parallel tool calls using the function schema
-{
-  "role": "assistant",
-  "content": null,
-  "tool_calls": [
-    {
-      "id": "call_read_skill_abc",
-      "type": "function",
-      "function": {
-        "name": "file_read",
-        "arguments": "{\"path\": \"/skills/python/SKILL.md\"}"
-      }
-    },
-    {
-      "id": "call_list_files_xyz",
-      "type": "function",
-      "function": {
-        "name": "list_files",
-        "arguments": "{\"path\": \"/skills/python/references/\"}"
-      }
-    }
-  ]
-}
+# pydantic
+from pydantic import BaseModel, Field
+
+class ToolCall(BaseModel):
+    """No additional properties are allowed, this is for methods."""
+
+    def to_xml_schema(self) -> str:
+        """Convert the pydantic model to an XML schema representation."""
+        ...
+
+    def __call__(self, *args, **kwargs) -> str:
+        return self.function(**self.parameters.dict())
+
+
+
+
+class FileReadParameters(BaseModel):
+    path: str = Field(
+        ...,
+        description="The path to the file to be read.",
+    )
+
+class FileReadToolCall(BaseModel):
+    """
+    Request a file by its path.
+    """
+    tool_name: Literal["file_read"]
+    parameters: FileReadParameters
+
+    # The function to run (not part of the schema)
+    function: Callable[..., str] = Field(
+        default=my_custom_file_read_function,
+        exclude=True,
+    )
+
+
