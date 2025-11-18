@@ -2,7 +2,6 @@ from conduit.model.clients.client import Client, Usage
 from conduit.model.clients.load_env import load_env
 from conduit.request.request import Request
 from openai import OpenAI, AsyncOpenAI, Stream
-from pydantic import BaseModel
 import instructor
 import tiktoken
 import logging
@@ -33,6 +32,15 @@ class OpenAIClient(Client):
             encoding = tiktoken.get_encoding("cl100k_base")
         token_count = len(encoding.encode(text))
         return token_count
+
+    def discover_models(self) -> list[str]:
+        import openai
+
+        API_KEY = self._get_api_key()
+        openai.api_key = API_KEY
+        models = openai.models.list()
+
+        return [model.id for model in models.data]
 
 
 class OpenAIClientSync(OpenAIClient):
