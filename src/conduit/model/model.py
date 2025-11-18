@@ -1,3 +1,4 @@
+from __future__ import annotations
 from conduit.message.message import Message
 from conduit.progress.wrappers import progress_display
 from conduit.progress.verbosity import Verbosity
@@ -7,7 +8,7 @@ from conduit.result.error import ConduitError
 from conduit.request.outputtype import OutputType
 from conduit.odometer.OdometerRegistry import OdometerRegistry
 from pydantic import ValidationError, BaseModel
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 from pathlib import Path
 from time import time
 import importlib
@@ -20,7 +21,6 @@ if TYPE_CHECKING:
     from rich.console import Console
     from pydantic import BaseModel
     from conduit.cache.cache import ConduitCache
-    from conduit.model.model_client import ModelClient
 
 
 logger = logging.getLogger(__name__)
@@ -30,25 +30,13 @@ dir_path = Path(__file__).resolve().parent
 class Model:
     # Class singletons
     _clients = {}  # Store lazy-loaded client instances at the class level
-    conduit_cache: Optional["ConduitCache"] = (
+    conduit_cache: ConduitCache | None = (
         None  # If you want to add a cache, add it at class level as a singleton.
     )
-    _console: Optional["Console"] = (
+    _console: Console | None = (
         None  # For rich console output, if needed. This is overridden in the Conduit class.
     )
     _odometer_registry = OdometerRegistry()
-
-    @classmethod
-    def from_server(cls, model: str) -> "ModelClient":
-        """
-        Factory method to create a ClientModel instance for interacting with a remote server.
-
-        Usage:
-        model = Model.from_server("gpt-oss:latest")
-        """
-        from conduit.model.model_client import ModelClient
-
-        return ModelClient(model)
 
     @classmethod
     def models(cls) -> dict:
@@ -75,7 +63,7 @@ class Model:
             return False
 
     # Object methods
-    def __init__(self, model: str = "gpt-4o", console: Optional["Console"] = None):
+    def __init__(self, model: str = "gpt-4o", console: Console | None = None):
         from conduit.model.models.modelstore import ModelStore
 
         self.model = ModelStore._validate_model(model)
@@ -124,7 +112,7 @@ class Model:
         return None
 
     @console.setter
-    def console(self, console: "Console"):
+    def console(self, console: Console):
         """
         Sets the console object for rich output.
         This is useful if you want to override the default console for a specific instance.
@@ -176,22 +164,23 @@ class Model:
         self,
         # Standard parameters
         query_input: str | list | Message | None = None,
-        response_model: type["BaseModel"] | None = None,
+        response_model: type[BaseModel] | None = None,
         cache=True,
-        temperature: Optional[float] = None,
+        temperature: float | None = None,
         stream: bool = False,
         output_type: OutputType = "text",
-        max_tokens: Optional[int] = None,
+        max_tokens: int | None = None,
+        num_ctx: int | None = None,
         # For progress reporting decorator
         verbose: Verbosity = Verbosity.PROGRESS,
         index: int = 0,
         total: int = 0,
         # If we're hand-constructing Request params, we can pass them in directly
-        request: Optional[Request] = None,
+        request: Request | None = None,
         # Options for debugging
         return_request: bool = False,
         return_error: bool = False,
-    ) -> "ConduitResult | Request | Stream | AnthropicStream":
+    ) -> ConduitResult | Request | Stream | AnthropicStream:
         try:
             # Construct Request object if not provided (majority of cases)
             if not request:
