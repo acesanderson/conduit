@@ -5,6 +5,7 @@
   "flash": "gemini-2.5-flash-preview-05-20",
   "gemini": "gemini-2.5-flash-preview-05-20",
   "gemini2.5": "gemini-2.5-pro-preview-05-06",
+  "gemini3": "gemini-3-pro-preview",
   "gpt": "gpt-5-mini",
   "gpt-mini": "gpt-5-mini",
   "gpt-oss": "gpt-oss:latest",
