@@ -108,12 +108,12 @@ class OllamaClientSync(OllamaClient):
             # We want the raw response from OpenAI, so we use `create_with_completion`
             structured_response, result = (
                 self._client.chat.completions.create_with_completion(
-                    **request.to_openai()
+                    **request.to_ollama()
                 )
             )
         else:
             # Use the standard completion method
-            result = self._client.chat.completions.create(**request.to_openai())
+            result = self._client.chat.completions.create(**request.to_ollama())
         # Handle streaming response if needed
         if isinstance(result, Stream):
             usage = Usage(input_tokens=0, output_tokens=0)
@@ -158,11 +158,11 @@ class OllamaClientAsync(OllamaClient):
                 structured_response,
                 result,
             ) = await self._client.chat.completions.create_with_completion(
-                **request.to_openai()
+                **request.to_ollama()
             )
         else:
             # Use the standard completion method
-            result = await self._client.chat.completions.create(**request.to_openai())
+            result = await self._client.chat.completions.create(**request.to_ollama())
         # Handle streaming response if needed
         if isinstance(result, Stream):
             usage = Usage(input_tokens=0, output_tokens=0)
