@@ -1,5 +1,4 @@
 from pydantic import BaseModel, Field, ValidationError
-from typing import Optional
 from conduit.message.message import Message
 from conduit.message.textmessage import TextMessage
 from conduit.message.messages import Messages
@@ -19,6 +18,9 @@ from conduit.request.clientparams import (
 )
 from conduit.request.outputtype import OutputType
 from conduit.model.models.provider import Provider
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Request(BaseModel, RichDisplayParamsMixin, PlainDisplayParamsMixin):
@@ -38,7 +40,7 @@ class Request(BaseModel, RichDisplayParamsMixin, PlainDisplayParamsMixin):
     )
 
     # Optional parameters
-    temperature: Optional[float] = Field(
+    temperature: float | None = Field(
         default=None,
         description="Temperature for sampling. If None, defaults to provider-specific value.",
     )
@@ -52,17 +54,21 @@ class Request(BaseModel, RichDisplayParamsMixin, PlainDisplayParamsMixin):
         default=None,
         description="Pydantic model to convert messages to a specific format. If dict, this is a schema for the model for serialization / caching purposes.",
     )
-    max_tokens: Optional[int] = Field(
+    max_tokens: int | None = Field(
         default=None,
         description="Maximum number of tokens to generate. If None, it is not passed to the client (except for Anthropic, which requires it and has a default).",
     )
+    num_ctx: int | None = Field(
+        default=None,
+        description="Context window size (Ollama specific). If None, defaults to ModelStore settings.",
+    )
     # Post model init parameters
-    provider: Optional[Provider] = Field(
+    provider: Provider | None = Field(
         default=None,
         description="Provider of the model, populated post init. Not intended for direct use.",
     )
     # Client parameters (embedded in dict for now)
-    client_params: Optional[dict] = Field(
+    client_params: dict | None = Field(
         default=None,
         description="Client-specific parameters. Validated against the provider-approved params, through our ClientParams.",
     )
@@ -174,7 +180,7 @@ class Request(BaseModel, RichDisplayParamsMixin, PlainDisplayParamsMixin):
         if self.temperature is None:
             return
         # Find the temperature range for the provider
-        temperature_range: Optional[tuple[float, float]] = None
+        temperature_range: tuple[float, float | None] = None
         for client_param_type in ClientParamsModels:
             if self.provider == client_param_type.provider:
                 temperature_range = client_param_type.temperature_range
@@ -229,6 +235,7 @@ class Request(BaseModel, RichDisplayParamsMixin, PlainDisplayParamsMixin):
         )
         # Handle None temperature gracefully
         temp_str = str(self.temperature) if self.temperature is not None else "none"
+        ctx_str = str(self.num_ctx) if self.num_ctx is not None else "none"
         # Include client_params if they are set; the normalize_json ensures consistent ordering, recursively
         if self.client_params:
             client_params_str = json.dumps(
@@ -242,6 +249,7 @@ class Request(BaseModel, RichDisplayParamsMixin, PlainDisplayParamsMixin):
                 messages_str,
                 temp_str,
                 schema_str,
+                ctx_str,
                 self.provider or "none",
                 client_params_str,
             ]
@@ -271,10 +279,10 @@ class Request(BaseModel, RichDisplayParamsMixin, PlainDisplayParamsMixin):
         Required attributes:
         - model: str
         - messages: list[dict]
-        - temperature: Optional[float]
-        - response_model: Optional[dict]
-        - provider: Optional[str]
-        - client_params: Optional[dict]
+        - temperature: float | None
+        - response_model: dict | None
+        - provider: str | None
+        - client_params: dict | None
         - stream: bool
         - verbose: Verbosity
         """
@@ -341,7 +349,7 @@ class Request(BaseModel, RichDisplayParamsMixin, PlainDisplayParamsMixin):
                 f"OpenAIParams expected for OpenAI client, not {type(self.client_params)}."
             )
 
-        # Convert messages to OpenAI format based on the provider
+        # [Conversion logic for messages remains the same...]
         match self.provider:
             case "openai":
                 converted_messages = self.messages.to_openai()  # type: ignore
@@ -365,10 +373,9 @@ class Request(BaseModel, RichDisplayParamsMixin, PlainDisplayParamsMixin):
             "response_model": self.response_model,
             "temperature": self.temperature,
             "stream": self.stream,
-            "max_tokens": self.max_tokens,
         }
 
-        # OpenAI has different max token parameters for different models, irritatingly.
+        # OpenAI max_tokens logic
         if self.max_tokens is not None:
             if self.provider == "openai" and (
                 self.model.startswith("o1-")
@@ -376,39 +383,27 @@ class Request(BaseModel, RichDisplayParamsMixin, PlainDisplayParamsMixin):
                 or self.model.startswith("gpt-5")
             ):
                 base_params["max_completion_tokens"] = self.max_tokens
-                base_params.pop("max_tokens", None)  # Remove max_tokens if set
             else:
-                # All other providers (google, ollama, perplexity) and
-                # older OpenAI models use max_tokens
                 base_params["max_tokens"] = self.max_tokens
 
-        # Automatically include all client params
+        # Logic to move client_params/num_ctx into the correct place
         if self.provider == "ollama":
             if self.client_params:
-                # Ollama expects options to be nested under "extra_body"
                 base_params.update({"extra_body": {"options": self.client_params}})
         else:
             if self.client_params:
                 base_params.update(self.client_params)
 
-        # Filter out None values and return
+        # Filter out None values
         return {
             k: v
             for k, v in base_params.items()
             if v is not None or k == "response_model"
-        }  # Actually filter None values EXCEPT for response_model, as Instructor expects it to be present
-
-    def to_openai(self) -> dict:
-        if self.client_params:
-            assert OpenAIParams.model_validate(self.client_params), (
-                f"OpenAIParams expected for OpenAI client, not {type(self.client_params)}."
-            )
-        return self._to_openai_spec()
+        }
 
     def to_ollama(self) -> dict:
         """
-        We should set num_ctx so we have maximal context window.
-        Recall that Ollama with Instructor/OpenAI spec expects options to be nested under extra_body, so we have a special case within to_openai_spec.
+        Sets num_ctx in client_params, then delegates to _to_openai_spec.
         """
         from conduit.model.models.modelstore import ModelStore
 
@@ -416,16 +411,35 @@ class Request(BaseModel, RichDisplayParamsMixin, PlainDisplayParamsMixin):
             assert OllamaParams.model_validate(self.client_params), (
                 f"OllamaParams expected for Ollama client, not {type(self.client_params)}."
             )
-        # Set num_ctx to the maximum context window for the model.
-        num_ctx = ModelStore.get_num_ctx(self.model)
-        if num_ctx is None:
-            raise ValueError(
-                f"Model '{self.model}' does not have a defined context window."
+
+        # Ensure client_params is a dict so we can update it
+        if self.client_params is None:
+            self.client_params = {}
+
+        # Determine correct context size
+        if self.num_ctx is not None:
+            # User explicit override
+            logger.debug(
+                f"Using user-defined num_ctx={self.num_ctx} for Ollama model '{self.model}'."
             )
-        if self.client_params:
-            self.client_params["num_ctx"] = num_ctx
+            target_ctx = self.num_ctx
         else:
-            self.client_params = {"num_ctx": num_ctx}
+            # Model default
+            target_ctx = ModelStore.get_num_ctx(self.model)
+            if target_ctx is None:
+                # Fallback standard default
+                target_ctx = 4096
+
+        # ✅ Update dict instead of overwriting it (preserves other params if they exist)
+        self.client_params["num_ctx"] = target_ctx
+
+        return self._to_openai_spec()
+
+    def to_openai(self) -> dict:
+        if self.client_params:
+            assert OpenAIParams.model_validate(self.client_params), (
+                f"OpenAIParams expected for OpenAI client, not {type(self.client_params)}."
+            )
         return self._to_openai_spec()
 
     def to_anthropic(self) -> dict:
