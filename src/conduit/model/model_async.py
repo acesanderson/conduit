@@ -6,7 +6,6 @@ from conduit.message.textmessage import TextMessage
 from conduit.result.result import ConduitResult
 from conduit.result.response import Response
 from conduit.cache.cache import ConduitCache
-from typing import Optional
 from time import time
 from pydantic import ValidationError, BaseModel
 import importlib
@@ -17,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 class ModelAsync(Model):
     _async_clients = {}  # Separate from Model._clients
-    conduit_cache: Optional[ConduitCache] = None
+    conduit_cache: ConduitCache | None = None
     cache = conduit_cache
 
     def _get_client_type(self, model: str) -> tuple:
@@ -67,8 +66,9 @@ class ModelAsync(Model):
         raw=False,
         cache=False,
         print_response=False,
+        num_ctx: int | None = None,
         # If hand-rolling Request params, you can just pass the object directly.
-        request: Optional[Request] = None,
+        request: Request | None = None,
         # For debug: return Request, or an example Error
         return_request: bool = False,
         return_error: bool = False,
