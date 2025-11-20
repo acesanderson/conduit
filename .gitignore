@@ -20,4 +20,4 @@ multimodal/tts/asset/*
 *.npz
 multimodal/tts/audio_files/*
 uv.lock
-conduit-project/src/conduit/summarize/essays/*
+src/conduit/summarize/essays/*
