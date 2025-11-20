@@ -39,6 +39,13 @@ class ModelAsync(Model):
         else:
             raise ValueError(f"Model {model} not found in models")
 
+    def tokenize(self, text: str) -> int:
+        """
+        Get the token length for the given model.
+        Implementation at the client level.
+        """
+        return self._client.tokenize(model=self.model, text=text)
+
     @classmethod
     def _get_client(cls, client_type: tuple):
         # print(f"client type: {client_type}")
