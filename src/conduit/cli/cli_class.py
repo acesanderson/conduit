@@ -13,7 +13,7 @@ This allows you to tailor the behavior of ConduitCLI while leveraging its existi
 from argparse import ArgumentParser, Namespace
 from conduit.cli.config_loader import ConfigLoader
 from conduit.cli.handlers import HandlerMixin
-from conduit.cli.query_function import QueryFunctionProtocol, default_query_function
+from conduit.cli.query_function import CLIQueryFunctionProtocol, default_query_function
 from conduit.cli.printer import Printer
 from conduit.progress.verbosity import Verbosity
 from conduit.model.models.modelstore import ModelStore
@@ -63,7 +63,7 @@ class ConduitCLI(HandlerMixin):
         self,
         name: str = "conduit",
         description: str = DEFAULT_DESCRIPTION,
-        query_function: QueryFunctionProtocol = DEFAULT_QUERY_FUNCTION,
+        query_function: CLIQueryFunctionProtocol = DEFAULT_QUERY_FUNCTION,
         verbosity: Verbosity = DEFAULT_VERBOSITY,
         cache: bool = DEFAULT_CACHE_SETTING,
         persistent: bool = DEFAULT_PERSISTENT_SETTING,
@@ -74,10 +74,10 @@ class ConduitCLI(HandlerMixin):
         self.name: str = name  # Name of the CLI application
         self.description: str = description  # description of the CLI application
         # Query function -- must adhere to QueryFunctionProtocol
-        self.query_function: QueryFunctionProtocol = (
+        self.query_function: CLIQueryFunctionProtocol = (
             query_function  # function to handle queries
         )
-        assert isinstance(query_function, QueryFunctionProtocol), (
+        assert isinstance(query_function, CLIQueryFunctionProtocol), (
             "query_function must adhere to QueryFunctionProtocol"
         )
         # Configs
