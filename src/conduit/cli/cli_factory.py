@@ -8,23 +8,12 @@ from conduit.cli.cli_class import (
     DEFAULT_PREFERRED_MODEL,
     DEFAULT_VERBOSITY,
 )
-from conduit.cli.query_function import QueryFunctionProtocol
+from conduit.cli.query_function import CLIQueryFunctionProtocol
 from typing import TYPE_CHECKING
 import inspect
 
 if TYPE_CHECKING:
     from conduit.sync import Verbosity
-
-"""
-class QueryFunctionProtocol(Protocol):
-    def __call__(
-        self,
-        inputs: dict[str, str],
-        preferred_model: str,
-        include_history: bool,
-        verbose: Verbosity = Verbosity.PROGRESS,
-    ) -> Response: ...
-"""
 
 
 def validate_query_function_signature(query_function) -> bool:
@@ -74,7 +63,7 @@ def wrap_query_function(query_function):
     return wrapped
 
 
-def cli_factory(query_function: QueryFunctionProtocol) -> ConduitCLI:
+def cli_factory(query_function: CLIQueryFunctionProtocol) -> ConduitCLI:
     """
     Factory function to create a ConduitCLI instance with a simple query function.
     """

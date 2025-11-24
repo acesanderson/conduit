@@ -7,7 +7,7 @@ Some guidelines for this Mixin:
 
 from conduit.sync import Conduit, Verbosity
 from conduit.cli.printer import Printer
-from conduit.cli.query_function import QueryFunctionInputs
+from conduit.cli.query_function import CLIQueryFunctionInputs
 import logging
 import sys
 
@@ -186,7 +186,7 @@ class HandlerMixin:
         model_to_use = user_defined_model or self.preferred_model
         # Assemble the parts of the query
         logger.debug("Assembling query parts...")
-        inputs = QueryFunctionInputs(
+        inputs = CLIQueryFunctionInputs(
             query_input=self.flags.get("query_input", ""),
             context=f"<context>{self.stdin}</context>" if self.stdin else "",
             append=self.flags.get("append") or "",

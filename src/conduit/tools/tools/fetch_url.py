@@ -22,7 +22,7 @@ class FetchUrlToolCall(ToolCall):
     """
 
     tool_name: Literal["file_read"]
-    parameters: FetchParameters
+    parameters: FetchUrlParameters
 
 
 def extract_content_from_html(html: str) -> str:

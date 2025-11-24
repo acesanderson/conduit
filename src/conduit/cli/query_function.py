@@ -16,7 +16,7 @@ Conduit.console = console
 
 
 # Our input schema for the query function
-class QueryFunctionInputs(BaseModel):
+class CLIQueryFunctionInputs(BaseModel):
     """
     This has defaults, besides query_input, which is required.
     All query functions need to accept this object.
@@ -51,20 +51,20 @@ class QueryFunctionInputs(BaseModel):
 
 # Our protocol
 @runtime_checkable
-class QueryFunctionProtocol(Protocol):
+class CLIQueryFunctionProtocol(Protocol):
     """
     Protocol for a query function. Customized query functions should match this signature.
     """
 
     def __call__(
         self,
-        inputs: QueryFunctionInputs,
+        inputs: CLIQueryFunctionInputs,
     ) -> Response: ...
 
 
 # Now, our default implementation -- the beauty of LLMs with POSIX philosophy
 def default_query_function(
-    inputs: QueryFunctionInputs,
+    inputs: CLIQueryFunctionInputs,
 ) -> Response:
     """
     Default query function.
