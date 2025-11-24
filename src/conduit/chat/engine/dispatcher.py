@@ -27,7 +27,11 @@ from conduit.chat.engine.command import Command, CommandResult
 from conduit.sync import Model, Verbosity, Response
 from conduit.message.messagestore import MessageStore
 import re
-from instructor.exceptions import InstructorRetryException
+from conduit.chat.engine.query_function import (
+    ChatQueryFunctionProtocol,
+    ChatQueryFunctionInputs,
+    default_query_function,
+)
 
 
 class CommandDispatcher:
@@ -43,11 +47,13 @@ class CommandDispatcher:
         message_store: MessageStore,
         system_message: str,
         verbosity: Verbosity,
+        query_function: ChatQueryFunctionProtocol = default_query_function,
     ) -> None:
         self.model: Model = Model(model)
         self.message_store: MessageStore = message_store
         self.system_message: str = system_message
         self.verbosity: Verbosity = verbosity
+        self.query_function: ChatQueryFunctionProtocol = query_function
         # Dynamically registered commands
         self._commands: dict[str, Command] = {}
         self._register_commands()
@@ -189,32 +195,14 @@ class CommandDispatcher:
         # Ignore empty queries
         if user_input.strip() == "":
             return
+        # Create query inputs
+        query_inputs = ChatQueryFunctionInputs(
+            user_input=user_input,
+            model=self.model,
+            message_store=self.message_store,
+            system_message=self.system_message,
+            verbosity=self.verbosity,
+        )
         # Send query to model
-        try:
-            # Ensure system message is set
-            if self.system_message:
-                self.message_store.ensure_system_message(self.system_message)
-            # Add user message to store
-            self.message_store.add_new(role="user", content=user_input)
-
-            # Query model with full message history
-            response = self.model.query(
-                self.message_store.messages, verbose=self.verbosity
-            )
-
-            assert isinstance(response, Response), "Expected Response from model query"
-
-            # Increment usage stats
-            self.message_store.input_tokens += response.input_tokens
-            self.message_store.output_tokens += response.output_tokens
-            self.message_store.last_used_model_name = self.model.model
-
-            # Add assistant response to store
-            self.message_store.add_new(role="assistant", content=str(response))
-
-            # Display response
-            return str(response.content)
-
-        except InstructorRetryException:
-            # Network failure from instructor
-            return "[red]Network error. Please try again.[/red]"
+        response: Response = self.query_function(query_inputs)
+        return str(response.content)

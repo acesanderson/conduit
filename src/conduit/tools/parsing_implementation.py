@@ -35,7 +35,7 @@ def is_tool_call(xml_string: str) -> bool:
     )
 
 
-def execute_tool_call(xml_string: str) -> str:
+def execute_tool_call(xml_string: str, tool_registry: ToolRegistry) -> str:
     """
     Parse and execute a tool call from XML string format.
 
@@ -56,23 +56,3 @@ def execute_tool_call(xml_string: str) -> str:
             return f"Tool execution error: {str(e)}"
     else:
         raise ValueError(f"Invalid tool call XML format: {xml_string}")
-
-
-if __name__ == "__main__":
-    path = Path(__file__)
-    tool_registry = ToolRegistry()
-    tool_registry.register(FileReadTool)
-    tool_registry.register(FileReadChunkTool)
-    tool_registry.register(FileSearchTool)
-    tool_registry.register(ListFilesTool)
-
-    original_xml = f"""
-    <tool_call>
-        <tool_name>file_read</tool_name>
-        <parameters>
-            <path>{str(path)}</path>
-        </parameters>
-    </tool_call>
-    """.strip()
-    result = execute_tool_call(original_xml)
-    print(result)
