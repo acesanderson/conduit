@@ -20,10 +20,10 @@ from conduit.parser.stream.parsers import JSONStreamParser
 
 # Dependencies
 from conduit.parser.stream.protocol import StreamChunk
-from conduit.parser.stream.fixtures import MockChunk, MockStream, MockUsage
+from fixtures import MockChunk, MockStream, MockUsage
 
 # Import raw chunk lists
-from conduit.parser.stream.fixtures import (
+from fixtures import (
     SIMPLE_XML_CHUNKS,
     SIMPLE_JSON_CHUNKS,
     SPLIT_XML_TAG_CHUNKS,
