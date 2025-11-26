@@ -483,6 +483,7 @@ class Request(BaseModel, RichDisplayParamsMixin, PlainDisplayParamsMixin):
                 self.temperature if self.temperature is not None else 1.0
             ),  # Default to 1.0 if not set
             "max_tokens": self.max_tokens if self.max_tokens is not None else 4000,
+            "stream": self.stream,
         }
 
         # Add system parameter if we have system content

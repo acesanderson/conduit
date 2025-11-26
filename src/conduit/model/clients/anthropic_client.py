@@ -71,6 +71,7 @@ class AnthropicClientSync(AnthropicClient):
                 input_tokens=0,
                 output_tokens=0,
             )
+            return result, usage
         # Capture usage
         usage = Usage(
             input_tokens=result.usage.input_tokens,
@@ -86,9 +87,6 @@ class AnthropicClientSync(AnthropicClient):
         except AttributeError:
             pass
         if isinstance(result, BaseModel):
-            return result, usage
-        elif isinstance(result, Stream):
-            # Handle streaming response if needed
             return result, usage
         else:
             raise ValueError(
