@@ -30,15 +30,5 @@ Your reasoning here (e.g., "User asked for file content, using file_read tool.")
 </response_format>
 
 <examples>
-User: "Read the file at /home/user/notes.txt"
-Assistant:
-<thought>
-The user wants to read a file. I will use the 'file_read' tool with the provided path.
-</thought>
-<tool_call>
-    <tool_name>file_read</tool_name>
-    <parameters>
-        <path>/home/user/notes.txt</path>
-    </parameters>
-</tool_call>
+{{ example_call }}
 </examples>

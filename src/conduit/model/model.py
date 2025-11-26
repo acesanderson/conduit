@@ -1,5 +1,6 @@
 from __future__ import annotations
 from conduit.message.message import Message
+from conduit.message.messages import MessageUnion
 from conduit.progress.wrappers import progress_display
 from conduit.progress.verbosity import Verbosity
 from conduit.request.request import Request
@@ -163,7 +164,7 @@ class Model:
     def query(
         self,
         # Standard parameters
-        query_input: str | list | Message | None = None,
+        query_input: str | list[MessageUnion] | Message | None = None,
         response_model: type[BaseModel] | None = None,
         cache=True,
         temperature: float | None = None,

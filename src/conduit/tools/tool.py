@@ -1,5 +1,5 @@
-from typing import get_args, Protocol
-from pydantic import BaseModel, ConfigDict
+from typing import get_args, Protocol, Any
+from pydantic import BaseModel, ConfigDict, Field
 from collections.abc import Callable
 import json
 
@@ -78,7 +78,16 @@ class Tool(BaseModel):
     """Tool registry object."""
 
     tool_call_schema: type[ToolCall]
-    function: Callable[[ToolCall], str]
+    function: Callable[[ToolCall], str] = Field(
+        description="The function to execute the tool"
+    )
+    # These are for dynamic example generation for system prompt
+    example_query: str = Field(
+        description="Example user prompt that triggers this tool"
+    )
+    example_params: dict[str, Any] = Field(
+        description="Example parameters for the tool call"
+    )
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -98,6 +107,26 @@ class Tool(BaseModel):
         """Get the tool's JSON schema."""
         schema_dict: dict = self.tool_call_schema.model_json_schema()
         return json.dumps(schema_dict, indent=2)
+
+    @property
+    def xml_example(self) -> str:
+        """Generate a full XML example for the system prompt."""
+        # Convert dict params to XML tags
+        params_xml = "\n".join(
+            f"    <{k}>{v}</{k}>" for k, v in self.example_params.items()
+        )
+
+        return f"""User: "{self.example_query}"
+Assistant:
+<thought>
+The user has requested an action that requires the '{self.name}' tool. I will execute it with the appropriate parameters.
+</thought>
+<tool_call>
+    <tool_name>{self.name}</tool_name>
+    <parameters>
+{params_xml}
+    </parameters>
+</tool_call>"""
 
     def execute(self, call: ToolCall) -> str:
         """Execute this tool with a validated call."""
