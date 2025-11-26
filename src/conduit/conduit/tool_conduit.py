@@ -1,9 +1,9 @@
 from conduit.config import settings
 from conduit.tools.tools.fetch_url import FetchUrlTool
+from conduit.tools.parsing_implementation import is_tool_call, execute_tool_call
 from conduit.tools.registry import ToolRegistry
 from conduit.parser.stream.parsers import XMLStreamParser
-from conduit.message.messages import Messages
-from conduit.message.textmessage import create_system_message, TextMessage
+from conduit.message.textmessage import TextMessage
 from conduit.model.model import Model
 from conduit.prompt.prompt import Prompt
 from pathlib import Path
@@ -42,6 +42,8 @@ messages = [system_message, user_message]
 stream = model.query(query_input=messages, stream=True)
 parser = XMLStreamParser(stream, tag_name="function_calls")
 text_content, xml_object, full_buffer = parser.parse(close_on_match=True)
+if xml_object:
+    print(f"Extracted XML: {xml_object}")
 
 
 """
@@ -50,15 +52,7 @@ result = registry.parse_and_execute(
     tool_name="file_read",
     parameters={"path": "/path/to/file.txt"}
 )
-"""
-
-
-"""
-parser = XMLStreamParser(stream, tag_name="function_calls")
 
 # Parses the stream, stopping and closing connection once the full XML tag is found
 text_content, xml_object, full_buffer = parser.parse(close_on_match=True)
-
-if xml_object:
-    print(f"Extracted XML: {xml_object}")
 """
