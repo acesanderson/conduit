@@ -11,13 +11,14 @@ This allows you to tailor the behavior of ConduitCLI while leveraging its existi
 """
 
 from argparse import ArgumentParser, Namespace
+from conduit.config import settings
 from conduit.cli.config_loader import ConfigLoader
 from conduit.cli.handlers import HandlerMixin
 from conduit.cli.query_function import CLIQueryFunctionProtocol, default_query_function
 from conduit.cli.printer import Printer
 from conduit.progress.verbosity import Verbosity
 from conduit.model.models.modelstore import ModelStore
-from xdg_base_dirs import xdg_data_home, xdg_config_home, xdg_cache_home
+from xdg_base_dirs import xdg_data_home, xdg_cache_home
 from pathlib import Path
 import sys
 import logging
@@ -91,7 +92,7 @@ class ConduitCLI(HandlerMixin):
             self._construct_xdg_paths()
         )
         # Preferred models
-        self.preferred_model = preferred_model
+        self.preferred_model = settings.preferred_model
         self.preferred_model = self._get_preferred_model(preferred_model)
         # System message: three options:
         if system_message is not None:

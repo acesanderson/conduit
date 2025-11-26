@@ -1,3 +1,28 @@
+"""
+Central management system for registering, discovering, and executing external tools within the Conduit framework. This script provides the `ToolRegistry` class, which serves as the bridge between Large Language Model (LLM) outputs and executable Python functions, enabling the model to perform actions like file reading or web searching.
+
+The registry aggregates `Tool` objects, generating unified XML or JSON schemas that are injected into system prompts to inform the LLM of available capabilities. When the LLM requests a tool execution, the registry handles the lookup, parameter validation against the specific `Tool`'s schema, and dispatch to the underlying executable function.
+
+Usage:
+```python
+from conduit.tools.registry import ToolRegistry
+from conduit.tools.tools import FileReadTool
+
+# Initialize and register tools
+registry = ToolRegistry()
+registry.register(FileReadTool)
+
+# Generate schema for system prompt
+system_prompt_context = registry.xml_schema
+
+# Execute a tool call (typically parsed from LLM output)
+result = registry.parse_and_execute(
+    tool_name="file_read",
+    parameters={"path": "/path/to/file.txt"}
+)
+```
+"""
+
 from conduit.tools.tool import ToolCall, Tool
 from pathlib import Path
 import logging
