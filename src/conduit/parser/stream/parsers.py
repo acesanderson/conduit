@@ -1,10 +1,3 @@
-"""
-Stream parsers for extracting structured content from LLM response streams.
-
-Provides robust parsers that use state machines (not regex) to incrementally
-detect and extract XML and JSON objects as stream chunks arrive.
-"""
-
 import json
 from abc import ABC, abstractmethod
 from typing import Any
