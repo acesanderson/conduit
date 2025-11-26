@@ -35,7 +35,7 @@ def is_tool_call(xml_string: str) -> bool:
     )
 
 
-def execute_tool_call(xml_string: str, tool_registry: ToolRegistry) -> str:
+async def execute_tool_call(xml_string: str, tool_registry: ToolRegistry) -> str:
     """
     Parse and execute a tool call from XML string format.
 
@@ -50,7 +50,7 @@ def execute_tool_call(xml_string: str, tool_registry: ToolRegistry) -> str:
             for param in root[1]:
                 parameters[param.tag] = param.text
 
-            result = tool_registry.parse_and_execute(tool_name, parameters)
+            result = await tool_registry.parse_and_execute(tool_name, parameters)
             return result
         except ToolCallError as e:
             return f"Tool execution error: {str(e)}"

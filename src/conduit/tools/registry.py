@@ -85,7 +85,7 @@ class ToolRegistry:
         for tool in AllTools:
             self.register(tool)
 
-    def parse_and_execute(self, tool_name: str, parameters: dict) -> str:
+    async def parse_and_execute(self, tool_name: str, parameters: dict) -> str:
         """
         Parse raw LLM output into a validated ToolCall, then execute it.
 
@@ -101,12 +101,12 @@ class ToolRegistry:
         validated_call = tool.tool_call_schema.from_xml(tool_name, parameters)
 
         # Execute with the validated call
-        return tool.execute(validated_call)
+        return await tool.execute(validated_call)
 
-    def execute(self, call: ToolCall) -> str:
+    async def execute(self, call: ToolCall) -> str:
         """Execute a tool call by looking up and invoking its registered handler function."""
         for tool in self._tools:
             if tool.name == call.tool_name:
-                return tool.execute(call)
+                return await tool.execute(call)
 
         raise ValueError(f"Tool '{call.tool_name}' is not registered.")
