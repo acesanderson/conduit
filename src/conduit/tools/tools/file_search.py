@@ -55,4 +55,12 @@ def file_search(call: FileSearchToolCall) -> str:
         raise ToolCallError("File is not readable as text")
 
 
-FileSearchTool = Tool(tool_call_schema=FileSearchToolCall, function=file_search)
+example_query = "Search for the term 'error' in the file at /var/log/system.log."
+example_params = {"path": "/var/log/system.log", "query_string": "error"}
+
+FileSearchTool = Tool(
+    tool_call_schema=FileSearchToolCall,
+    function=file_search,
+    example_query=example_query,
+    example_params=example_params,
+)
