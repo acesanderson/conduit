@@ -214,30 +214,3 @@ class StreamLogger:
         self.chunk_count = 0
         self.total_chars = 0
         self._buffer = ""
-
-
-if __name__ == "__main__":
-    """Demonstrate different logging modes."""
-    from conduit.parser.stream.fixtures import create_test_stream, SIMPLE_TEXT_CHUNKS
-
-    print("=== Inline Mode Demo ===")
-    stream1 = create_test_stream(SIMPLE_TEXT_CHUNKS)
-    logger1 = StreamLogger(stream1, name="inline", mode="inline")
-    for _ in logger1:
-        pass
-    print()
-
-    print("\n=== Per-Chunk Mode Demo ===")
-    logging.basicConfig(level=logging.DEBUG)
-    stream2 = create_test_stream(SIMPLE_TEXT_CHUNKS)
-    logger2 = StreamLogger(stream2, name="per-chunk", mode="per-chunk")
-    for _ in logger2:
-        pass
-    print()
-
-    print("\n=== Silent Mode Demo ===")
-    stream3 = create_test_stream(SIMPLE_TEXT_CHUNKS)
-    logger3 = StreamLogger(stream3, name="silent", mode="silent")
-    for _ in logger3:
-        pass
-    print(f"Silent mode collected: {logger3.get_stats()}")

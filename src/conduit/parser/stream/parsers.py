@@ -33,7 +33,7 @@ class StreamParser(ABC):
 
         Returns:
             tuple containing:
-                - text: Content with structured object removed (before + after)
+                - text: Content with structured object removed (before)
                 - obj: Extracted object (XML string or dict), or None if not found
                 - buffer: All content received before stream was closed
         """
@@ -203,7 +203,7 @@ class XMLStreamParser(StreamParser):
 
         Returns:
             tuple containing:
-                - text: Buffer with XML object removed (before + after concatenated)
+                - text: Buffer with XML object removed (the text before)
                 - xml_obj: Complete XML object as string, or None if not found
         """
         # Find first occurrence of opening tag
@@ -243,12 +243,11 @@ class XMLStreamParser(StreamParser):
         # Extract the complete XML object
         xml_obj = buffer[start_index:object_end_index]
 
-        # Extract text before and after the object
+        # Extract text before the object -- text after is hallucinated
         text_before = buffer[:start_index]
-        text_after = buffer[object_end_index:]
 
         # Return text with object removed, and the object itself
-        return text_before + text_after, xml_obj
+        return text_before, xml_obj
 
 
 class JSONStreamParser(StreamParser):
@@ -343,10 +342,9 @@ class JSONStreamParser(StreamParser):
                             # 5. Validate with json.loads()
                             parsed_obj = json.loads(candidate_str)
 
-                            # Success!
+                            # Success! Extract text before object, text after is hallucinated
                             text_before = buffer[:start_index]
-                            text_after = buffer[end_index + 1 :]
-                            return text_before + text_after, parsed_obj
+                            return text_before, parsed_obj
 
                         except json.JSONDecodeError:
                             # False positive (e.g., "{key: 'val'}")
@@ -366,70 +364,4 @@ class JSONStreamParser(StreamParser):
 
 
 if __name__ == "__main__":
-    """Demonstrate XML parser with test streams."""
-    try:
-        from conduit.parser.stream.fixtures import (
-            TestStream,
-            SIMPLE_XML_CHUNKS,
-            NESTED_XML_CHUNKS,
-            PLAIN_TEXT_CHUNKS,
-            SIMPLE_JSON_CHUNKS,
-            TRICKY_JSON_CHUNKS,
-        )
-
-        print("=== XML Parser Demo: Simple ===\n")
-        xml_stream = TestStream(SIMPLE_XML_CHUNKS)
-        xml_parser = XMLStreamParser(xml_stream)
-        text, xml_obj, full_content = xml_parser.parse(close_on_match=True)
-
-        print(f"Text (without XML): {repr(text)}")
-        print(f"XML object found: {xml_obj is not None}")
-        if xml_obj:
-            print(f"XML length: {len(xml_obj)} chars")
-        print(f"Total content received: {len(full_content)} chars")
-        print()
-
-        print("=== XML Parser Demo: Nested ===\n")
-        nested_stream = TestStream(NESTED_XML_CHUNKS)
-        nested_parser = XMLStreamParser(nested_stream)
-        text, xml_obj, full_content = nested_parser.parse(close_on_match=True)
-
-        print(f"Text: {repr(text)}")
-        print(f"Nested XML found: {xml_obj is not None}")
-        if xml_obj:
-            print(f"Contains nested content: {'<inner>' in xml_obj}")
-        print()
-
-        print("=== XML Parser Demo: No Match ===\n")
-        plain_stream = TestStream(PLAIN_TEXT_CHUNKS)
-        plain_parser = XMLStreamParser(plain_stream)
-        text, xml_obj, full_content = plain_parser.parse(close_on_match=True)
-
-        print(f"Text: {repr(text)}")
-        print(f"XML found: {xml_obj is not None}")
-        print()
-
-        print("=== JSON Parser Demo: Simple ===\n")
-        json_stream = TestStream(SIMPLE_JSON_CHUNKS)
-        json_parser = JSONStreamParser(json_stream)
-        text, json_obj, full_content = json_parser.parse(close_on_match=True)
-
-        print(f"Text (without JSON): {repr(text)}")
-        print(f"JSON object found: {json_obj}")
-        print(f"Stream closed early: {'Hope that helps!' not in full_content}")
-        print()
-
-        print("=== JSON Parser Demo: Tricky ===\n")
-        tricky_stream = TestStream(TRICKY_JSON_CHUNKS)
-        tricky_parser = JSONStreamParser(tricky_stream)
-        text, json_obj, full_content = tricky_parser.parse(close_on_match=True)
-
-        print(f"Text: {repr(text)}")
-        print(f"Tricky JSON object found: {json_obj}")
-        print()
-
-    except ImportError as e:
-        print(f"Could not import fixtures: {e}")
-        print("Run this file as part of the conduit module.")
-    except NotImplementedError as e:
-        print(f"Feature not implemented: {e}")
+    from conduit.sync import Model
