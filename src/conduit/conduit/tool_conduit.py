@@ -40,10 +40,24 @@ prompt_str = (
 user_message = TextMessage(role="user", content=prompt_str)
 messages = [system_message, user_message]
 stream = model.query(query_input=messages, stream=True)
-parser = XMLStreamParser(stream, tag_name="function_calls")
+parser = XMLStreamParser(stream, tag_name="tool_call")
 text_content, xml_object, full_buffer = parser.parse(close_on_match=True)
 if xml_object:
     print(f"Extracted XML: {xml_object}")
+print(f"Remaining Text: {text_content}")
+# Async
+import asyncio
+
+
+async def main():
+    if is_tool_call(xml_object):
+        print(f"Is tool call: {True}")
+        # Execute the tool call (Note: this is async method)
+        result = await execute_tool_call(xml_object, registry)
+        print(f"Tool Execution Result: {result}")
+
+
+asyncio.run(main())
 
 
 """

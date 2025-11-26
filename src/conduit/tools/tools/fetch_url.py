@@ -46,9 +46,7 @@ def extract_content_from_html(html: str) -> str:
     return content
 
 
-async def fetch_url(
-    url: str, user_agent: str, force_raw: bool = False, proxy_url: str | None = None
-) -> tuple[str, str]:
+async def fetch_url(url: str, force_raw: bool = False) -> tuple[str, str]:
     """
     Fetch the URL and return the content in a form ready for the LLM, as well as a prefix string with status information.
     """
@@ -59,7 +57,9 @@ async def fetch_url(
             response = await client.get(
                 url,
                 follow_redirects=True,
-                headers={"User-Agent": user_agent},
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
+                },
                 timeout=30,
             )
         except HTTPError as e:

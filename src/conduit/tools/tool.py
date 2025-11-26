@@ -1,6 +1,6 @@
 from typing import get_args, Protocol, Any
 from pydantic import BaseModel, ConfigDict, Field
-from collections.abc import Callable
+from collections.abc import Callable, Awaitable
 import json
 
 
@@ -78,7 +78,7 @@ class Tool(BaseModel):
     """Tool registry object."""
 
     tool_call_schema: type[ToolCall]
-    function: Callable[[ToolCall], str] = Field(
+    function: Callable[[ToolCall], Awaitable[str]] = Field(
         description="The function to execute the tool"
     )
     # These are for dynamic example generation for system prompt
@@ -128,6 +128,8 @@ The user has requested an action that requires the '{self.name}' tool. I will ex
     </parameters>
 </tool_call>"""
 
-    def execute(self, call: ToolCall) -> str:
+    async def execute(self, call: ToolCall) -> str:
         """Execute this tool with a validated call."""
-        return self.function(call)
+        # extract parameters
+        parameters = call.parameters.model_dump()
+        return await self.function(**parameters)
