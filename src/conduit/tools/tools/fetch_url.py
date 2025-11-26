@@ -21,7 +21,7 @@ class FetchUrlToolCall(ToolCall):
     Fetch the content of a web page.
     """
 
-    tool_name: Literal["file_read"]
+    tool_name: Literal["fetch_url"] = "fetch_url"
     parameters: FetchUrlParameters
 
 
@@ -54,7 +54,7 @@ async def fetch_url(
     """
     from httpx import AsyncClient, HTTPError
 
-    async with AsyncClient(proxies=proxy_url) as client:
+    async with AsyncClient() as client:
         try:
             response = await client.get(
                 url,
@@ -85,4 +85,13 @@ async def fetch_url(
     )
 
 
-FetchUrlTool = Tool(tool_call_schema=FetchUrlToolCall, function=fetch_url)
+example_query = "Fetch this web page: https://example.com/article"
+example_params = {"url": "https://example.com/article"}
+
+
+FetchUrlTool = Tool(
+    tool_call_schema=FetchUrlToolCall,
+    function=fetch_url,
+    example_query=example_query,
+    example_params=example_params,
+)

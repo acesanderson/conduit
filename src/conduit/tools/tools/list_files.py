@@ -45,4 +45,13 @@ def list_files(call: ListFilesToolCall) -> str:
         raise ToolCallError(f"Permission denied: {call.parameters.path}")
 
 
-ListFilesTool = Tool(tool_call_schema=ListFilesToolCall, function=list_files)
+example_query = "List all files in the /home/user/documents directory."
+example_params = {"path": "/home/user/documents"}
+
+
+ListFilesTool = Tool(
+    tool_call_schema=ListFilesToolCall,
+    function=list_files,
+    example_query=example_query,
+    example_params=example_params,
+)

@@ -65,6 +65,12 @@ def file_read_chunk(call: FileReadChunkToolCall) -> str:
         raise ToolCallError("File is not readable as text")
 
 
+example_query = "Read lines 10 to 20 from the file at /home/user/document.txt."
+example_params = {"path": "/home/user/document.txt", "start_line": 10, "end_line": 20}
+
 FileReadChunkTool = Tool(
-    tool_call_schema=FileReadChunkToolCall, function=file_read_chunk
+    tool_call_schema=FileReadChunkToolCall,
+    function=file_read_chunk,
+    example_query=example_query,
+    example_params=example_params,
 )

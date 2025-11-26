@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field, ValidationError
 from conduit.message.message import Message
 from conduit.message.textmessage import TextMessage
-from conduit.message.messages import Messages
+from conduit.message.messages import Messages, MessageUnion
 from conduit.parser.parser import Parser
 from conduit.progress.verbosity import Verbosity
 from conduit.progress.display_mixins import (
@@ -34,7 +34,7 @@ class Request(BaseModel, RichDisplayParamsMixin, PlainDisplayParamsMixin):
         default="text", description="Desired output: 'text', 'image', 'audio'"
     )
     model: str = Field(..., description="The model identifier to use for inference.")
-    messages: Messages | list[Message] = Field(
+    messages: Messages | list[MessageUnion] = Field(
         default_factory=list,
         description="List of messages to send to the model. Can include text, images, audio, etc.",
     )
@@ -107,7 +107,7 @@ class Request(BaseModel, RichDisplayParamsMixin, PlainDisplayParamsMixin):
     # Constructor methods
     @classmethod
     def from_query_input(
-        cls, query_input: str | Message | list[Message], **kwargs
+        cls, query_input: str | Message | list[MessageUnion], **kwargs
     ) -> "Request":
         """
         Create a Request from various input types.
@@ -116,7 +116,7 @@ class Request(BaseModel, RichDisplayParamsMixin, PlainDisplayParamsMixin):
             query_input: Can be:
                 - str: Creates a TextMessage with this content
                 - Message: Uses the Message directly (AudioMessage, ImageMessage, etc.)
-                - list[Message]: Uses the list of messages directly
+                - list[MessageUnion]: Uses the list of messages directly
         """
         messages = kwargs.pop("messages", [])
 
@@ -138,7 +138,7 @@ class Request(BaseModel, RichDisplayParamsMixin, PlainDisplayParamsMixin):
 
         else:
             raise ValueError(
-                f"query_input must be str, Message, or list[Message], got {type(query_input)}"
+                f"query_input must be str, Message, or list[MessageUnion], got {type(query_input)}"
             )
 
         kwargs.update({"messages": modified_messages})

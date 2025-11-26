@@ -36,8 +36,13 @@ def file_read(tool_call: FileReadToolCall) -> str:
     return contents
 
 
+example_query = "Read the contents of the file at /home/user/document.txt."
+example_params = {"path": "/home/user/document.txt"}
+
 # Our tool registry object
 FileReadTool = Tool(
     tool_call_schema=FileReadToolCall,
     function=file_read,
+    example_query=example_query,
+    example_params=example_params,
 )
