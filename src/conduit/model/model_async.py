@@ -1,4 +1,4 @@
-from conduit.model.model import Model
+from conduit.model.model_sync import ModelSync
 from conduit.request.request import Request
 from conduit.progress.wrappers import progress_display
 from conduit.progress.verbosity import Verbosity
@@ -14,7 +14,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class ModelAsync(Model):
+class ModelAsync:
     _async_clients = {}  # Separate from Model._clients
     conduit_cache: ConduitCache | None = None
     cache = conduit_cache

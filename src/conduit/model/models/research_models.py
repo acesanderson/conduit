@@ -5,7 +5,7 @@ from conduit.model.models.modelspecs_CRUD import (
     get_all_modelspecs,
     in_db,
 )
-from conduit.model.model import Model
+from conduit.model.model_sync import ModelSync
 from conduit.conduit.sync_conduit import SyncConduit
 from conduit.prompt.prompt import Prompt
 from conduit.parser.parser import Parser
