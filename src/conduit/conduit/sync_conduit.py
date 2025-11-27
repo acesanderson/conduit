@@ -6,7 +6,7 @@ Conduits are immutable, treat them like tuples.
 
 # The rest of our package.
 from conduit.prompt.prompt import Prompt
-from conduit.model.model import Model
+from conduit.model.model_sync import ModelSync
 from conduit.result.response import Response
 from conduit.result.error import ConduitError
 from conduit.result.result import ConduitResult
@@ -21,7 +21,7 @@ import logging
 
 if TYPE_CHECKING:
     from rich.console import Console
-    from conduit.model.remote_model import RemoteModel
+    from conduit.model.remote_model import RemoteModelSync
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ class SyncConduit:
     How we chain things together.
     Instantiate with:
     - a prompt (a string that is ready for jinja2 formatting),
-    - a model (a name of a model (full list of accessible models in Model.models))
+    - a model (a name of a model (full list of accessible models in ModelSync.models))
     - a parser (a function that takes a string and returns a string)
     """
 
@@ -40,7 +40,7 @@ class SyncConduit:
 
     def __init__(
         self,
-        model: "Model | RemoteModel",
+        model: "ModelSync | RemoteModelSync",
         prompt: Prompt | None = None,
         parser: Parser | None = None,
         pretty: bool = True,
@@ -117,12 +117,12 @@ class SyncConduit:
             parser: (Parser | None): A parser to process the model's output.
             verbose (bool): If True, displays progress information during the
                 model query. This is managed by the `progress_display` decorator
-                on the underlying `Model.query` call. Defaults to True.
+                on the underlying `ModelSync.query` call. Defaults to True.
             stream (bool): If True, attempts to stream the response from the
                 model. Note that streaming requests do not return a `Response`
                 object directly but rather a generator. Defaults to False.
             cache (bool): If True, the response will be cached if caching is
-                enabled on the `Model` class. Defaults to True.
+                enabled on the `ModelSync` class. Defaults to True.
             index (int): The current index of the item being processed in a
                 batch operation. Used for progress display (e.g., "[1/100]").
                 Requires `total` to be provided. Defaults to 0.
@@ -186,7 +186,7 @@ class SyncConduit:
             total=total,
             stream=stream,
         )
-        logger.info(f"Model query completed, return type: {type(result)}.")
+        logger.info(f"ModelSync query completed, return type: {type(result)}.")
         # Save to messagestore if we have one and if we have a response.
         if SyncConduit.message_store and save:
             if isinstance(result, Response):
@@ -221,7 +221,7 @@ class SyncConduit:
         self, prompt: str | Message | None, messages: Messages | list[Message] | None
     ) -> list[Message] | Messages:
         """
-        We want a list of messages to submit to Model.query.
+        We want a list of messages to submit to ModelSync.query.
         If we have a prompt, we want to convert it into a user message and append it to messages.
         WARNING: This function will mutate its inputs. If messages = a MessageStore, you might see doubled messages if you don't take this into account. We are taking advantage of mutability and inheritance here but beware -- especially if MessageStore is persistent, as this can also kick off database writes.
         """
