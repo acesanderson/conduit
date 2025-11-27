@@ -1,5 +1,5 @@
 from conduit.result.response import Response
-from conduit.model.model import Model
+from conduit.model.model_sync import ModelSync
 from conduit.message.imagemessage import ImageMessage
 
 m = Model("Jlonge4/flux-dev-fp8")

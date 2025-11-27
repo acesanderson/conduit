@@ -1,5 +1,5 @@
-from typing import Union
 from conduit.result.response import Response
 from conduit.result.error import ConduitError
+from conduit.parser.stream.protocol import SyncStream, AsyncStream
 
-ConduitResult = Union[Response, ConduitError]
+ConduitResult = Response | ConduitError | SyncStream | AsyncStream

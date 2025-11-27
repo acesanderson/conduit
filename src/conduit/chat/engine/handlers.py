@@ -95,7 +95,7 @@ class CommandHandlers:
         """
         Set the current model.
         """
-        from conduit.model.model import Model
+        from conduit.model.model_sync import ModelSync
 
         try:
             self.model = Model(param)

@@ -9,7 +9,7 @@ response = conduit.run(input_data)
 
 # Orchestration classes
 from conduit.conduit.sync_conduit import SyncConduit
-from conduit.model.model import Model
+from conduit.model.model_sync import ModelSync
 from conduit.prompt.prompt import Prompt
 
 # Cache
@@ -22,6 +22,7 @@ from conduit.message.message import Message
 from conduit.request.request import Request
 
 Conduit = SyncConduit  # Alias for easier imports
+Model = ModelSync  # Alias for easier imports
 
 
 __all__ = [
@@ -29,6 +30,7 @@ __all__ = [
     "ConduitCache",
     "Message",
     "Model",
+    "ModelSync",
     "Prompt",
     "Request",
     "Response",

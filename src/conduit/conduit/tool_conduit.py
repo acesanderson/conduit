@@ -1,12 +1,22 @@
+"""
+We will have async by default; we can also create a Sync (for simple one-off queries) with:
+```python
+async def one_off_query(): ...
+
+asyncio.run(one_off_query())
+```
+"""
+
 from conduit.config import settings
 from conduit.tools.tools.fetch_url import FetchUrlTool
 from conduit.tools.parsing_implementation import is_tool_call, execute_tool_call
 from conduit.tools.registry import ToolRegistry
 from conduit.parser.stream.parsers import XMLStreamParser
 from conduit.message.textmessage import TextMessage
-from conduit.model.model import Model
+from conduit.model.model_async import ModelAsync
 from conduit.prompt.prompt import Prompt
 from pathlib import Path
+import asyncio
 
 SYSTEM_PROMPT_PATH = (
     Path(__file__).parent.parent / "tools" / "prompts" / "system_prompt_template.jinja2"
@@ -29,27 +39,25 @@ def generate_system_prompt(registry: ToolRegistry) -> str:
     return rendered
 
 
-registry = ToolRegistry()
-registry.register(FetchUrlTool)
-model = Model(PREFERRED_MODEL)
-system_prompt = generate_system_prompt(registry)
-system_message = TextMessage(role="system", content=system_prompt)
-prompt_str = (
-    "Summarize this article: https://news.ucsc.edu/2025/11/sharf-preconfigured-brain/"
-)
-user_message = TextMessage(role="user", content=prompt_str)
-messages = [system_message, user_message]
-stream = model.query(query_input=messages, stream=True)
-parser = XMLStreamParser(stream, tag_name="tool_call")
-text_content, xml_object, full_buffer = parser.parse(close_on_match=True)
-if xml_object:
-    print(f"Extracted XML: {xml_object}")
-print(f"Remaining Text: {text_content}")
-# Async
-import asyncio
-
-
 async def main():
+    registry = ToolRegistry()
+    registry.register(FetchUrlTool)
+    model = ModelAsync(PREFERRED_MODEL)
+    system_prompt = generate_system_prompt(registry)
+    system_message = TextMessage(role="system", content=system_prompt)
+    prompt_str = "Summarize this article: https://news.ucsc.edu/2025/11/sharf-preconfigured-brain/"
+    user_message = TextMessage(role="user", content=prompt_str)
+    messages = [system_message, user_message]
+    stream = await model.query(query_input=messages, stream=True)
+    parser = XMLStreamParser(stream, tag_name="tool_call")
+    text_content, xml_object, full_buffer = await parser.parse_async(
+        close_on_match=True
+    )
+    if xml_object:
+        print(f"Extracted XML: {xml_object}")
+    print(f"Remaining Text: {text_content}")
+    # Async
+
     if is_tool_call(xml_object):
         print(f"Is tool call: {True}")
         # Execute the tool call (Note: this is async method)

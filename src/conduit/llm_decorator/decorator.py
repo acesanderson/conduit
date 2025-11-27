@@ -1,4 +1,4 @@
-from conduit.model.model import Model
+from conduit.model.model_sync import ModelSync
 from conduit.prompt.prompt import Prompt
 from conduit.conduit.sync_conduit import SyncConduit
 from collections.abc import Callable

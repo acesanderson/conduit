@@ -57,7 +57,7 @@ class Response(BaseModel, RichDisplayResponseMixin, PlainDisplayResponseMixin):
         Emit a TokenEvent to the OdometerRegistry if it exists.
         """
         from conduit.odometer.TokenEvent import TokenEvent
-        from conduit.model.model import Model
+        from conduit.model.model_sync import ModelSync
 
         assert self.request.provider, "Provider must be set in the request"
 

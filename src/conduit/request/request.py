@@ -1,5 +1,6 @@
+from __future__ import annotations
 from pydantic import BaseModel, Field, ValidationError
-from conduit.message.message import Message
+from conduit.request.query import QueryInput
 from conduit.message.textmessage import TextMessage
 from conduit.message.messages import Messages, MessageUnion
 from conduit.parser.parser import Parser
@@ -106,9 +107,7 @@ class Request(BaseModel, RichDisplayParamsMixin, PlainDisplayParamsMixin):
 
     # Constructor methods
     @classmethod
-    def from_query_input(
-        cls, query_input: str | Message | list[MessageUnion], **kwargs
-    ) -> "Request":
+    def from_query_input(cls, query_input: QueryInput, **kwargs) -> Request:
         """
         Create a Request from various input types.
 
@@ -126,12 +125,12 @@ class Request(BaseModel, RichDisplayParamsMixin, PlainDisplayParamsMixin):
             user_message = TextMessage(role="user", content=query_input)
             modified_messages = messages + [user_message]
 
-        elif isinstance(query_input, Message):
+        elif isinstance(query_input, MessageUnion):
             # ✅ NEW: Handle Message objects directly (AudioMessage, ImageMessage, etc.)
             modified_messages = messages + [query_input]
 
         elif isinstance(query_input, list) and all(
-            isinstance(msg, Message) for msg in query_input
+            isinstance(msg, MessageUnion) for msg in query_input
         ):
             # ✅ NEW: Handle list of Message objects
             modified_messages = messages + query_input

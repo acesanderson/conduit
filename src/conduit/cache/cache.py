@@ -1,5 +1,6 @@
 from conduit.result.response import Response
-from typing import Optional, Any
+from conduit.request.request import Request
+from typing import Any
 from pathlib import Path
 from xdg_base_dirs import xdg_cache_home
 import sqlite3
@@ -78,7 +79,7 @@ class ConduitCache:
         )
         self.connection.commit()
 
-    def get(self, cache_key: str) -> Optional[Any]:
+    def get(self, cache_key: str) -> Any | None:
         """
         Retrieve cached response by key.
 
@@ -124,7 +125,7 @@ class ConduitCache:
         self.connection.commit()
 
     # INTEGRATED CACHE METHODS - no need for external functions
-    def check_for_model(self, Request):
+    def check_for_model(self, Request) -> Response | None:
         """
         Check if response exists in cache for the given Request.
 
@@ -137,7 +138,7 @@ class ConduitCache:
         cache_key = Request.generate_cache_key()
         return self.get(cache_key)
 
-    def store_for_model(self, Request, response):
+    def store_for_model(self, request: Request, response: Response):
         """
         Store response in cache for the given Request.
 
