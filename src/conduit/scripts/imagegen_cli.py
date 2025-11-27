@@ -4,7 +4,7 @@ import torch, io, base64, argparse
 
 
 def generate_image(prompt_str: str) -> ImageMessage:
-    from conduit.model.model import Model
+    from conduit.model.model_sync import ModelSync
     from conduit.conduit.sync_conduit import SyncConduit
     from conduit.prompt.prompt import Prompt
 
