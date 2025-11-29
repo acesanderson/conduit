@@ -54,7 +54,7 @@ def sync_wrapper(
     **kwargs,
 ):
     """Synchronous wrapper for progress display with verbosity support"""
-    model_name = model_instance.model
+    model_name = model_instance.name
     display_preview = (
         f"[{index}/{total}] {query_preview}" if index is not None else query_preview
     )
