@@ -48,13 +48,13 @@ class ModelBase(ABC):
 
     def __init__(
         self,
-        model: str = settings.preferred_model,
+        model_name: str = settings.preferred_model,
         console: Console | None = None,
         verbosity: Verbosity = settings.default_verbosity,
     ):
         from conduit.model.models.modelstore import ModelStore
 
-        self.name: str = ModelStore.validate_model(model)
+        self.name: str = ModelStore.validate_model(model_name)
         self.verbosity: Verbosity = verbosity
         self.client: Client = self.get_client(self.name)
         self._console = console

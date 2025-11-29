@@ -148,7 +148,7 @@ async def async_wrapper(
     model_instance, func, handler, query_preview, verbosity, *args, **kwargs
 ):
     """Asynchronous wrapper for progress display with verbosity support"""
-    model_name = model_instance.model
+    model_name = model_instance.name
 
     # Show starting state (only for PROGRESS and above)
     if verbosity >= Verbosity.PROGRESS:

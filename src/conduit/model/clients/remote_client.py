@@ -1,16 +1,21 @@
+from conduit.config import settings
 from conduit.model.clients.client import Client
 from conduit.model.clients.client import Usage
-from headwater_api.classes import StatusResponse
 from conduit.request.request import Request
+from conduit.result.result import ConduitResult
+from headwater_api.classes import StatusResponse
 from headwater_client.client.headwater_client import HeadwaterClient
 from typing import override
+from functools import cache
+import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class RemoteClient(Client):
     def __init__(self):
-        hc = HeadwaterClient()
-        self._client = self._initialize_client().conduit
-        self._validate_server_model()
+        self._client = self._initialize_client()
 
     @override
     def _initialize_client(self) -> HeadwaterClient:
@@ -26,25 +31,32 @@ class RemoteClient(Client):
         except Exception as e:
             raise ConnectionError(f"Failed to connect to Headwater server: {e}")
 
-    def _validate_server_model(self):
+    @cache
+    def _validate_server_model(self, model_name: str) -> bool:
         """Validate that the model is available on the server"""
         try:
             status: StatusResponse = self._client.get_status()
             available_models = getattr(status, "models_available", [])
             logger.info(f"Available models on server: {available_models}")
             # Update server models file
-            with open(settings.paths["SERVER_MODELS_PATH"], "w") as f:
-                json_dict = {"ollama": available_models}
-                _ = f.write(json.dumps(json_dict, indent=4))
-            logger.debug(
-                f"Updated server models file at {settings.paths['SERVER_MODELS_PATH']}"
-            )
+            if available_models:
+                with open(settings.paths["SERVER_MODELS_PATH"], "w") as f:
+                    json_dict = {"ollama": available_models}
+                    _ = f.write(json.dumps(json_dict, indent=4))
+                logger.debug(
+                    f"Updated server models file at {settings.paths['SERVER_MODELS_PATH']}"
+                )
+            else:
+                raise ValueError("No models available on server.")
 
-            if self.model not in available_models:
+            if model_name not in available_models:
                 raise ValueError(
-                    f"Model '{self.model}' not available on server. "
+                    f"Model '{model_name}' not available on server. "
                     f"Available models: {available_models}"
                 )
+            else:
+                logger.info(f"Model '{model_name}' is available on server.")
+                return True
         except Exception as e:
             raise ValueError(f"Failed to validate model on server: {e}")
 
@@ -52,18 +64,19 @@ class RemoteClient(Client):
     def _get_api_key(self) -> str: ...
 
     @override
-    def query(self, request: Request) -> tuple:
+    def query(self, request: Request) -> tuple[ConduitResult, Usage]:
         """
         Query the remote model via HeadwaterClient.
-        We get a Response model, which we unpack and repack into a Response object + Usage.
+        Unlike other clients, we get a full Response object (including token usage) back.
         """
-        response = self._client.query_sync(request)
-        content = response.content
+        self._validate_server_model(model_name=request.model)
+        response = self._client.conduit.query_sync(request)
+        # Dummy usage object since we get full response from server
         usage = Usage(
-            input_tokens=response.get("input_tokens"),
-            output_tokens=response.get("output_tokens"),
+            input_tokens=response.input_tokens,
+            output_tokens=response.output_tokens,
         )
-        return content, usage
+        return response, usage  # usage: response, _
 
     @override
     def tokenize(self, model: str, text: str) -> int:
@@ -71,3 +84,12 @@ class RemoteClient(Client):
         Get the token count for a text, per a given model's tokenization function.
         """
         raise NotImplementedError("Tokenization not implemented in RemoteClient.")
+
+    # Client/server specific methods
+    def get_status(self) -> StatusResponse:
+        """Get server status"""
+        return self._client.get_status()
+
+    def ping(self) -> bool:
+        """Ping server to check health"""
+        return self._client.ping()
