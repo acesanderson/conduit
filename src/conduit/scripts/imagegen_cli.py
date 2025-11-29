@@ -1,45 +1,39 @@
+import os
+from io import BytesIO
+import google.generativeai as genai
+from PIL import Image
+import argparse
 from conduit.message.imagemessage import ImageMessage
-from diffusers import FluxPipeline
-import torch, io, base64, argparse
+import base64
 
 
-def generate_image(prompt_str: str) -> ImageMessage:
-    from conduit.model.model_sync import ModelSync
-    from conduit.conduit.sync_conduit import SyncConduit
-    from conduit.prompt.prompt import Prompt
+def generate_image(prompt: str) -> ImageMessage:
+    genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
 
-    model = Model("gemini-2.5-flash-image-preview")
-    prompt = Prompt(prompt_str)
-    sync_conduit = SyncConduit(model=model, prompt=prompt)
-    response = sync_conduit.run()
-    assert isinstance(response, ImageMessage)
-    return response
-
-
-def generate_image_local(prompt: str) -> ImageMessage:
-    pipe = FluxPipeline.from_pretrained(
-        "Jlonge4/flux-dev-fp8", torch_dtype=torch.bfloat16
+    model = genai.GenerativeModel("gemini-2.5-flash-image")
+    image = model.generate_content(prompt)
+    save_image_from_response(image, "generated_image.png")
+    text_response, image_response = image.parts
+    # convert image_response.inline_data.data from bytes to base64 string
+    base64_image_data = base64.b64encode(image_response.inline_data.data).decode(
+        "utf-8"
     )
-    pipe.enable_sequential_cpu_offload()
-
-    image = pipe(
-        prompt,
-        height=1024,
-        width=1024,
-        guidance_scale=3.5,
-        num_inference_steps=50,
-        max_sequence_length=512,
-        generator=torch.Generator("cpu").manual_seed(0),
-    ).images[0]
-
-    # Convert PIL image to base64 string
-    buffered = io.BytesIO()
-    image.save(buffered, format="PNG")  # or "JPEG"
-    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-
-    return ImageMessage.from_base64(
-        image_content=img_str, text_content="generated image"
+    image_message = ImageMessage(
+        role="assistant",
+        text_content=text_response.text,
+        image_content=base64_image_data,
     )
+    return image_message
+
+
+def save_image_from_response(response, filename):
+    for c in getattr(response, "candidates", []):
+        for p in getattr(c.content, "parts", []):
+            if getattr(p, "inline_data", None):
+                img = Image.open(BytesIO(p.inline_data.data))
+                img.save(filename)
+                return filename
+    raise RuntimeError("No image returned")
 
 
 def main():
@@ -48,8 +42,8 @@ def main():
         "prompt", type=str, help="The prompt to generate the image from."
     )
     args = parser.parse_args()
-    im = generate_image(args.prompt)
-    im.display()
+    image_msg = generate_image(args.prompt)
+    image_msg.display()
 
 
 if __name__ == "__main__":
