@@ -71,6 +71,4 @@ class ModelAsync(ModelBase):
         Get the token length for the given model.
         Implementation at the client level.
         """
-        return await asyncio.to_thread(
-            self._client.tokenize, model=self.model, text=text
-        )
+        return await asyncio.to_thread(self.client.tokenize, model=self.name, text=text)
