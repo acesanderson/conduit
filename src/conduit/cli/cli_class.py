@@ -18,7 +18,7 @@ from conduit.cli.query_function import CLIQueryFunctionProtocol, default_query_f
 from conduit.cli.printer import Printer
 from conduit.progress.verbosity import Verbosity
 from conduit.model.models.modelstore import ModelStore
-from xdg_base_dirs import xdg_data_home, xdg_cache_home
+from xdg_base_dirs import xdg_data_home, xdg_cache_home, xdg_config_home
 from pathlib import Path
 import sys
 import logging

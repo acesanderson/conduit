@@ -3,6 +3,7 @@ from conduit.model.model_base import ModelBase
 from conduit.progress.wrappers import progress_display
 from conduit.result.result import ConduitResult
 from conduit.result.error import ConduitError
+from pydantic import ValidationError
 from typing import override
 from pathlib import Path
 from time import time
@@ -25,7 +26,6 @@ class ModelSync(ModelBase):
     @override
     def query(self, query_input=None, **kwargs) -> ConduitResult:
         try:
-            breakpoint()
             # 1. CPU: Prepare
             request = self._prepare_request(query_input, **kwargs)
 

@@ -146,7 +146,7 @@ class ConduitCache:
             Request: Request object containing request parameters
             response: Response object to cache
         """
-        cache_key = Request.generate_cache_key()
+        cache_key = request.generate_cache_key()
         self.set(cache_key, response)
 
     def _serialize_response(self, response: Response) -> str:
