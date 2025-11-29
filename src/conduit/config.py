@@ -8,23 +8,29 @@ Configuration hierarchy:
 
 from pathlib import Path
 import tomllib
+import json
 from dataclasses import dataclass
 from conduit.progress.verbosity import Verbosity
 from xdg_base_dirs import (
     xdg_config_home,
+    xdg_state_home,
 )
 import os
 
 CONFIG_DIR = Path(xdg_config_home()) / "conduit"
+STATE_DIR = Path(xdg_state_home()) / "conduit"
 SYSTEM_PROMPT_PATH = CONFIG_DIR / "system_message.jinja2"
 SETTINGS_TOML_PATH = CONFIG_DIR / "settings.toml"
+SERVER_MODELS_PATH = STATE_DIR / "server_models.json"
 
 
 @dataclass
 class Settings:
     system_prompt: str
     preferred_model: str
-    verbosity: Verbosity
+    default_verbosity: Verbosity
+    server_models: list[str]
+    paths: dict[str, Path]
 
 
 def load_settings() -> Settings:
@@ -32,7 +38,8 @@ def load_settings() -> Settings:
     config = {
         "system_prompt": "You are a helpful assistant.",
         "preferred_model": "gpt3",
-        "verbosity": Verbosity.PROGRESS,
+        "default_verbosity": Verbosity.PROGRESS,
+        "server_models": [],
     }
 
     # Config files (medium priority)
@@ -43,8 +50,14 @@ def load_settings() -> Settings:
         toml_config = tomllib.load(f)
     toml_dict = toml_config.get("settings")
     preferred_model = toml_dict.get("preferred_model", config["preferred_model"])
-    verbosity_str = toml_dict.get("verbosity", config["verbosity"].name)
+    verbosity_str = toml_dict.get("verbosity", config["default_verbosity"].name)
     verbosity = Verbosity[verbosity_str.upper()]
+    assert SERVER_MODELS_PATH.exists(), (
+        f"Missing server models file: {SERVER_MODELS_PATH}"
+    )
+    with SERVER_MODELS_PATH.open("r") as f:
+        server_models_dict: dict[str, list[str]] = json.load(f)
+    server_models: list[str] = server_models_dict.get("ollama", [])
 
     # Environment variables (highest priority)
     system_prompt = (
@@ -63,11 +76,21 @@ def load_settings() -> Settings:
         else verbosity
     )
 
+    paths = {
+        "CONFIG_DIR": CONFIG_DIR,
+        "STATE_DIR": STATE_DIR,
+        "SYSTEM_PROMPT_PATH": SYSTEM_PROMPT_PATH,
+        "SETTINGS_TOML_PATH": SETTINGS_TOML_PATH,
+        "SERVER_MODELS_PATH": SERVER_MODELS_PATH,
+    }
+
     config.update(
         {
             "system_prompt": system_prompt,
             "preferred_model": preferred_model,
-            "verbosity": verbosity,
+            "default_verbosity": verbosity,
+            "server_models": server_models,
+            "paths": paths,
         }
     )
 

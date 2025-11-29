@@ -1,27 +1,24 @@
 from __future__ import annotations
 from conduit.model.model_base import ModelBase
+from conduit.model.clients.client import Client
 from conduit.progress.wrappers import progress_display
 from conduit.result.result import ConduitResult
 from conduit.result.error import ConduitError
 from pydantic import ValidationError
 from typing import override
-from pathlib import Path
 from time import time
 import logging
 
 logger = logging.getLogger(__name__)
-dir_path = Path(__file__).resolve().parent
-
-
-"""
-def _prepare_request(self, query_input, kwargs) -> Request:
-def _process_response(
-def _check_cache(self, request: Request) -> Response | None:
-def _save_cache(self, request: Request, response: Response):
-"""
 
 
 class ModelSync(ModelBase):
+    @override
+    def get_client(self, model_name: str) -> Client:
+        from conduit.model.models.modelstore import ModelStore
+
+        return ModelStore.get_client(model_name, "sync")
+
     @progress_display
     @override
     def query(self, query_input=None, **kwargs) -> ConduitResult:
@@ -37,7 +34,7 @@ class ModelSync(ModelBase):
 
             # 3. I/O: Network Call (Blocking)
             start = time()
-            raw_result, usage = self._client.query(request)
+            raw_result, usage = self.client.query(request)
             stop = time()
 
             # 4. CPU: Process
@@ -49,20 +46,28 @@ class ModelSync(ModelBase):
 
             return response
         except ValidationError as e:
+            try:
+                request_request = request.model_dump()
+            except Exception:
+                request_request = {}
             conduit_error = ConduitError.from_exception(
                 e,
                 code="validation_error",
                 category="client",
-                request_request=request.model_dump() if request else {},
+                request_request=request_request,
             )
             logger.error(f"Validation error: {conduit_error}")
             return conduit_error
         except Exception as e:
+            try:
+                request_request = request.model_dump()
+            except Exception:
+                request_request = {}
             conduit_error = ConduitError.from_exception(
                 e,
                 code="query_error",
                 category="client",
-                request_request=request.model_dump() if request else {},
+                request_request=request_request,
             )
             logger.error(f"Error during query: {conduit_error}")
             return conduit_error
@@ -73,16 +78,4 @@ class ModelSync(ModelBase):
         Get the token length for the given model.
         Implementation at the client level.
         """
-        return self._client.tokenize(model=self.model, text=text)
-
-
-if __name__ == "__main__":
-    # Instantiate model (requires valid configuration/API key for gpt-4o)
-    model = ModelSync("gpt3")
-
-    # 1. Verify Request object construction (bypasses API call)
-    response = model.query(query_input="Explain quantum physics")
-    print(f"Response: {response}")
-
-    # 2. Check tokenization interface
-    print(f"Tokens for input: {model.tokenize('Explain quantum physics')}")
+        return self.client.tokenize(model=self.name, text=text)

@@ -13,7 +13,7 @@ from __future__ import annotations
 from conduit.config import settings
 from conduit.request.request import Request
 from conduit.request.query import QueryInput
-from conduit.model.clients.client import Usage
+from conduit.model.clients.client import Usage, Client
 from conduit.parser.stream.protocol import SyncStream, AsyncStream
 from conduit.result.response import Response
 from conduit.result.result import ConduitResult
@@ -21,8 +21,7 @@ from conduit.progress.verbosity import Verbosity
 from conduit.odometer.OdometerRegistry import OdometerRegistry
 from pydantic import BaseModel
 from typing import TYPE_CHECKING, Any
-from pathlib import Path
-import importlib
+from abc import ABC, abstractmethod
 import logging
 
 # Load only if type checking
@@ -31,16 +30,14 @@ if TYPE_CHECKING:
     from conduit.cache.cache import ConduitCache
 
 logger = logging.getLogger(__name__)
-dir_path = Path(__file__).resolve().parent
 
 
-class ModelBase:
+class ModelBase(ABC):
     """
     Stem class for Model implementations; not to be used directly.
     """
 
     # Class singletons
-    _clients = {}  # Store lazy-loaded client instances at the class level
     conduit_cache: ConduitCache | None = (
         None  # If you want to add a cache, add it at class level as a singleton.
     )
@@ -50,17 +47,20 @@ class ModelBase:
     _odometer_registry = OdometerRegistry()
 
     def __init__(
-        self, model: str = settings.preferred_model, console: Console | None = None
+        self,
+        model: str = settings.preferred_model,
+        console: Console | None = None,
+        verbosity: Verbosity = settings.default_verbosity,
     ):
         from conduit.model.models.modelstore import ModelStore
 
-        self.model = ModelStore._validate_model(model)
-        self._client_type = self._get_client_type(self.model)
-        self._client = self.__class__._get_client(self._client_type)
+        self.name: str = ModelStore.validate_model(model)
+        self.verbosity: Verbosity = verbosity
+        self.client: Client = self.get_client(self.name)
         self._console = console
 
     @classmethod
-    def models(cls) -> dict:
+    def models(cls) -> dict[str, list[str]]:
         """
         Returns a dictionary of available models.
         This is useful for introspection and debugging.
@@ -68,20 +68,6 @@ class ModelBase:
         from conduit.model.models.modelstore import ModelStore
 
         return ModelStore.models()
-
-    @classmethod
-    def validate_model(cls, model: str) -> bool:
-        """
-        Validates the model name against the available models.
-        Raises ValueError if the model is not found.
-        """
-        from conduit.model.models.modelstore import ModelStore
-
-        model_name = ModelStore._validate_model(model)
-        if model_name:
-            return True
-        else:
-            return False
 
     @classmethod
     def stats(cls):
@@ -131,62 +117,6 @@ class ModelBase:
         """
         self._console = console
 
-    def _get_client_type(self, model: str, sync: bool = True) -> tuple:
-        """
-        Setting client_type for Model object is necessary for loading the correct client in the query functions.
-        Returns a tuple with client type (which informs the module title) and the client class name (which is used to instantiate the client).
-        """
-        from conduit.model.models.modelstore import ModelStore
-
-        model_list = ModelStore.models()
-        if sync:
-            if model in model_list["openai"]:
-                return "openai", "OpenAIClientSync"
-            elif model in model_list["anthropic"]:
-                return "anthropic", "AnthropicClientSync"
-            elif model in model_list["google"]:
-                return "google", "GoogleClientSync"
-            elif model in model_list["ollama"]:
-                return "ollama", "OllamaClientSync"
-            elif model in model_list["groq"]:
-                return "groq", "GroqClientSync"
-            elif model in model_list["perplexity"]:
-                return "perplexity", "PerplexityClientSync"
-            else:
-                raise ValueError(f"Model {model} not found in models")
-        else:
-            if model in model_list["openai"]:
-                return "openai", "OpenAIClientAsync"
-            elif model in model_list["anthropic"]:
-                return "anthropic", "AnthropicClientAsync"
-            elif model in model_list["google"]:
-                return "google", "GoogleClientAsync"
-            elif model in model_list["ollama"]:
-                return "ollama", "OllamaClientAsync"
-            elif model in model_list["groq"]:
-                return "groq", "GroqClientAsync"
-            elif model in model_list["perplexity"]:
-                return "perplexity", "PerplexityClientAsync"
-            else:
-                raise ValueError(f"Model {model} not found in models")
-
-    @classmethod
-    def _get_client(cls, client_type: tuple):
-        # print(f"client type: {client_type}")
-        if client_type[0] not in cls._clients:
-            try:
-                module = importlib.import_module(
-                    f"conduit.model.clients.{client_type[0].lower()}_client"
-                )
-                client_class = getattr(module, f"{client_type[1]}")
-                cls._clients[client_type[0]] = client_class()
-            except ImportError as e:
-                raise ImportError(f"Failed to import {client_type} client: {str(e)}")
-        client_object = cls._clients[client_type[0]]
-        if not client_object:
-            raise ValueError(f"Client {client_type} not found in clients")
-        return client_object
-
     def __repr__(self):
         attributes = ", ".join(
             [f"{k}={repr(v)[:50]}" for k, v in self.__dict__.items()]
@@ -208,7 +138,7 @@ class ModelBase:
                 raise ValueError("query_input is required when no request is provided.")
 
             # inject defaults
-            kwargs.setdefault("model", self.model)
+            kwargs.setdefault("model", self.name)
 
             request: Request = Request.from_query_input(
                 query_input=query_input, **kwargs
@@ -315,8 +245,11 @@ class ModelBase:
             self.conduit_cache.store_for_model(request, response)
 
     # Expected methods in subclasses
-    def query(self, query_input: QueryInput, **kwargs) -> ConduitResult:
-        raise NotImplementedError("Subclasses must implement the query method.")
+    @abstractmethod
+    def get_client(self, model_name: str) -> Client: ...
 
-    def tokenize(self, text: str) -> int:
-        raise NotImplementedError("Subclasses must implement the tokenize method.")
+    @abstractmethod
+    def query(self, query_input: QueryInput, **kwargs) -> ConduitResult: ...
+
+    @abstractmethod
+    def tokenize(self, text: str) -> int: ...

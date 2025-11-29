@@ -14,8 +14,10 @@ from conduit.model.models.modelspecs_CRUD import (
     get_all_model_names,
 )
 from conduit.model.models.research_models import create_modelspec
+from conduit.model.clients.client import Client
 from xdg_base_dirs import xdg_state_home, xdg_config_home
 from pathlib import Path
+from typing import Literal
 import json
 import itertools
 import logging
@@ -39,7 +41,7 @@ class ModelStore:
     """
 
     @classmethod
-    def models(cls):
+    def models(cls) -> dict[str, list[str]]:
         """
         Definitive list of models supported by Conduit library, as well as the local list of ollama models.
         """
@@ -120,7 +122,7 @@ class ModelStore:
         return in_aliases or in_models
 
     @classmethod
-    def _validate_model(cls, model: str) -> str:
+    def validate_model(cls, model: str) -> str:
         """
         Validate the model name against the supported models and aliases.
         Converts aliases to their corresponding model names if necessary.
@@ -308,7 +310,7 @@ class ModelStore:
         """
         Get the model name, validating against aliases and supported models.
         """
-        model = cls._validate_model(model)
+        model = cls.validate_model(model)
         try:
             return get_modelspec_by_name(model)
         except ValueError:
@@ -320,6 +322,109 @@ class ModelStore:
         Get all models as ModelSpec objects.
         """
         return get_all_modelspecs()
+
+    @classmethod
+    def get_client(
+        cls, model_name: str, execution_mode: Literal["sync", "async", "remote"]
+    ) -> Client:
+        """
+        Get the client for a specific model.
+        """
+        model_name = cls.validate_model(model_name)
+        from conduit.model.models.modelstore import ModelStore
+
+        model_list = ModelStore.models()
+        # Handle remote execution mode first -- we don't care about model name here
+        if execution_mode == "remote":
+            return cls._load_remote_client(execution_mode)
+
+        # Now all sync / async modes
+        if model_name in model_list["openai"]:
+            return cls._load_openai_client(execution_mode)
+        elif model_name in model_list["anthropic"]:
+            return cls._load_anthropic_client(execution_mode)
+        elif model_name in model_list["google"]:
+            return cls._load_google_client(execution_mode)
+        elif model_name in model_list["ollama"]:
+            return cls._load_ollama_client(execution_mode)
+        elif model_name in model_list["perplexity"]:
+            return cls._load_perplexity_client(execution_mode)
+        else:
+            raise ValueError(f"Model {model_name} not found in ModelStore")
+
+    @staticmethod
+    def _load_openai_client(
+        execution_mode: Literal["sync", "async", "remote"],
+    ) -> Client:
+        if execution_mode == "sync":
+            from conduit.model.clients.openai_client import OpenAIClientSync
+
+            return OpenAIClientSync()
+        elif execution_mode == "async":
+            from conduit.model.clients.openai_client import OpenAIClientAsync
+
+            return OpenAIClientAsync()
+
+    @staticmethod
+    def _load_anthropic_client(
+        execution_mode: Literal["sync", "async", "remote"],
+    ) -> Client:
+        if execution_mode == "sync":
+            from conduit.model.clients.anthropic_client import AnthropicClientSync
+
+            return AnthropicClientSync()
+        elif execution_mode == "async":
+            from conduit.model.clients.anthropic_client import AnthropicClientAsync
+
+            return AnthropicClientAsync()
+
+    @staticmethod
+    def _load_google_client(
+        execution_mode: Literal["sync", "async", "remote"],
+    ) -> Client:
+        if execution_mode == "sync":
+            from conduit.model.clients.google_client import GoogleClientSync
+
+            return GoogleClientSync()
+        elif execution_mode == "async":
+            from conduit.model.clients.google_client import GoogleClientAsync
+
+            return GoogleClientAsync()
+
+    @staticmethod
+    def _load_ollama_client(
+        execution_mode: Literal["sync", "async", "remote"],
+    ) -> Client:
+        if execution_mode == "sync":
+            from conduit.model.clients.ollama_client import OllamaClientSync
+
+            return OllamaClientSync()
+        elif execution_mode == "async":
+            from conduit.model.clients.ollama_client import OllamaClientAsync
+
+            return OllamaClientAsync()
+
+    @staticmethod
+    def _load_perplexity_client(
+        execution_mode: Literal["sync", "async", "remote"],
+    ) -> Client:
+        if execution_mode == "sync":
+            from conduit.model.clients.perplexity_client import PerplexityClientSync
+
+            return PerplexityClientSync()
+        elif execution_mode == "async":
+            from conduit.model.clients.perplexity_client import PerplexityClientAsync
+
+            return PerplexityClientAsync()
+
+    @staticmethod
+    def _load_remote_client(
+        execution_mode: Literal["sync", "async", "remote"],
+    ) -> Client:
+        if execution_mode == "remote":
+            from conduit.model.clients.remote_client import RemoteClient
+
+            return RemoteClient()
 
     ## Get subsets of models by provider
     @classmethod

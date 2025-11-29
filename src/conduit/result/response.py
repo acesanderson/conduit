@@ -78,7 +78,7 @@ class Response(BaseModel, RichDisplayResponseMixin, PlainDisplayResponseMixin):
             timestamp=int(datetime.fromisoformat(self.timestamp).timestamp()),
             host=host,
         )
-        Model._odometer_registry.emit_token_event(event)
+        ModelSync._odometer_registry.emit_token_event(event)
 
     def to_cache_dict(self) -> dict:
         """
