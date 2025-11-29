@@ -89,6 +89,18 @@
       "handler": "handle_wipe"
     },
     {
+      "name": "--ping",
+      "action": "store_true",
+      "help": "Ping the Headwater server to check connectivity",
+      "handler": "handle_ping"
+    },
+    {
+      "name": "--status",
+      "action": "store_true",
+      "help": "Get the status of the Headwater server",
+      "handler": "handle_status"
+    },
+    {
       "abbrev": "-s",
       "name": "--shell",
       "action": "store_true",

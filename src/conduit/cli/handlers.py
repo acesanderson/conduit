@@ -123,6 +123,25 @@ class HandlerMixin:
     def handle_shell(self):
         pass
 
+    def handle_ping(self):
+        from headwater_client.client.headwater_client import HeadwaterClient
+
+        hc = HeadwaterClient()
+        response = hc.ping()
+        if response == True:
+            response = "Pong!"
+            self.printer.print_pretty(f"[green]{response}[/green]")
+        else:
+            response = "No response."
+            self.printer.print_pretty(f"[red]{response}[/red]")
+
+    def handle_status(self):
+        from headwater_client.client.headwater_client import HeadwaterClient
+
+        hc = HeadwaterClient()
+        status = hc.get_status()
+        self.printer.print_pretty(status)
+
     def handle_last(self):
         """
         Print the last message in the message store and exit.
