@@ -1,15 +1,20 @@
 """
-A Conduit is a convenience wrapper for models, prompts, parsers, messages, and response objects.
-A conduit needs to have at least a prompt and a model.
-Conduits are immutable, treat them like tuples.
+### Conduit vs. Model: The Division of Labor
+
+The **Model** class is the **Execution Runtime**; it handles the *mechanics* of intelligence—I/O, token accounting, caching, and normalizing disparate API protocols into a unified Request/Response standard. The **Conduit** class is your **Workflow Orchestrator**; it handles the *context* of the application—templating prompts, managing conversation history (`MessageStore`), and governing the specific topology (linear, parallel, or recursive) of the execution flow.
+
+### The Conduit Family Taxonomy
+
+* **`BaseConduit` (Abstract Stem):** The foundational abstract class that defines the core protocol for all conduit topologies, managing prompt rendering, message coercion, and input validation.
+* **`SyncConduit` (Linear Blocking):** The standard, synchronous pipeline that binds a prompt to a model for a simple 1-in-1-out execution flow.
+* **`AsyncConduit` (Linear Non-Blocking):** Mirrors `SyncConduit` logic but returns awaitable coroutines, allowing it to yield control within an event loop for responsive applications.
+* **`BatchConduit` (Parallel):** Manages high-throughput concurrency, mapping a list of inputs to a list of outputs while handling aggregation and partial failures.
+* **`ToolConduit` (Cyclic):** Orchestrates a recursive execution loop (Model $\to$ Decision $\to$ Tool $\to$ Result) until a final answer is derived.
+* **`SkillsConduit` (Dynamic):** Implements progressive disclosure by analyzing context and mutating the system prompt to inject specific capabilities ("skills") at runtime.
 """
 
 from __future__ import annotations
-from conduit.message.message import Message
-from conduit.message.textmessage import TextMessage
-from conduit.message.messages import Messages
-from conduit.message.messagestore import MessageStore
-from conduit.progress.verbosity import Verbosity
+from conduit.config import settings
 from typing import TYPE_CHECKING
 import logging
 
@@ -21,32 +26,67 @@ if TYPE_CHECKING:
     from conduit.result.error import ConduitError
     from conduit.result.result import ConduitResult
     from conduit.parser.parser import Parser
+    from conduit.message.messages import Messages
+    from conduit.message.message import Message
+    from conduit.message.textmessage import TextMessage
+    from conduit.message.messagestore import MessageStore
+    from conduit.progress.verbosity import Verbosity
 
 logger = logging.getLogger(__name__)
 
 
-class SyncConduit:
+class ConduitBase:
     def __init__(
         self,
+        # Required
         model: ModelBase,
+        # Major components
         prompt: Prompt | None = None,
         parser: Parser | None = None,
-        console: Console | None = None,
         message_store: MessageStore | None = None,
-        pretty: bool = True,
+        # Project defaults
+        console: Console | None = settings.default_console,
+        system_message: str | None = settings.system_prompt,
+        verbosity: Verbosity = settings.default_verbosity,
     ):
-        self.prompt = prompt
-        self.model = model
-        self.parser = parser
+        self.prompt: Prompt | None = prompt
+        self.model: ModelBase | None = model
+        self.verbosity: Verbosity = verbosity
+        self.parser: Parser | None = parser
+        self.console: Console | None = console
+        self.message_store: MessageStore | None = message_store
         if self.prompt:
-            self.input_schema = self.prompt.input_schema  # this is a set
+            self.input_schema: set[str] = self.prompt.input_schema
         else:
             self.input_schema = set()
-        if pretty:
+
+    # Config methods (if we want to enable/disable components post-init)
+    def enable_message_store(self, name: str) -> None:
+        if not self.message_store:
+            from conduit.message.messagestore import MessageStore
+
+            self.message_store = MessageStore(name=name)
+
+    def disable_message_store(self) -> None:
+        self.message_store = None
+
+    def enable_console(self) -> None:
+        if not self.console:
             from rich.console import Console
 
-            SyncConduit._console = Console()
+            self.console = Console()
 
+    def disable_console(self) -> None:
+        self.console = None
+        self.model.disable_console()
+
+    def enable_cache(self) -> None:
+        self.model.enable_cache()
+
+    def disable_cache(self) -> None:
+        self.model.disable_cache()
+
+    # Validation methods
     def _validate_input_variables(self, input_variables: dict[str, str]) -> None:
         """
         Validates that the provided input variables match the expected input schema.
@@ -60,13 +100,13 @@ class SyncConduit:
                 expected by the prompt.
         """
         # Determine if prompt is expecting variables that are not provided
-        missing_vars: set = self.input_schema - input_variables.keys()
+        missing_vars: set[str] = self.input_schema - input_variables.keys()
         if missing_vars:
             raise ValueError(
                 f'Prompt is missing required input variable(s): "{'", "'.join(missing_vars)}"'
             )
         # Determine if extra variables are provided that the prompt does not expect
-        extra_vars: set = input_variables.keys() - self.input_schema
+        extra_vars: set[str] = input_variables.keys() - self.input_schema
         if extra_vars:
             raise ValueError(
                 f'Provided input variable(s) are not referenced in prompt: "{'", "'.join(extra_vars)}"'
@@ -89,52 +129,6 @@ class SyncConduit:
         include_history: bool = True,
         save: bool = True,
     ) -> ConduitResult:
-        """
-        Executes the Conduit, processing the prompt and interacting with the language model.
-
-        whether 'messages' are provided or if a streaming response is requested.
-        It renders the prompt with `input_variables` if a `Prompt` object is
-        associated with the Conduit.
-
-        Args:
-            input_variables (dict | None): A dictionary of variables to render
-                the prompt template. Required if the Conduit's prompt contains
-                Jinja2 placeholders. Defaults to None.
-            messages (list[Message] | None): A list of `Message` objects
-                representing a conversation history or a single message. If
-                provided, the Conduit will operate in chat mode. Defaults to an
-                empty list.
-            parser: (Parser | None): A parser to process the model's output.
-            verbose (bool): If True, displays progress information during the
-                model query. This is managed by the `progress_display` decorator
-                on the underlying `ModelSync.query` call. Defaults to True.
-            stream (bool): If True, attempts to stream the response from the
-                model. Note that streaming requests do not return a `Response`
-                object directly but rather a generator. Defaults to False.
-            cache (bool): If True, the response will be cached if caching is
-                enabled on the `ModelSync` class. Defaults to True.
-            index (int): The current index of the item being processed in a
-                batch operation. Used for progress display (e.g., "[1/100]").
-                Requires `total` to be provided. Defaults to 0.
-            total (int): The total number of items in a batch operation. Used
-                for progress display (e.g., "[1/100]"). Requires `index` to be
-                provided. Defaults to 0.
-            include_history (bool): If True, the full message history will be
-                included in the query. Defaults to True; does not apply if no
-                message store is associated with the Conduit.
-            save (bool): If True, history is saved to the message store.
-                Defaults to True, as that is the main purpose of message store.
-                If false, this is an ephemeral query that will not be saved.
-
-        Returns:
-            Response: A `Response` object containing the model's output, status,
-            duration, and associated messages. Returns a generator if `stream`
-            is True.
-
-        Raises:
-            ValueError: If neither a prompt nor messages are provided.
-            ValueError: If `index` is provided without `total`, or vice-versa.
-        """
         # Render our prompt with the input_variables if variables are passed.
         if input_variables and self.prompt:
             self._validate_input_variables(input_variables)
