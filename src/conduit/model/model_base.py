@@ -1,12 +1,14 @@
 """
-This abstract class handles everything *except* the network call.
-* **Responsibilities:**
-    * Input preparation (Request construction).
-    * Input validation (Token counting, parameter checking).
-    * Cache Logic (Check cache key).
-    * Response Processing (Standardizing raw API output).
-    * Post-processing (Saving to cache, emitting Odometer events).
-* **State:** Holds the `conduit_cache` and `console` defaults (allowing instance overrides).
+### Model vs. Conduit: The Division of Labor
+
+The **Conduit** class is your **Workflow Orchestrator**; it handles the *context* of the application—templating prompts, managing conversation history, and governing the shape of the execution flow. The **Model** class is your **Execution Runtime**; it handles the *mechanics* of intelligence. It is responsible for normalizing disparate provider APIs (OpenAI, Anthropic, Ollama) into a unified standard, managing low-level infrastructure like token accounting and caching, and executing the actual network I/O.
+
+### The Model Family Taxonomy
+
+* **`ModelSync` (Blocking I/O):** The default implementation that executes requests synchronously, blocking the main thread until completion; ideal for linear scripts, CLIs, and simple tools.
+* **`ModelAsync` (Non-Blocking I/O):** An asynchronous implementation that returns awaitable coroutines, designed for integration with Python's `asyncio` event loop to support high-concurrency applications.
+* **`RemoteModel` (Proxy Execution):** A lightweight client that serializes requests and delegates execution to a centralized `Headwater` server, abstracting away local provider dependencies and API key management.
+* **`ModelBase` (The Abstract Stem):** The foundational abstract class that defines the core Request/Response protocol, cache logic, and odometer tracking shared by all execution strategies.
 """
 
 from __future__ import annotations
@@ -38,12 +40,12 @@ class ModelBase(ABC):
     """
 
     # Class singleton
-    _odometer_registry = OdometerRegistry()
+    _odometer_registry: OdometerRegistry = OdometerRegistry()
 
     def __init__(
         self,
         model_name: str = settings.preferred_model,
-        console: Console | None = None,
+        console: Console | None = settings.default_console,
         verbosity: Verbosity = settings.default_verbosity,
         cache: str | ConduitCache | None = None,
     ):
@@ -52,7 +54,6 @@ class ModelBase(ABC):
         self.name: str = ModelStore.validate_model(model_name)
         self.verbosity: Verbosity = verbosity
         self.console: Console | None = console
-        self.conduit_cache: ConduitCache | None = None
         self.client: Client = self.get_client(self.name)
 
         if cache is not None:
@@ -62,22 +63,34 @@ class ModelBase(ABC):
                 # Convenience: Create cache from string name
 
                 logger.info(f"Initializing cache with name: '{cache}'")
-                self.conduit_cache = ConduitCache(name=cache)
+                self.cache: str | ConduitCache | None = ConduitCache(name=cache)
             else:  # It's already a ConduitCache instance
-                self.conduit_cache = cache
+                self.cache = cache
+        else:
+            self.cache = None
 
     # Config methods (post-init)
     def enable_cache(self) -> None:
-        if self.conduit_cache is None:
+        if self.cache is None:
             from conduit.cache.cache import ConduitCache
 
             logger.info("Enabling default cache.")
-            self.conduit_cache = ConduitCache()
+            self.cache = ConduitCache()
 
     def enable_console(self) -> None:
         if self.console is None:
             logger.info("Enabling console.")
             self.console = Console()
+
+    def disable_cache(self) -> None:
+        if self.cache is not None:
+            logger.info("Disabling cache.")
+            self.cache = None
+
+    def disable_console(self) -> None:
+        if self.console is not None:
+            logger.info("Disabling console.")
+            self.console = None
 
     # Class methods for global info
     @classmethod

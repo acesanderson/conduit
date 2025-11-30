@@ -40,7 +40,7 @@ class Prompt:
         return rendered_prompt
 
     @property
-    def input_schema(self) -> set:
+    def input_schema(self) -> set[str]:
         """
         Returns a set of variable names from the template.
         This can be used to validate that the input variables match the template.

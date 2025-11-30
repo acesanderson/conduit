@@ -11,6 +11,7 @@ import tomllib
 import json
 from dataclasses import dataclass
 from conduit.progress.verbosity import Verbosity
+from rich.console import Console
 from xdg_base_dirs import (
     xdg_config_home,
     xdg_state_home,
@@ -31,6 +32,7 @@ class Settings:
     system_prompt: str
     preferred_model: str
     default_verbosity: Verbosity
+    default_console: Console
     server_models: list[str]
     paths: dict[str, Path]
 
@@ -41,7 +43,9 @@ def load_settings() -> Settings:
         "system_prompt": "You are a helpful assistant.",
         "preferred_model": "gpt3",
         "default_verbosity": Verbosity.PROGRESS,
+        "default_console": Console(),
         "server_models": [],
+        "paths": {},
     }
 
     # Config files (medium priority)
