@@ -1,14 +1,15 @@
 from conduit.config import settings
-from conduit.model.clients.client import Client
-from conduit.model.clients.client import Usage
-from conduit.request.request import Request
+from conduit.model.clients.client import Client, Usage
 from conduit.result.result import ConduitResult
 from headwater_api.classes import StatusResponse
 from headwater_client.client.headwater_client import HeadwaterClient
-from typing import override
-from functools import cache
+from typing import override, TYPE_CHECKING
 import json
 import logging
+
+if TYPE_CHECKING:
+    from conduit.request.request import Request
+    from conduit.message.message import Message
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,6 @@ class RemoteClient(Client):
         except Exception as e:
             raise ConnectionError(f"Failed to connect to Headwater server: {e}")
 
-    @cache
     def _validate_server_model(self, model_name: str) -> bool:
         """Validate that the model is available on the server"""
         try:
@@ -69,7 +69,7 @@ class RemoteClient(Client):
         Query the remote model via HeadwaterClient.
         Unlike other clients, we get a full Response object (including token usage) back.
         """
-        self._validate_server_model(model_name=request.model)
+        _ = self._validate_server_model(model_name=request.model)
         response = self._client.conduit.query_sync(request)
         # Dummy usage object since we get full response from server
         usage = Usage(
@@ -79,11 +79,30 @@ class RemoteClient(Client):
         return response, usage  # usage: response, _
 
     @override
-    def tokenize(self, model: str, text: str) -> int:
+    def tokenize(self, model: str, payload: str | list["Message"]) -> int:
         """
         Get the token count for a text, per a given model's tokenization function.
+        If payload is a list of Messages, we serialize to JSON to approximate the weight
+        for the server-side tokenizer which expects a string.
         """
-        raise NotImplementedError("Tokenization not implemented in RemoteClient.")
+        from headwater_api.classes import TokenizationRequest
+
+        _ = self._validate_server_model(model_name=model)
+
+        if isinstance(payload, str):
+            text = payload
+        elif isinstance(payload, list):
+            # Serialize list[Message] to a JSON string to pass to the text-only endpoint.
+            # We use to_openai() (which returns dicts) then dump to json.
+            # This captures the overhead of keys/structure for the tokenizer.
+            text = json.dumps([m.to_openai() for m in payload])
+        else:
+            raise ValueError("Payload must be string or list[Message]")
+
+        request = TokenizationRequest(model=model, text=text)
+        response = self._client.conduit.tokenize(request)
+        token_count = response.token_count
+        return token_count
 
     # Client/server specific methods
     def get_status(self) -> StatusResponse:

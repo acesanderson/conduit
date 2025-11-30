@@ -1,5 +1,5 @@
 from __future__ import annotations
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 from conduit.request.query import QueryInput
 from conduit.message.textmessage import TextMessage
 from conduit.message.messages import Messages, MessageUnion
@@ -167,8 +167,8 @@ class Request(BaseModel, RichDisplayParamsMixin, PlainDisplayParamsMixin):
                 # Validate the dict against the provider's client params
                 try:
                     client_param_type.model_validate(self.client_params)
-                except ValidationError as e:
-                    raise ValidationError(
+                except ValueError as e:
+                    raise ValueError(
                         f"Client parameters do not match the expected format for provider '{self.provider}': {e}"
                     )
 
@@ -191,7 +191,7 @@ class Request(BaseModel, RichDisplayParamsMixin, PlainDisplayParamsMixin):
         if temperature_range[0] <= self.temperature <= temperature_range[1]:
             return
         else:
-            raise ValidationError(
+            raise ValueError(
                 f"Temperature {self.temperature} is out of range {temperature_range} for provider: {self.provider}"
             )
 
@@ -202,7 +202,7 @@ class Request(BaseModel, RichDisplayParamsMixin, PlainDisplayParamsMixin):
         from conduit.model.models.modelstore import ModelStore
 
         if not ModelStore.is_supported(self.model):
-            raise ValidationError(f"Model '{self.model}' is not supported.")
+            raise ValueError(f"Model '{self.model}' is not supported.")
         return
 
     # For Caching

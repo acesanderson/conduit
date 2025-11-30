@@ -1,14 +1,17 @@
 """
 Base class for clients; openai, anthropic, etc. inherit from this class.
 ABC abstract methods are like pydantic validators for classes. They ensure that the child classes implement the methods defined in the parent class.
-If a client subclass doesn't implement _get_api_key, for example, the code will raise an error when trying to instantiate the subclass.
-This guarantees all client subclasses have the methods below.
-TODO: implement a class SDK as a protocol for all the library clients (openai, ollama, groq, etc.). This would define an object that has a chat function, fex.
 """
 
+from __future__ import annotations
 from abc import ABC, abstractmethod
-from conduit.request.request import Request
+from typing import TYPE_CHECKING
 from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    from conduit.parser.stream.protocol import SyncStream, AsyncStream
+    from conduit.request.request import Request
+    from conduit.message.message import Message
 
 
 class Usage(BaseModel):
@@ -45,7 +48,9 @@ class Client(ABC):
         pass
 
     @abstractmethod
-    def query(self, request: Request) -> tuple:
+    def query(
+        self, request: Request
+    ) -> tuple[str | BaseModel | SyncStream | AsyncStream, Usage]:
         """
         All client subclasses must have a query function that can take:
         - a Request object, which contains all the parameters needed for the query
@@ -58,9 +63,16 @@ class Client(ABC):
         pass
 
     @abstractmethod
-    def tokenize(self, model: str, text: str) -> int:
+    def tokenize(self, model: str, payload: str | list[Message]) -> int:
         """
-        Get the token count for a text, per a given model's tokenization function.
+        Get the token count for a text or a message history.
+
+        Args:
+            model: The specific model name (e.g. "gpt-4o", "claude-3-5-sonnet").
+            payload:
+                - str: Returns the raw token count of the text string (no message overhead).
+                - list[Message]: Returns the total token count for a conversation history,
+                  including message overhead (roles, start/end tokens, etc).
         """
         pass
 

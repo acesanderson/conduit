@@ -6,7 +6,7 @@ response = model.query(prompt_str)
 """
 
 # Orchestration classes
-from conduit.model.remote_model import RemoteModel
+from conduit.model.model_remote import RemoteModel
 from conduit.prompt.prompt import Prompt
 from conduit.conduit.sync_conduit import SyncConduit as Conduit
 
