@@ -20,7 +20,7 @@ from conduit.result.result import ConduitResult
 from conduit.progress.verbosity import Verbosity
 from conduit.odometer.OdometerRegistry import OdometerRegistry
 from pydantic import BaseModel
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, override
 from abc import ABC, abstractmethod
 import logging
 
@@ -38,12 +38,6 @@ class ModelBase(ABC):
     """
 
     # Class singletons
-    conduit_cache: ConduitCache | None = (
-        None  # If you want to add a cache, add it at class level as a singleton.
-    )
-    _console: Console | None = (
-        None  # For rich console output, if needed. This is overridden in the Conduit class.
-    )
     _odometer_registry = OdometerRegistry()
 
     def __init__(
@@ -51,14 +45,41 @@ class ModelBase(ABC):
         model_name: str = settings.preferred_model,
         console: Console | None = None,
         verbosity: Verbosity = settings.default_verbosity,
+        cache: str | ConduitCache | None = None,
     ):
         from conduit.model.models.modelstore import ModelStore
 
         self.name: str = ModelStore.validate_model(model_name)
         self.verbosity: Verbosity = verbosity
+        self.console: Console | None = console
+        self.conduit_cache: ConduitCache | None = None
         self.client: Client = self.get_client(self.name)
-        self._console = console
 
+        if cache is not None:
+            from conduit.cache.cache import ConduitCache
+
+            if isinstance(cache, str):
+                # Convenience: Create cache from string name
+
+                logger.info(f"Initializing cache with name: '{cache}'")
+                self.conduit_cache = ConduitCache(name=cache)
+            else:  # It's already a ConduitCache instance
+                self.conduit_cache = cache
+
+    # Config methods (post-init)
+    def enable_cache(self) -> None:
+        if self.conduit_cache is None:
+            from conduit.cache.cache import ConduitCache
+
+            logger.info("Enabling default cache.")
+            self.conduit_cache = ConduitCache()
+
+    def enable_console(self) -> None:
+        if self.console is None:
+            logger.info("Enabling console.")
+            self.console = Console()
+
+    # Class methods for global info
     @classmethod
     def models(cls) -> dict[str, list[str]]:
         """
@@ -75,53 +96,6 @@ class ModelBase(ABC):
         Pretty prints session statistics (from OdometerRegistry.session_odometer).
         """
         cls._odometer_registry.session_odometer.stats()
-
-    @property
-    def console(self):
-        """
-        Returns the effective console (hierarchy: instance -> Model class -> SyncConduit/AsyncConduit class -> None)
-        """
-        if self._console:
-            return self._console
-
-        import sys
-
-        # Check for Model._console
-        if "conduit.model.model" in sys.modules:
-            Model = sys.modules["conduit.model.model"].Model
-            model_console = getattr(Model, "_console", None)
-            if model_console:
-                return model_console
-
-        # Check for SyncConduit._console
-        if "conduit.conduit.sync_conduit" in sys.modules:
-            SyncConduit = sys.modules["conduit.conduit.sync_conduit"].SyncConduit
-            conduit_console = getattr(SyncConduit, "_console", None)
-            if conduit_console:
-                return conduit_console
-
-        # Check for AsyncConduit._console
-        if "conduit.conduit.async_conduit" in sys.modules:
-            AsyncConduit = sys.modules["conduit.conduit.async_conduit"].AsyncConduit
-            async_console = getattr(AsyncConduit, "_console", None)
-            if async_console:
-                return async_console
-
-        return None
-
-    @console.setter
-    def console(self, console: Console):
-        """
-        Sets the console object for rich output.
-        This is useful if you want to override the default console for a specific instance.
-        """
-        self._console = console
-
-    def __repr__(self):
-        attributes = ", ".join(
-            [f"{k}={repr(v)[:50]}" for k, v in self.__dict__.items()]
-        )
-        return f"{self.__class__.__name__}({attributes})"
 
     # Query methods: these are orchestrated in subclasses
     def _prepare_request(
@@ -253,3 +227,11 @@ class ModelBase(ABC):
 
     @abstractmethod
     def tokenize(self, text: str) -> int: ...
+
+    # Dunders
+    @override
+    def __repr__(self) -> str:
+        attributes = ", ".join(
+            [f"{k}={repr(v)[:50]}" for k, v in self.__dict__.items()]
+        )
+        return f"{self.__class__.__name__}({attributes})"

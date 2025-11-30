@@ -206,6 +206,7 @@ class HandlerMixin:
         # Assemble the parts of the query
         logger.debug("Assembling query parts...")
         inputs = CLIQueryFunctionInputs(
+            name=self.name,
             query_input=self.flags.get("query_input", ""),
             context=f"<context>{self.stdin}</context>" if self.stdin else "",
             append=self.flags.get("append") or "",
@@ -213,6 +214,7 @@ class HandlerMixin:
             local=self.flags.get("local", False),
             preferred_model=model_to_use,
             verbose=self.verbosity,
+            cache=self.cache,
         )
         # Start our spinner
         with self.printer.status(

@@ -69,7 +69,7 @@ class ConduitCLI(HandlerMixin):
         cache: bool = DEFAULT_CACHE_SETTING,
         persistent: bool = DEFAULT_PERSISTENT_SETTING,
         system_message: str | None = None,  # If None, load from config or default to ""
-        preferred_model: str | None = None,
+        preferred_model: str = DEFAULT_PREFERRED_MODEL,
     ):
         # Parameters
         self.name: str = name  # Name of the CLI application
@@ -92,8 +92,10 @@ class ConduitCLI(HandlerMixin):
             self._construct_xdg_paths()
         )
         # Preferred models
-        self.preferred_model = settings.preferred_model
-        self.preferred_model = self._get_preferred_model(preferred_model)
+        if preferred_model:
+            self.preferred_model: str = preferred_model
+        else:
+            self.preferred_model = settings.preferred_model
         # System message: three options:
         if system_message is not None:
             self.system_message = system_message
