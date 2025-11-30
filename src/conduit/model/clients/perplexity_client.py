@@ -2,64 +2,131 @@
 For Perplexity models.
 NOTE: these use standard OpenAI SDK, the only difference in processing is that the response object has an extra 'citations' field.
 You want both the 'content' and 'citations' fields from the response object.
-Perplexity inputs the footnotes within the content.
-For this reason, we define a Pydantic class as our framework is fine with BaseModels as a response. You can still access it as a string and get the content if needed. Citations can be access by choice.
 """
 
+from __future__ import annotations
 from conduit.model.clients.client import Client, Usage
-from conduit.model.clients.load_env import load_env
 from conduit.model.clients.perplexity_content import (
     PerplexityContent,
     PerplexityCitation,
 )
-from conduit.request.request import Request
 from openai import OpenAI, AsyncOpenAI
 from openai.types.chat.chat_completion import ChatCompletion
 from pydantic import BaseModel
-import instructor, tiktoken
+from abc import ABC
+from typing import TYPE_CHECKING, override
+import instructor
+from instructor import Instructor
+import json
+import os
+
+if TYPE_CHECKING:
+    from conduit.parser.stream.protocol import SyncStream, AsyncStream
+    from conduit.request.request import Request
+    from conduit.message.message import Message
 
 
-class PerplexityClient(Client):
+class PerplexityClient(Client, ABC):
     """
-    This is a base class; we have two subclasses: OpenAIClientSync and OpenAIClientAsync.
+    This is a base class; we have two subclasses: PerplexityClientSync and PerplexityClientAsync.
     Don't import this.
     """
 
     def __init__(self):
-        self._client = self._initialize_client()
+        self._client: Instructor = self._initialize_client()
 
-    def _initialize_client(self):
+    @override
+    def _initialize_client(self) -> Instructor:
         """
         Logic for this is unique to each client (sync / async).
         """
         pass
 
-    def _get_api_key(self):
-        api_key = load_env("PERPLEXITY_API_KEY")
-        return api_key
+    @override
+    def _get_api_key(self) -> str:
+        api_key = os.getenv("PERPLEXITY_API_KEY")
+        if not api_key:
+            raise ValueError("PERPLEXITY_API_KEY environment variable not set.")
+        else:
+            return api_key
 
-    def tokenize(self, model: str, text: str) -> int:
+    @override
+    def tokenize(self, model: str, payload: str | list[Message]) -> int:
         """
         Return the token count for a string, per model's tokenization function.
-        cl100k_base is good enough for Perplexity, per Perplexity documentation.
+        cl100k_base is good enough for Perplexity approximation.
         """
+        import tiktoken
+
+        # Perplexity models are often Llama-based, but cl100k_base is the
+        # standard fallback for OpenAI-compatible APIs in Python without
+        # heavy `transformers` dependencies.
         encoding = tiktoken.get_encoding("cl100k_base")
-        token_count = len(encoding.encode(text))
-        return token_count
+
+        # CASE 1: Raw String
+        if isinstance(payload, str):
+            return len(encoding.encode(payload))
+
+        # CASE 2: Message History
+        if isinstance(payload, list):
+            # Lazy import to avoid circular dependency
+            from conduit.message.textmessage import TextMessage
+
+            # Standard OpenAI-compatible overhead approximation
+            tokens_per_message = 3
+            num_tokens = 0
+
+            for message in payload:
+                num_tokens += tokens_per_message
+
+                # Role
+                num_tokens += len(encoding.encode(message.role))
+
+                # Content
+                # Perplexity generally only handles Text.
+                # If ImageMessage/AudioMessage are passed, we only count their text content.
+                content_str = ""
+                if hasattr(message, "text_content") and message.text_content:
+                    content_str = message.text_content
+                elif isinstance(message.content, str):
+                    content_str = message.content
+                elif isinstance(message.content, list):
+                    # Handle complex content (list of BaseModels) by dumping to string
+                    try:
+                        content_str = json.dumps(
+                            [m.model_dump() for m in message.content]
+                        )
+                    except AttributeError:
+                        content_str = str(message.content)
+                elif isinstance(message.content, BaseModel):
+                    try:
+                        content_str = message.content.model_dump_json()
+                    except AttributeError:
+                        content_str = str(message.content)
+
+                num_tokens += len(encoding.encode(content_str))
+
+            num_tokens += 3  # reply primer
+            return num_tokens
+        raise ValueError("Payload must be string or list[Message]")
 
 
 class PerplexityClientSync(PerplexityClient):
     def __init__(self):
-        self._client = self._initialize_client()
+        self._client: Instructor = self._initialize_client()
 
-    def _initialize_client(self):
+    @override
+    def _initialize_client(self) -> Instructor:
         # Keep both raw and instructor clients
         self._raw_client = OpenAI(
             api_key=self._get_api_key(), base_url="https://api.perplexity.ai"
         )
         return instructor.from_perplexity(self._raw_client)
 
-    def query(self, request: Request) -> tuple:
+    @override
+    def query(
+        self, request: Request
+    ) -> tuple[str | BaseModel | PerplexityContent | SyncStream, Usage]:
         structured_response = None
         if request.response_model is not None:
             # Use instructor for structured responses
@@ -68,39 +135,42 @@ class PerplexityClientSync(PerplexityClient):
                     **request.to_perplexity()
                 )
             )
-            # Handle structured response...
         else:
             # Use raw client for unstructured responses
             perplexity_params = request.to_perplexity()
             perplexity_params.pop("response_model", None)  # Remove None response_model
             result = self._raw_client.chat.completions.create(**perplexity_params)
+
         # Capture usage
         usage = Usage(
             input_tokens=result.usage.prompt_tokens,
             output_tokens=result.usage.completion_tokens,
         )
+
         if structured_response is not None:
             # If we have a structured response, return it along with usage
             return structured_response, usage
+
         if isinstance(result, ChatCompletion):
             # Construct a PerplexityContent object from the response
             citations = result.search_results
-            assert isinstance(citations, list) and all(
-                [isinstance(citation, dict) for citation in citations]
-            ), "Citations should be a list of dicts"
-            citations = [PerplexityCitation(**citation) for citation in citations]
+            # Handle potential None or empty citations
+            if not citations:
+                citations = []
+
+            citations_objs = [PerplexityCitation(**citation) for citation in citations]
+
             content = PerplexityContent(
-                text=result.choices[0].message.content, citations=citations
+                text=result.choices[0].message.content, citations=citations_objs
             )
             return content, usage
-        if isinstance(result, BaseModel):
-            return result, usage
-        else:
-            raise ValueError("Unexpected result type: {}".format(type(result)))
+
+        return result, usage
 
 
 class PerplexityClientAsync(PerplexityClient):
-    def _initialize_client(self):
+    @override
+    def _initialize_client(self) -> Instructor:
         """
         We use the Instructor library by default, as this offers a great interface
         for doing function calling and working with pydantic objects.
@@ -111,7 +181,10 @@ class PerplexityClientAsync(PerplexityClient):
         )
         return instructor.from_perplexity(self._raw_client)
 
-    async def query(self, request: Request) -> tuple:
+    @override
+    async def query(
+        self, request: Request
+    ) -> tuple[str | BaseModel | PerplexityContent | AsyncStream, Usage]:
         structured_response = None
         if request.response_model is not None:
             # Use instructor for structured responses
@@ -149,15 +222,13 @@ class PerplexityClientAsync(PerplexityClient):
         if isinstance(result, ChatCompletion):
             # Construct a PerplexityContent object from the response
             citations = result.search_results
-            assert isinstance(citations, list) and all(
-                [isinstance(citation, dict) for citation in citations]
-            ), "Citations should be a list of dicts"
-            citations = [PerplexityCitation(**citation) for citation in citations]
+            if not citations:
+                citations = []
+
+            citations_objs = [PerplexityCitation(**citation) for citation in citations]
             content = PerplexityContent(
-                text=result.choices[0].message.content, citations=citations
+                text=result.choices[0].message.content, citations=citations_objs
             )
             return content, usage
-        if isinstance(result, BaseModel):
-            return result, usage
-        else:
-            raise ValueError("Unexpected result type: {}".format(type(result)))
+
+        return result, usage

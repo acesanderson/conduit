@@ -21,7 +21,9 @@ CONFIG_DIR = Path(xdg_config_home()) / "conduit"
 STATE_DIR = Path(xdg_state_home()) / "conduit"
 SYSTEM_PROMPT_PATH = CONFIG_DIR / "system_message.jinja2"
 SETTINGS_TOML_PATH = CONFIG_DIR / "settings.toml"
+OLLAMA_CONTEXT_SIZES_PATH = CONFIG_DIR / "ollama_context_sizes.json"
 SERVER_MODELS_PATH = STATE_DIR / "server_models.json"
+OLLAMA_MODELS_PATH = STATE_DIR / "ollama_models.json"
 
 
 @dataclass
@@ -82,6 +84,8 @@ def load_settings() -> Settings:
         "SYSTEM_PROMPT_PATH": SYSTEM_PROMPT_PATH,
         "SETTINGS_TOML_PATH": SETTINGS_TOML_PATH,
         "SERVER_MODELS_PATH": SERVER_MODELS_PATH,
+        "OLLAMA_CONTEXT_SIZES_PATH": OLLAMA_CONTEXT_SIZES_PATH,
+        "OLLAMA_MODELS_PATH": OLLAMA_MODELS_PATH,
     }
 
     config.update(
