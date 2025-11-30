@@ -10,17 +10,27 @@ import base64
 def generate_image(prompt: str) -> ImageMessage:
     genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
 
-    model = genai.GenerativeModel("gemini-2.5-flash-image")
+    # model = genai.GenerativeModel("gemini-2.5-flash-image")
+    # image = model.generate_content(prompt)
+    # save_image_from_response(image, "generated_image.png")
+    # text_response, image_response = image.parts
+    # text_response = text_response.text
+
+    model = genai.GenerativeModel("gemini-3-pro-image-preview")
+
     image = model.generate_content(prompt)
     save_image_from_response(image, "generated_image.png")
-    text_response, image_response = image.parts
+
+    image_response = image.parts
+    text_response = ""
+
     # convert image_response.inline_data.data from bytes to base64 string
     base64_image_data = base64.b64encode(image_response.inline_data.data).decode(
         "utf-8"
     )
     image_message = ImageMessage(
         role="assistant",
-        text_content=text_response.text,
+        text_content=text_response,
         image_content=base64_image_data,
     )
     return image_message
