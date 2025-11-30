@@ -37,7 +37,7 @@ class ModelBase(ABC):
     Stem class for Model implementations; not to be used directly.
     """
 
-    # Class singletons
+    # Class singleton
     _odometer_registry = OdometerRegistry()
 
     def __init__(

@@ -6,26 +6,32 @@ This has special logic for updating the models.json file, since the available Ol
 We define preferred defaults for context sizes in a separate json file.
 """
 
+from __future__ import annotations
 from conduit.model.clients.client import Client, Usage
-from conduit.request.request import Request
+from conduit.config import settings
 from pydantic import BaseModel
 from openai import OpenAI, AsyncOpenAI, Stream
-from xdg_base_dirs import xdg_state_home, xdg_config_home
 from pathlib import Path
+from abc import ABC
 from collections import defaultdict
+from typing import TYPE_CHECKING, override
 import instructor
-import ollama
+from instructor import Instructor
 import json
 import logging
 
+if TYPE_CHECKING:
+    from conduit.parser.stream.protocol import SyncStream, AsyncStream
+    from conduit.request.request import Request
+    from conduit.message.message import Message
+
 logger = logging.getLogger(__name__)
 
-DIR_PATH = Path(__file__).resolve().parent
-OLLAMA_MODELS_PATH = xdg_state_home() / "conduit" / "ollama_models.json"
-OLLAMA_CONTEXT_SIZES_PATH = xdg_config_home() / "conduit" / "ollama_context_sizes.json"
+OLLAMA_MODELS_PATH = settings.paths["OLLAMA_MODELS_PATH"]
+OLLAMA_CONTEXT_SIZES_PATH = settings.paths["OLLAMA_CONTEXT_SIZES_PATH"]
 
 
-class OllamaClient(Client):
+class OllamaClient(Client, ABC):
     """
     This is a base class; we have two subclasses: OpenAIClientSync and OpenAIClientAsync.
     Don't import this.
@@ -47,16 +53,18 @@ class OllamaClient(Client):
         _ollama_context_sizes = defaultdict(lambda: 32768)
 
     def __init__(self):
-        self._client = self._initialize_client()
+        self._client: Instructor = self._initialize_client()
         self.update_ollama_models()  # This allows us to keep the model file up to date.
 
-    def _initialize_client(self):
+    @override
+    def _initialize_client(self) -> Instructor:
         """
         Logic for this is unique to each client (sync / async).
         """
         pass
 
-    def _get_api_key(self):
+    @override
+    def _get_api_key(self) -> str:
         """
         Best thing about Ollama; no API key needed.
         """
@@ -67,6 +75,8 @@ class OllamaClient(Client):
         Updates the list of Ollama models.
         We run is every time ollama is initialized.
         """
+        import ollama
+
         # Ensure the directory exists
         Path(OLLAMA_MODELS_PATH).parent.mkdir(parents=True, exist_ok=True)
         # Lazy load ollama module
@@ -75,21 +85,41 @@ class OllamaClient(Client):
         with open(OLLAMA_MODELS_PATH, "w") as f:
             json.dump(ollama_model_dict, f)
 
-    def tokenize(self, model: str, text: str) -> int:
+    @override
+    def tokenize(self, model: str, payload: str | list[Message]) -> int:
         """
-        Count tokens using Ollama's generate API via the official library.
-        This actually runs a text generation, but only only for one token to minimize compute, since we only want the count of input tokens.
+        Count tokens using Ollama's API via the official library.
+        We set "num_predict" to 0 so we only process the prompt/history and get the eval count.
         """
-        response = ollama.generate(
-            model=model,
-            prompt=text,
-            options={"num_predict": 1},  # Set to minimal generation
-        )
-        return int(response.get("prompt_eval_count", 0))
+        import ollama
+
+        # CASE 1: Raw String
+        if isinstance(payload, str):
+            response = ollama.generate(
+                model=model,
+                prompt=payload,
+                options={"num_predict": 0},  # Minimal generation
+            )
+            return int(response.get("prompt_eval_count", 0))
+
+        # CASE 2: Message History
+        if isinstance(payload, list):
+            # Convert internal Messages to OpenAI/Ollama compatible dicts
+            messages_payload = [m.to_ollama() for m in payload]
+
+            response = ollama.chat(
+                model=model,
+                messages=messages_payload,
+                options={"num_predict": 0},
+            )
+            return int(response.get("prompt_eval_count", 0))
+
+        raise ValueError("Payload must be string or list[Message]")
 
 
 class OllamaClientSync(OllamaClient):
-    def _initialize_client(self):
+    @override
+    def _initialize_client(self) -> Instructor:
         client = instructor.from_openai(
             OpenAI(
                 base_url="http://localhost:11434/v1",
@@ -99,10 +129,11 @@ class OllamaClientSync(OllamaClient):
         )
         return client
 
+    @override
     def query(
         self,
         request: Request,
-    ) -> tuple:
+    ) -> tuple[str | BaseModel | SyncStream, Usage]:
         structured_response = None
         if request.response_model is not None:
             # We want the raw response from OpenAI, so we use `create_with_completion`
@@ -127,17 +158,12 @@ class OllamaClientSync(OllamaClient):
             # If we have a structured response, return it along with usage
             return structured_response, usage
         # Try to retrieve the text first
-        try:
-            return result.choices[0].message.content, usage
-        except AttributeError:
-            # If the result is not in the expected format, return the raw result
-            pass
-        if isinstance(result, BaseModel):
-            return result, usage
+        return result.choices[0].message.content, usage
 
 
 class OllamaClientAsync(OllamaClient):
-    def _initialize_client(self):
+    @override
+    def _initialize_client(self) -> Instructor:
         """
         This is just ollama's async client.
         """
@@ -147,10 +173,11 @@ class OllamaClientAsync(OllamaClient):
         )
         return ollama_async_client
 
+    @override
     async def query(
         self,
         request: Request,
-    ) -> tuple:
+    ) -> tuple[str | BaseModel | AsyncStream, Usage]:
         structured_response = None
         if request.response_model is not None:
             # We want the raw response from Ollama, so we use `create_with_completion`
@@ -176,10 +203,4 @@ class OllamaClientAsync(OllamaClient):
             # If we have a structured response, return it along with usage
             return structured_response, usage
         # Try to retrieve the text first
-        try:
-            return result.choices[0].message.content, usage
-        except AttributeError:
-            # If the result is not in the expected format, return the raw result
-            pass
-        if isinstance(result, BaseModel):
-            return result, usage
+        return result.choices[0].message.content, usage

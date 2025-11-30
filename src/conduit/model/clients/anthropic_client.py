@@ -1,61 +1,97 @@
-"""
-Client subclass for Anthropic models.
-TBD: implement streaming support.
-"""
-
+from __future__ import annotations
 from conduit.model.clients.client import Client, Usage
-from conduit.request.request import Request
-from conduit.model.clients.load_env import load_env
 from anthropic import Anthropic, AsyncAnthropic, Stream
 from pydantic import BaseModel
+from typing import TYPE_CHECKING, override
+from abc import ABC
 import instructor
+from instructor import Instructor
 import os
 
+if TYPE_CHECKING:
+    from conduit.request.request import Request
+    from conduit.parser.stream.protocol import SyncStream, AsyncStream
+    from conduit.message.message import Message
 
-class AnthropicClient(Client):
+
+class AnthropicClient(Client, ABC):
     def __init__(self):
-        self._client = self._initialize_client()
+        self._client: Instructor = self._initialize_client()
 
-    def _initialize_client(self):
+    @override
+    def _initialize_client(self) -> Instructor:
         """
         We use the Instructor library by default, as this offers a great interface for doing function calling and working with pydantic objects.
         """
         anthropic_client = Anthropic(api_key=self._get_api_key())
         return instructor.from_anthropic(anthropic_client)
 
-    def _get_api_key(self):
-        load_env("ANTHROPIC_API_KEY")
-        if os.getenv("ANTHROPIC_API_KEY") is None:
+    @override
+    def _get_api_key(self) -> str:
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if api_key is None:
             raise ValueError("No ANTHROPIC_API_KEY found in environment variables")
         else:
-            return os.getenv("ANTHROPIC_API_KEY")
+            return api_key
 
-    def tokenize(self, model: str, text: str) -> int:
+    @override
+    def tokenize(self, model: str, payload: str | list[Message]) -> int:
         """
         Get token count per official Anthropic api endpoint.
         """
-        # Convert text to message format
+        # We need a raw client for this, not the instructor wrapper
         anthropic_client = Anthropic(api_key=self._get_api_key())
-        messages = [{"role": "user", "content": text}]
-        token_count = anthropic_client.messages.count_tokens(
-            model=model,
-            messages=messages,
-        )
-        return token_count.input_tokens
+
+        # CASE 1: Raw String (Benchmarking)
+        # We wrap it in a user message to satisfy the API, then subtract the overhead.
+        if isinstance(payload, str):
+            messages = [{"role": "user", "content": payload}]
+            response = anthropic_client.messages.count_tokens(
+                model=model,
+                messages=messages,
+            )
+            # Subtract standard overhead (approx 3 tokens for a single-turn user message)
+            # to return the "pure" string weight.
+            return max(0, response.input_tokens - 3)
+
+        # CASE 2: Message History (Context Window Check)
+        if isinstance(payload, list):
+            # Convert Message objects to Anthropic dictionaries
+            messages_payload = []
+            for m in payload:
+                try:
+                    # Filter out messages that Anthropic doesn't support (e.g. Audio)
+                    messages_payload.append(m.to_anthropic())
+                except NotImplementedError:
+                    continue
+
+            # If filtration resulted in empty list (e.g. only audio messages), return 0
+            if not messages_payload:
+                return 0
+
+            response = anthropic_client.messages.count_tokens(
+                model=model,
+                messages=messages_payload,
+            )
+            return response.input_tokens
+
+        raise ValueError("Payload must be string or list[Message]")
 
 
 class AnthropicClientSync(AnthropicClient):
-    def _initialize_client(self):
+    @override
+    def _initialize_client(self) -> Instructor:
         """
         We use the Instructor library by default, as this offers a great interface for doing function calling and working with pydantic objects.
         """
         anthropic_client = Anthropic(api_key=self._get_api_key())
         return instructor.from_anthropic(anthropic_client)
 
+    @override
     def query(
         self,
         request: Request,
-    ) -> tuple:
+    ) -> tuple[str | BaseModel | SyncStream, Usage]:
         structured_response = None
         if request.response_model is not None:
             structured_response, result = (
@@ -95,7 +131,8 @@ class AnthropicClientSync(AnthropicClient):
 
 
 class AnthropicClientAsync(AnthropicClient):
-    def _initialize_client(self):
+    @override
+    def _initialize_client(self) -> Instructor:
         """
         We use the Instructor library by default, as this offers a great interface for doing function calling and working with pydantic objects.
         """
@@ -105,7 +142,7 @@ class AnthropicClientAsync(AnthropicClient):
     async def query(
         self,
         request: Request,
-    ) -> tuple:
+    ) -> tuple[str | BaseModel | AsyncStream, Usage]:
         structured_response = None
         if request.response_model is not None:
             (
