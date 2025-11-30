@@ -34,6 +34,10 @@ class CLIQueryFunctionInputs(BaseModel):
         None, description="System message for the model."
     )
     # Configs
+    name: str = Field(default="default", description="Name of the CLI app.")
+    cache: bool | None = Field(
+        default=True, description="Flag to indicate if caching should be used."
+    )
     local: bool | None = Field(
         default=False, description="Flag to indicate if local processing is desired."
     )
@@ -71,6 +75,7 @@ def default_query_function(
     """
     logger.debug("Running default_query_function...")
     # Extract inputs from dict
+    name: str = inputs.name
     query_input: str = inputs.query_input
     context: str | None = inputs.context
     append: str | None = inputs.append
@@ -79,6 +84,7 @@ def default_query_function(
     verbose: int = inputs.verbose
     include_history: bool = inputs.include_history
     verbose = inputs.verbose
+    cache = inputs.cache
 
     # ConduitCLI's default POSIX philosophy: embrace pipes and redirection
     combined_query = "\n\n".join([query_input, context, append])
@@ -91,18 +97,24 @@ def default_query_function(
 
     # Our chain
     if local:
-        from conduit.model.remote_model import RemoteModel
+        from conduit.model.model_remote import RemoteModel
 
         logger.info("Using local model.")
         if preferred_model not in ModelStore().local_models():
             preferred_model = "gpt-oss:latest"
         logger.info(f"Using model: {preferred_model}")
-        model = RemoteModel(preferred_model)
+        if cache:
+            model = RemoteModel(preferred_model, cache=name)
+        else:
+            model = RemoteModel(preferred_model)
         prompt_str = combined_query
         response = model.query(query_input=prompt_str, verbose=verbose)
     else:
-        logger.info("Using remote model.")
-        model = Model(preferred_model)
+        logger.info("Using cloud model.")
+        if cache:
+            model = Model(preferred_model, cache=name)
+        else:
+            model = Model(preferred_model)
         logger.info(f"Using model: {preferred_model}")
         prompt = Prompt(combined_query)
         conduit = Conduit(prompt=prompt, model=model)
