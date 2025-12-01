@@ -166,18 +166,20 @@ class OpenAIClientSync(OpenAIClient):
     ) -> tuple[str | object | SyncStream, Usage]:
         payload = self._convert_request(request)
         payload_dict = payload.model_dump(exclude_none=True)
-        # Instructor requires response_model, so we need to ensure
-        if not getattr(payload, "response_model", None):
-            payload_dict["response_model"] = None
+        # Now, make the call
         structured_response = None
         if request.response_model is not None:
             # We want the raw response from OpenAI, so we use `create_with_completion`
             structured_response, result = (
-                self._client.chat.completions.create_with_completion(**payload_dict)
+                self._client.chat.completions.create_with_completion(
+                    response_model=request.response_model, **payload_dict
+                )
             )
         else:
             # Use the standard completion method
-            result = self._client.chat.completions.create(**payload_dict)
+            result = self._client.chat.completions.create(
+                response_model=request.response_model, **payload_dict
+            )
         # Capture usage
         if isinstance(result, Stream):
             # Handle streaming response if needed; usage is handled by StreamParser
@@ -189,7 +191,6 @@ class OpenAIClientSync(OpenAIClient):
         )
         if structured_response is not None:
             # If we have a structured response, return it along with usage
-            # TBD: whether we handle STREAMING structured responses
             return structured_response, usage
         # First try to get text content from the result
         try:
@@ -233,9 +234,7 @@ class OpenAIClientAsync(OpenAIClient):
     ) -> tuple[str | object | AsyncStream, Usage]:
         payload = self._convert_request(request)
         payload_dict = payload.model_dump(exclude_none=True)
-        # Instructor requires response_model, so we need to ensure
-        if not getattr(payload, "response_model", None):
-            payload_dict["response_model"] = None
+        # Now, make the call
         structured_response = None
         if request.response_model is not None:
             # We want the raw response from OpenAI, so we use `create_with_completion`
@@ -243,11 +242,13 @@ class OpenAIClientAsync(OpenAIClient):
                 structured_response,
                 result,
             ) = await self._client.chat.completions.create_with_completion(
-                **payload_dict
+                response_model=request.response_model, **payload_dict
             )
         else:
             # Use the standard completion method
-            result = await self._client.chat.completions.create(**payload_dict)
+            result = await self._client.chat.completions.create(
+                response_model=request.response_model, **payload_dict
+            )
         # Capture usage
         if isinstance(result, AsyncStream):
             # Handle streaming response if needed; usage is handled by StreamParser
