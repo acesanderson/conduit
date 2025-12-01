@@ -1,5 +1,6 @@
 from __future__ import annotations
-from conduit.model.clients.client import Client, Usage
+from conduit.model.clients.client_base import Client
+from conduit.odometer.usage import Usage
 from anthropic import Anthropic, AsyncAnthropic, Stream
 from pydantic import BaseModel
 from typing import TYPE_CHECKING, override

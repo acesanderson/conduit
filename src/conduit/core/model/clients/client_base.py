@@ -9,18 +9,11 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
+    from conduit.model.clients.payload_base import Payload
+    from conduit.odometer.usage import Usage
     from conduit.parser.stream.protocol import SyncStream, AsyncStream
     from conduit.request.request import Request
     from conduit.message.message import Message
-
-
-class Usage(BaseModel):
-    """
-    Simple data class for usage statistics, standardized across providers.
-    """
-
-    input_tokens: int
-    output_tokens: int
 
 
 class Client(ABC):
@@ -44,6 +37,19 @@ class Client(ABC):
         """
         API keys are accessed via dotenv.
         This should be in an .env file in the root directory.
+        """
+        pass
+
+    @abstractmethod
+    def _convert_request(self, request: Request) -> Payload:
+        """
+        Translates the internal generic Request DTO into the specific
+        dictionary parameters required by this provider's SDK.
+
+        This handles:
+        - Message role mapping (e.g. OpenAI 'user' vs Google 'user')
+        - Parameter renaming (max_tokens vs max_output_tokens)
+        - Specific structural requirements (e.g. Anthropic system prompt extraction)
         """
         pass
 
