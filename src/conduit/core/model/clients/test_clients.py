@@ -3,6 +3,7 @@ from conduit.domain.request.request import Request
 from conduit.storage.odometer.usage import Usage
 from conduit.domain.message.message import UserMessage
 from conduit.core.parser.stream.protocol import SyncStream, AsyncStream
+from conduit.core.model.clients.perplexity.perplexity_content import PerplexityContent
 from pydantic import BaseModel
 import pytest
 
@@ -94,6 +95,62 @@ def ollama_request_structured_object():
     )
     messages = [user_message]
     model = "llama3.1:latest"
+    return Request(model=model, messages=messages, response_model=Frog)
+
+
+# Anthropic fixtures
+@pytest.fixture
+def anthropic_request_object():
+    user_message = UserMessage(content="Hello, how are you?")
+    messages = [user_message]
+    model = "claude-haiku-4-5-20251001"
+    return Request(model=model, messages=messages)
+
+
+@pytest.fixture
+def anthropic_request_stream_object():
+    user_message = UserMessage(content="Tell me a story about a brave knight.")
+    messages = [user_message]
+    model = "claude-haiku-4-5-20251001"
+    return Request(model=model, messages=messages, stream=True)
+
+
+@pytest.fixture
+def anthropic_request_structured_object():
+    user_message = UserMessage(
+        content="Create a frog to delight me.",
+    )
+    messages = [user_message]
+    model = "claude-haiku-4-5-20251001"
+    return Request(model=model, messages=messages, response_model=Frog)
+
+
+# Perplexity fixtures
+@pytest.fixture
+def perplexity_request_object():
+    user_message = UserMessage(content="What is the latest news about AI?")
+    messages = [user_message]
+    model = "sonar"
+    return Request(model=model, messages=messages)
+
+
+@pytest.fixture
+def perplexity_request_stream_object():
+    user_message = UserMessage(
+        content="Tell me about recent developments in quantum computing."
+    )
+    messages = [user_message]
+    model = "sonar"
+    return Request(model=model, messages=messages, stream=True)
+
+
+@pytest.fixture
+def perplexity_request_structured_object():
+    user_message = UserMessage(
+        content="Create a frog to delight me.",
+    )
+    messages = [user_message]
+    model = "sonar"
     return Request(model=model, messages=messages, response_model=Frog)
 
 
@@ -376,6 +433,212 @@ async def test_ollama_structured_response_async(ollama_request_structured_object
 
     client = OllamaClientAsync()
     response, usage = await client.query(ollama_request_structured_object)
+    assert response is not None
+    assert isinstance(response, Frog)
+    assert hasattr(response, "species")
+    assert hasattr(response, "age")
+    assert hasattr(response, "name")
+    assert hasattr(response, "occupation")
+    assert hasattr(response, "color")
+    assert hasattr(response, "legs")
+    assert hasattr(response, "continent")
+    assert isinstance(usage, Usage)
+    assert usage.input_tokens > 0
+    assert usage.output_tokens > 0
+
+
+# Anthropic tests
+def test_anthropic_sync(anthropic_request_object):
+    from conduit.core.model.clients.anthropic.client import AnthropicClientSync
+
+    client = AnthropicClientSync()
+    response, usage = client.query(anthropic_request_object)
+    assert response is not None
+    assert isinstance(response, str)
+    assert len(response) > 0
+    assert isinstance(usage, Usage)
+    assert usage.input_tokens > 0
+    assert usage.output_tokens > 0
+
+
+@pytest.mark.asyncio
+async def test_anthropic_async(anthropic_request_object):
+    from conduit.core.model.clients.anthropic.client import AnthropicClientAsync
+
+    client = AnthropicClientAsync()
+    response, usage = await client.query(anthropic_request_object)
+    assert response is not None
+    assert isinstance(response, str)
+    assert len(response) > 0
+    assert isinstance(usage, Usage)
+    assert usage.input_tokens > 0
+    assert usage.output_tokens > 0
+
+
+def test_anthropic_streaming(anthropic_request_stream_object):
+    from conduit.core.model.clients.anthropic.client import AnthropicClientSync
+
+    client = AnthropicClientSync()
+    response, usage = client.query(anthropic_request_stream_object)
+    assert response is not None
+    assert isinstance(response, SyncStream)
+    assert isinstance(usage, Usage)
+    assert (
+        usage.input_tokens == 0
+    )  # (streaming requests typically do not count input tokens until completion)
+    assert (
+        usage.output_tokens == 0
+    )  # (streaming requests typically do not count output tokens until completion)
+
+
+@pytest.mark.asyncio
+async def test_anthropic_streaming_async(anthropic_request_stream_object):
+    from conduit.core.model.clients.anthropic.client import AnthropicClientAsync
+
+    client = AnthropicClientAsync()
+    response, usage = await client.query(anthropic_request_stream_object)
+    assert response is not None
+    assert isinstance(response, AsyncStream)
+    assert isinstance(usage, Usage)
+    assert (
+        usage.input_tokens == 0
+    )  # (streaming requests typically do not count input tokens until completion)
+    assert (
+        usage.output_tokens == 0
+    )  # (streaming requests typically do not count output tokens until completion)
+
+
+def test_anthropic_structured_response(anthropic_request_structured_object):
+    from conduit.core.model.clients.anthropic.client import AnthropicClientSync
+
+    client = AnthropicClientSync()
+    response, usage = client.query(anthropic_request_structured_object)
+    assert response is not None
+    assert isinstance(response, Frog)
+    assert hasattr(response, "species")
+    assert hasattr(response, "age")
+    assert hasattr(response, "name")
+    assert hasattr(response, "occupation")
+    assert hasattr(response, "color")
+    assert hasattr(response, "legs")
+    assert hasattr(response, "continent")
+    assert isinstance(usage, Usage)
+    assert usage.input_tokens > 0
+    assert usage.output_tokens > 0
+
+
+@pytest.mark.asyncio
+async def test_anthropic_structured_response_async(anthropic_request_structured_object):
+    from conduit.core.model.clients.anthropic.client import AnthropicClientAsync
+
+    client = AnthropicClientAsync()
+    response, usage = await client.query(anthropic_request_structured_object)
+    assert response is not None
+    assert isinstance(response, Frog)
+    assert hasattr(response, "species")
+    assert hasattr(response, "age")
+    assert hasattr(response, "name")
+    assert hasattr(response, "occupation")
+    assert hasattr(response, "color")
+    assert hasattr(response, "legs")
+    assert hasattr(response, "continent")
+    assert isinstance(usage, Usage)
+    assert usage.input_tokens > 0
+    assert usage.output_tokens > 0
+
+
+# Perplexity tests
+def test_perplexity_sync(perplexity_request_object):
+    from conduit.core.model.clients.perplexity.client import PerplexityClientSync
+
+    client = PerplexityClientSync()
+    response, usage = client.query(perplexity_request_object)
+    assert response is not None
+    assert isinstance(response, PerplexityContent)
+    assert isinstance(response.text, str)
+    assert len(response.text) > 0
+    assert isinstance(response.citations, list)
+    assert isinstance(usage, Usage)
+    assert usage.input_tokens > 0
+    assert usage.output_tokens > 0
+
+
+@pytest.mark.asyncio
+async def test_perplexity_async(perplexity_request_object):
+    from conduit.core.model.clients.perplexity.client import PerplexityClientAsync
+
+    client = PerplexityClientAsync()
+    response, usage = await client.query(perplexity_request_object)
+    assert response is not None
+    assert isinstance(response, PerplexityContent)
+    assert isinstance(response.text, str)
+    assert len(response.text) > 0
+    assert isinstance(response.citations, list)
+    assert isinstance(usage, Usage)
+    assert usage.input_tokens > 0
+    assert usage.output_tokens > 0
+
+
+def test_perplexity_streaming(perplexity_request_stream_object):
+    from conduit.core.model.clients.perplexity.client import PerplexityClientSync
+
+    client = PerplexityClientSync()
+    response, usage = client.query(perplexity_request_stream_object)
+    assert response is not None
+    assert isinstance(response, SyncStream)
+    assert isinstance(usage, Usage)
+    assert (
+        usage.input_tokens == 0
+    )  # (streaming requests typically do not count input tokens until completion)
+    assert (
+        usage.output_tokens == 0
+    )  # (streaming requests typically do not count output tokens until completion)
+
+
+@pytest.mark.asyncio
+async def test_perplexity_streaming_async(perplexity_request_stream_object):
+    from conduit.core.model.clients.perplexity.client import PerplexityClientAsync
+
+    client = PerplexityClientAsync()
+    response, usage = await client.query(perplexity_request_stream_object)
+    assert response is not None
+    assert isinstance(response, AsyncStream)
+    assert isinstance(usage, Usage)
+    assert (
+        usage.input_tokens == 0
+    )  # (streaming requests typically do not count input tokens until completion)
+    assert (
+        usage.output_tokens == 0
+    )  # (streaming requests typically do not count output tokens until completion)
+
+
+def test_perplexity_structured_response(perplexity_request_structured_object):
+    from conduit.core.model.clients.perplexity.client import PerplexityClientSync
+
+    client = PerplexityClientSync()
+    response, usage = client.query(perplexity_request_structured_object)
+    assert response is not None
+    assert isinstance(response, Frog)
+    assert hasattr(response, "species")
+    assert hasattr(response, "age")
+    assert hasattr(response, "name")
+    assert hasattr(response, "occupation")
+    assert hasattr(response, "color")
+    assert hasattr(response, "legs")
+    assert hasattr(response, "continent")
+    assert isinstance(usage, Usage)
+    assert usage.input_tokens > 0
+    assert usage.output_tokens > 0
+
+
+@pytest.mark.asyncio
+async def test_perplexity_structured_response_async(
+    perplexity_request_structured_object,
+):
+    from conduit.core.model.clients.perplexity.client import PerplexityClientAsync
+
+    client = PerplexityClientAsync()
+    response, usage = await client.query(perplexity_request_structured_object)
     assert response is not None
     assert isinstance(response, Frog)
     assert hasattr(response, "species")

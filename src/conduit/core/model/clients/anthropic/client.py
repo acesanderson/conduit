@@ -1,9 +1,12 @@
 from __future__ import annotations
 from conduit.core.model.clients.client_base import Client
 from conduit.storage.odometer.usage import Usage
-from anthropic import Anthropic, AsyncAnthropic, Stream
+from conduit.core.model.clients.payload_base import Payload
+from conduit.core.model.clients.anthropic.payload import AnthropicPayload
+from conduit.core.model.clients.anthropic.adapter import convert_message_to_anthropic
+from anthropic import Anthropic, AsyncAnthropic, Stream, AsyncStream as AnthropicAsyncStream
 from pydantic import BaseModel
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, override, Any
 from abc import ABC
 import instructor
 from instructor import Instructor
@@ -12,7 +15,7 @@ import os
 if TYPE_CHECKING:
     from conduit.domain.request.request import Request
     from conduit.core.parser.stream.protocol import SyncStream, AsyncStream
-    from conduit.domain.message.message import Message
+    from conduit.domain.message.message import Message, SystemMessage
 
 
 class AnthropicClient(Client, ABC):
@@ -34,6 +37,50 @@ class AnthropicClient(Client, ABC):
             raise ValueError("No ANTHROPIC_API_KEY found in environment variables")
         else:
             return api_key
+
+    @override
+    def _convert_message(self, message: Message) -> dict[str, Any]:
+        """
+        Converts a single internal Message DTO into Anthropic's specific dictionary format.
+        """
+        return convert_message_to_anthropic(message)
+
+    @override
+    def _convert_request(self, request: Request) -> Payload:
+        """
+        Translates the internal generic Request DTO into the specific
+        dictionary parameters required by Anthropic's SDK.
+
+        Key Anthropic-specific handling:
+        - System messages are extracted from the messages list and passed as a separate 'system' parameter
+        - max_tokens is required (defaults to 4096 if not specified)
+        """
+        # Convert messages and extract system messages
+        converted_messages = []
+        system_messages = []
+
+        for message in request.messages:
+            # Import here to avoid circular dependency
+            from conduit.domain.message.message import SystemMessage
+
+            if isinstance(message, SystemMessage):
+                system_messages.append(message.content)
+            else:
+                converted_messages.append(self._convert_message(message))
+
+        # Combine system messages into a single system parameter
+        system_content = "\n\n".join(system_messages) if system_messages else None
+
+        anthropic_payload = AnthropicPayload(
+            model=request.model,
+            messages=converted_messages,
+            max_tokens=request.max_tokens if request.max_tokens else 4096,
+            system=system_content,
+            temperature=request.temperature,
+            top_p=request.top_p,
+            stream=request.stream,
+        )
+        return anthropic_payload
 
     @override
     def tokenize(self, model: str, payload: str | list[Message]) -> int:
@@ -93,42 +140,48 @@ class AnthropicClientSync(AnthropicClient):
         self,
         request: Request,
     ) -> tuple[str | BaseModel | SyncStream, Usage]:
+        payload = self._convert_request(request)
+        payload_dict = payload.model_dump(exclude_none=True)
+
+        # Now, make the call
         structured_response = None
         if request.response_model is not None:
+            # We want the raw response from Anthropic, so we use `create_with_completion`
             structured_response, result = (
-                self._client.chat.completions.create_with_completion(
-                    **request.to_anthropic(),
+                self._client.messages.create_with_completion(
+                    response_model=request.response_model, **payload_dict
                 )
             )
         else:
-            result = self._client.chat.completions.create(**request.to_anthropic())
-        # Handle streaming response
-        if isinstance(result, Stream):
-            usage = Usage(
-                input_tokens=0,
-                output_tokens=0,
+            # Use the standard completion method
+            result = self._client.messages.create(
+                response_model=request.response_model, **payload_dict
             )
-            return result, usage
+
         # Capture usage
+        if isinstance(result, Stream):
+            # Handle streaming response if needed; usage is handled by StreamParser
+            usage = Usage(input_tokens=0, output_tokens=0)
+            return result, usage
+
         usage = Usage(
             input_tokens=result.usage.input_tokens,
             output_tokens=result.usage.output_tokens,
         )
+
         if structured_response is not None:
             # If we have a structured response, return it along with usage
             return structured_response, usage
+
         # First try to get text content from the result
         try:
             result = result.content[0].text
             return result, usage
         except AttributeError:
+            # If the result is a BaseModel or Stream, handle accordingly
             pass
-        if isinstance(result, BaseModel):
-            return result, usage
-        else:
-            raise ValueError(
-                f"Unexpected result type from Anthropic API: {type(result)}"
-            )
+
+        return result, usage
 
 
 class AnthropicClientAsync(AnthropicClient):
@@ -140,46 +193,51 @@ class AnthropicClientAsync(AnthropicClient):
         anthropic_async_client = AsyncAnthropic(api_key=self._get_api_key())
         return instructor.from_anthropic(anthropic_async_client)
 
+    @override
     async def query(
         self,
         request: Request,
     ) -> tuple[str | BaseModel | AsyncStream, Usage]:
+        payload = self._convert_request(request)
+        payload_dict = payload.model_dump(exclude_none=True)
+
+        # Now, make the call
         structured_response = None
         if request.response_model is not None:
+            # We want the raw response from Anthropic, so we use `create_with_completion`
             (
                 structured_response,
                 result,
-            ) = await self._client.chat.completions.create_with_completion(
-                **request.to_anthropic(),
+            ) = await self._client.messages.create_with_completion(
+                response_model=request.response_model, **payload_dict
             )
         else:
-            result = await self._client.chat.completions.create(
-                **request.to_anthropic()
+            # Use the standard completion method
+            result = await self._client.messages.create(
+                response_model=request.response_model, **payload_dict
             )
+
         # Capture usage
-        if isinstance(result, Stream):
-            usage = Usage(
-                input_tokens=0,
-                output_tokens=0,
-            )
-            # Handle streaming response if needed
+        if isinstance(result, AnthropicAsyncStream):
+            # Handle streaming response if needed; usage is handled by StreamParser
+            usage = Usage(input_tokens=0, output_tokens=0)
             return result, usage
+
         usage = Usage(
             input_tokens=result.usage.input_tokens,
             output_tokens=result.usage.output_tokens,
         )
+
         if structured_response is not None:
             # If we have a structured response, return it along with usage
             return structured_response, usage
+
         # First try to get text content from the result
         try:
             result = result.content[0].text
             return result, usage
         except AttributeError:
+            # If the result is a BaseModel or AsyncStream, handle accordingly
             pass
-        if isinstance(result, BaseModel):
-            return result, usage
-        else:
-            raise ValueError(
-                f"Unexpected result type from Anthropic API: {type(result)}"
-            )
+
+        return result, usage

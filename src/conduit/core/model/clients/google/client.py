@@ -51,7 +51,15 @@ class GoogleClient(Client, ABC):
         Translates the internal generic Request DTO into the specific
         dictionary parameters required by Google's SDK (via OpenAI spec).
         """
+        # Load client params
+        client_params = request.client_params or {}
+        allowed_params = {"frequency_penalty", "presence_penalty"}
+        for param in client_params.keys():
+            if param not in allowed_params:
+                raise ValueError(f"Unsupported Google client parameter: {param}")
+        # Convert messages
         converted_messages = self._convert_messages(request.messages)
+        # Build payload
         google_payload = GooglePayload(
             model=request.model,
             messages=converted_messages,
@@ -59,6 +67,8 @@ class GoogleClient(Client, ABC):
             top_p=request.top_p,
             max_tokens=request.max_tokens,
             stream=request.stream,
+            # Google-specific params
+            **client_params,
         )
         return google_payload
 
