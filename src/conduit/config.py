@@ -11,20 +11,28 @@ import tomllib
 import json
 from dataclasses import dataclass
 from conduit.utils.progress.verbosity import Verbosity
+from conduit.domain.request.generation_params import GenerationParams
 from rich.console import Console
 from xdg_base_dirs import (
     xdg_config_home,
     xdg_state_home,
+    xdg_data_home,
 )
 import os
 
+# Directories
 CONFIG_DIR = Path(xdg_config_home()) / "conduit"
 STATE_DIR = Path(xdg_state_home()) / "conduit"
+DATA_DIR = Path(xdg_data_home()) / "conduit"
+
+# File paths
 SYSTEM_PROMPT_PATH = CONFIG_DIR / "system_message.jinja2"
 SETTINGS_TOML_PATH = CONFIG_DIR / "settings.toml"
 OLLAMA_CONTEXT_SIZES_PATH = CONFIG_DIR / "ollama_context_sizes.json"
 SERVER_MODELS_PATH = STATE_DIR / "server_models.json"
 OLLAMA_MODELS_PATH = STATE_DIR / "ollama_models.json"
+DEFAULT_HISTORY_FILE = DATA_DIR / "conduit" / "history.json"
+DEFAULT_LOG_FILE = DATA_DIR / "conduit" / "conduit.log"
 
 
 @dataclass
@@ -35,6 +43,7 @@ class Settings:
     default_console: Console
     server_models: list[str]
     paths: dict[str, Path]
+    default_params: GenerationParams
 
 
 def load_settings() -> Settings:
@@ -46,6 +55,7 @@ def load_settings() -> Settings:
         "default_console": Console(),
         "server_models": [],
         "paths": {},
+        "default_params": GenerationParams(),
     }
 
     # Config files (medium priority)
@@ -90,7 +100,14 @@ def load_settings() -> Settings:
         "SERVER_MODELS_PATH": SERVER_MODELS_PATH,
         "OLLAMA_CONTEXT_SIZES_PATH": OLLAMA_CONTEXT_SIZES_PATH,
         "OLLAMA_MODELS_PATH": OLLAMA_MODELS_PATH,
+        "DEFAULT_HISTORY_FILE": DEFAULT_HISTORY_FILE,
+        "DEFAULT_LOG_FILE": DEFAULT_LOG_FILE,
     }
+
+    # Default params
+    default_params = GenerationParams(
+        model=preferred_model,
+    )
 
     config.update(
         {
@@ -99,6 +116,7 @@ def load_settings() -> Settings:
             "default_verbosity": verbosity,
             "server_models": server_models,
             "paths": paths,
+            "default_params": default_params,
         }
     )
 

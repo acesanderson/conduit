@@ -1,8 +1,15 @@
+"""
+Think of it this way:
+messages + generation_params  -> Request
+
+Such that:
+conduit.params + conversation.messages -> Request
+"""
+
 from __future__ import annotations
 from pydantic import BaseModel, Field, model_validator
 from conduit.config import settings
-from conduit.domain.message.messages import MessageUnion
-from conduit.utils.progress.verbosity import Verbosity
+from conduit.domain.request.generation_params import GenerationParams
 from conduit.utils.progress.display_mixins import (
     RichDisplayParamsMixin,
     PlainDisplayParamsMixin,
@@ -14,22 +21,14 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class Request(BaseModel, RichDisplayParamsMixin, PlainDisplayParamsMixin):
+class Request(GenerationParams, RichDisplayParamsMixin, PlainDisplayParamsMixin):
     """
-    Parameters that are constructed by Model and are sent to Clients.
-    Note: we mixin our DisplayParamsMixin classes to provide rich and plain display methods.
+    Inherits all params (temp, top_p) and adds required transport fields.
     """
 
-    # Required params
-    output_type: OutputType
-    messages: list[MessageUnion]
-    model: str
-    temperature: float | None = None
-    stream: bool = False
-    verbose: Verbosity = settings.default_verbosity
+    messages: list[Message]
+    tools: list[dict] | None = None
     response_model: type[BaseModel] | None = Field(default=None, exclude=True)
-    max_tokens: int | None = None
-    num_ctx: int | None = None
     client_params: dict[str, Any] | None = None
 
     # Generated params

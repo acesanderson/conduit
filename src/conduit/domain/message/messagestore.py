@@ -1,20 +1,16 @@
 """
-A MessageStore object inherits from Messages and adds persistence and logging capabilities.
-With MessageStore, you can:
-- Use all Messages methods (append, extend, indexing, etc.) directly
-- Automatically persist changes to TinyDB
-- Log conversations in human-readable format
-- All while being a drop-in replacement for Messages objects
-
-The MessageStore IS a Messages object with superpowers.
+MAJOR REFACTOR INCOMING:
+- we have Conversation class for managing conversations; MessageStore is the persistent storage layer.
+- no more magic
+- move this to conduit.storage
 """
 
-from conduit.domain.message.message import Message, Role
+from conduit.config import settings
+from conduit.domain.message.message import Message
+from conduit.domain.message.role import Role
 from conduit.domain.message.textmessage import TextMessage
 from conduit.domain.message.imagemessage import ImageMessage
 from conduit.domain.message.audiomessage import AudioMessage
-from conduit.domain.message.messages import Messages
-from xdg_base_dirs import xdg_data_home, xdg_state_home
 from rich.console import Console
 from rich.rule import Rule
 from pydantic import BaseModel, Field
@@ -27,23 +23,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_HISTORY_FILE = xdg_data_home() / "conduit" / "history.json"
-DEFAULT_LOG_FILE = xdg_state_home() / "conduit" / "conduit.log"
 
-
-class MessageStore(Messages):
-    """
-    A Messages object with automatic persistence.
-
-    ⚠️  MUTATION WARNING: All list operations (append, extend, etc.)
-        will automatically persist to database if history_file was provided.
-
-    Side Effects:
-        - append() → database write (if persistent=True)
-        - extend() → multiple database writes
-        - clear() → database truncation
-    """
-
+class MessageStore:
     # Add Pydantic fields (Messages inherits from BaseModel)
     console: Console | None = Field(default=None, exclude=True, repr=False)
     auto_save: bool = Field(default=True, exclude=True)
@@ -52,9 +33,11 @@ class MessageStore(Messages):
     pruning: bool = Field(default=False, exclude=True)
     name: str = Field(default="MessageStore", exclude=True)
     history_file: Path | None = Field(
-        default=DEFAULT_HISTORY_FILE, exclude=True, repr=False
+        default=settings.paths["DEFAULT_HISTORY_FILE"], exclude=True, repr=False
     )
-    log_file: Path | None = Field(default=DEFAULT_LOG_FILE, exclude=True, repr=False)
+    log_file: Path | None = Field(
+        default=settings.paths["DEFAULT_LOG_FILE"], exclude=True, repr=False
+    )
     db: TinyDB | None = Field(default=None, exclude=True, repr=False)
     # Tracking token usage; these need to be manually updated.
     input_tokens: int = Field(default=0)
