@@ -40,6 +40,21 @@ class Client(ABC):
         """
         pass
 
+    def _convert_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
+        """
+        Helper: maps the list of internal Messages to a list of provider dicts.
+        Override this if the provider needs whole-list manipulation.
+        """
+        return [self._convert_message(m) for m in messages]
+
+    @abstractmethod
+    def _convert_message(self, message: Message) -> dict[str, Any]:
+        """
+        Converts a single internal Message DTO into the provider's specific message format.
+        Uses pattern matching on the message type.
+        """
+        pass
+
     @abstractmethod
     def _convert_request(self, request: Request) -> Payload:
         """

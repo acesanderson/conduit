@@ -8,13 +8,13 @@ conduit.params + conversation.messages -> Request
 
 from __future__ import annotations
 from pydantic import BaseModel, Field, model_validator
-from conduit.config import settings
 from conduit.domain.request.generation_params import GenerationParams
+from conduit.domain.request.outputtype import OutputType
+from conduit.domain.message.message import Message
 from conduit.utils.progress.display_mixins import (
     RichDisplayParamsMixin,
     PlainDisplayParamsMixin,
 )
-from conduit.domain.request.outputtype import OutputType
 from typing import Any
 import logging
 
@@ -26,8 +26,8 @@ class Request(GenerationParams, RichDisplayParamsMixin, PlainDisplayParamsMixin)
     Inherits all params (temp, top_p) and adds required transport fields.
     """
 
+    output_type: OutputType = "text"
     messages: list[Message]
-    tools: list[dict] | None = None
     response_model: type[BaseModel] | None = Field(default=None, exclude=True)
     client_params: dict[str, Any] | None = None
 

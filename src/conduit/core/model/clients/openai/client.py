@@ -1,14 +1,18 @@
 from __future__ import annotations
-from conduit.core.model.clients.client import Client, Usage
-from conduit.core.model.clients.load_env import load_env
+from conduit.core.model.clients.client_base import Client
+from conduit.storage.odometer.usage import Usage
+from conduit.core.model.clients.payload_base import Payload
+from conduit.core.model.clients.openai.payload import OpenAIPayload
+from conduit.core.model.clients.openai.adapter import convert_message_to_openai
 from openai import OpenAI
 from openai import AsyncOpenAI
-from openai import Stream
+from openai import Stream, AsyncStream
 from abc import ABC
 import instructor
 from instructor import Instructor
 import logging
 import json
+import os
 from typing import TYPE_CHECKING, override
 
 if TYPE_CHECKING:
@@ -29,15 +33,34 @@ class OpenAIClient(Client, ABC):
 
     @override
     def _get_api_key(self) -> str:
-        api_key = load_env("OPENAI_API_KEY")
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY environment variable not set.")
         return api_key
 
     @override
-    def _convert_request(self, request: Request) -> dict[str, Any]:
+    def _convert_message(self, message: Message) -> dict[str, Any]:
+        """
+        Converts a single internal Message DTO into OpenAI's specific dictionary format.
+        """
+        return convert_message_to_openai(message)
+
+    @override
+    def _convert_request(self, request: Request) -> Payload:
         """
         Translates the internal generic Request DTO into the specific
         dictionary parameters required by OpenAI's SDK.
         """
+        converted_messages = self._convert_messages(request.messages)
+        openai_payload = OpenAIPayload(
+            model=request.model,
+            messages=converted_messages,
+            temperature=request.temperature,
+            top_p=request.top_p,
+            max_tokens=request.max_tokens,
+            stream=request.stream,
+        )
+        return openai_payload
 
     @override
     def tokenize(self, model: str, payload: str | list[Message]) -> int:
@@ -141,17 +164,20 @@ class OpenAIClientSync(OpenAIClient):
     def _generate_text(
         self, request: Request
     ) -> tuple[str | object | SyncStream, Usage]:
+        payload = self._convert_request(request)
+        payload_dict = payload.model_dump(exclude_none=True)
+        # Instructor requires response_model, so we need to ensure
+        if not getattr(payload, "response_model", None):
+            payload_dict["response_model"] = None
         structured_response = None
         if request.response_model is not None:
             # We want the raw response from OpenAI, so we use `create_with_completion`
             structured_response, result = (
-                self._client.chat.completions.create_with_completion(
-                    **request.to_openai()
-                )
+                self._client.chat.completions.create_with_completion(**payload_dict)
             )
         else:
             # Use the standard completion method
-            result = self._client.chat.completions.create(**request.to_openai())
+            result = self._client.chat.completions.create(**payload_dict)
         # Capture usage
         if isinstance(result, Stream):
             # Handle streaming response if needed; usage is handled by StreamParser
@@ -205,6 +231,11 @@ class OpenAIClientAsync(OpenAIClient):
         self,
         request: Request,
     ) -> tuple[str | object | AsyncStream, Usage]:
+        payload = self._convert_request(request)
+        payload_dict = payload.model_dump(exclude_none=True)
+        # Instructor requires response_model, so we need to ensure
+        if not getattr(payload, "response_model", None):
+            payload_dict["response_model"] = None
         structured_response = None
         if request.response_model is not None:
             # We want the raw response from OpenAI, so we use `create_with_completion`
@@ -212,13 +243,13 @@ class OpenAIClientAsync(OpenAIClient):
                 structured_response,
                 result,
             ) = await self._client.chat.completions.create_with_completion(
-                **request.to_openai()
+                **payload_dict
             )
         else:
             # Use the standard completion method
-            result = await self._client.chat.completions.create(**request.to_openai())
+            result = await self._client.chat.completions.create(**payload_dict)
         # Capture usage
-        if isinstance(result, Stream):
+        if isinstance(result, AsyncStream):
             # Handle streaming response if needed; usage is handled by StreamParser
             usage = Usage(input_tokens=0, output_tokens=0)
             return result, usage
