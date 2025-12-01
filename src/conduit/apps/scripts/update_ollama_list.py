@@ -4,8 +4,8 @@ Use this when switching environments, ssh tunnels, or when new models are added.
 Need to figure out where to automatically implement this in my Conduit package to avoid manual updates but also preserve lazy loading.
 """
 
-from conduit.model.clients.ollama_client import OllamaClientSync
-from conduit.model.models.modelstore import ModelStore
+from conduit.core.model.clients.ollama_client import OllamaClientSync
+from conduit.core.model.models.modelstore import ModelStore
 from rich import console
 import logging
 

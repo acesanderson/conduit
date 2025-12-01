@@ -6,7 +6,7 @@ like Params, Response, and ConduitError. Each mixin handles the specific display
 logic for its object type across different verbosity levels.
 """
 
-from conduit.progress.verbosity import Verbosity
+from conduit.utils.progress.verbosity import Verbosity
 from typing import TYPE_CHECKING, Any
 import json
 

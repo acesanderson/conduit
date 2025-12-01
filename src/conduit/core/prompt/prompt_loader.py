@@ -61,7 +61,7 @@ class PromptLoader:
             if not file_path.is_absolute():
                 file_path = self.base_dir / file_path
 
-            from conduit.prompt.prompt import Prompt
+            from conduit.core.prompt.prompt import Prompt
 
             self._cache[key] = Prompt.from_file(file_path)
 

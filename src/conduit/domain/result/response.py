@@ -2,13 +2,13 @@
 A successful Result.
 """
 
-from conduit.message.message import Message
-from conduit.message.textmessage import TextMessage
-from conduit.message.audiomessage import AudioMessage
-from conduit.message.imagemessage import ImageMessage
-from conduit.message.messages import Messages
-from conduit.request.request import Request
-from conduit.progress.display_mixins import (
+from conduit.domain.message.message import Message
+from conduit.domain.message.textmessage import TextMessage
+from conduit.domain.message.audiomessage import AudioMessage
+from conduit.domain.message.imagemessage import ImageMessage
+from conduit.domain.message.messages import Messages
+from conduit.domain.request.request import Request
+from conduit.utils.progress.display_mixins import (
     RichDisplayResponseMixin,
     PlainDisplayResponseMixin,
 )
@@ -56,8 +56,8 @@ class Response(BaseModel, RichDisplayResponseMixin, PlainDisplayResponseMixin):
         """
         Emit a TokenEvent to the OdometerRegistry if it exists.
         """
-        from conduit.odometer.TokenEvent import TokenEvent
-        from conduit.model.model_sync import ModelSync
+        from conduit.storage.odometer.TokenEvent import TokenEvent
+        from conduit.core.model.model_sync import ModelSync
 
         assert self.request.provider, "Provider must be set in the request"
 
@@ -141,7 +141,7 @@ class Response(BaseModel, RichDisplayResponseMixin, PlainDisplayResponseMixin):
         """
         Display image if the latest message is an ImageMessage.
         """
-        from conduit.message.imagemessage import ImageMessage
+        from conduit.domain.message.imagemessage import ImageMessage
 
         if isinstance(self.message, ImageMessage):
             self.message.display()
@@ -155,7 +155,7 @@ class Response(BaseModel, RichDisplayResponseMixin, PlainDisplayResponseMixin):
         """
         Play audio if the latest message is an AudioMessage.
         """
-        from conduit.message.audiomessage import AudioMessage
+        from conduit.domain.message.audiomessage import AudioMessage
 
         if isinstance(self.message, AudioMessage):
             self.message.play()

@@ -3,12 +3,12 @@ Customize ConduitCLI quickly with a query function, if you don't worry about cus
 A simple query_function that ONLY takes query_input and returns a Response object is enough.
 """
 
-from conduit.cli.cli_class import (
+from conduit.apps.cli.cli_class import (
     ConduitCLI,
     DEFAULT_PREFERRED_MODEL,
     DEFAULT_VERBOSITY,
 )
-from conduit.cli.query_function import CLIQueryFunctionProtocol
+from conduit.apps.cli.query_function import CLIQueryFunctionProtocol
 from typing import TYPE_CHECKING
 import inspect
 

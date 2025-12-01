@@ -8,18 +8,18 @@ response = conduit.run(input_data)
 """
 
 # Orchestration classes
-from conduit.conduit.sync_conduit import SyncConduit
-from conduit.model.model_sync import ModelSync
-from conduit.prompt.prompt import Prompt
+from conduit.core.conduit.sync_conduit import SyncConduit
+from conduit.core.model.model_sync import ModelSync
+from conduit.core.prompt.prompt import Prompt
 
 # Cache
-from conduit.cache.cache import ConduitCache
+from conduit.storage.cache.cache import ConduitCache
 
 # Primitives: dataclasses / enums
-from conduit.result.response import Response
-from conduit.progress.verbosity import Verbosity
-from conduit.message.message import Message
-from conduit.request.request import Request
+from conduit.domain.result.response import Response
+from conduit.utils.progress.verbosity import Verbosity
+from conduit.domain.message.message import Message
+from conduit.domain.request.request import Request
 
 Conduit = SyncConduit  # Alias for easier imports
 Model = ModelSync  # Alias for easier imports

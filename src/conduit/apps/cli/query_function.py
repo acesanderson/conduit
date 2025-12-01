@@ -4,7 +4,7 @@ Define your own for customization.
 """
 
 from conduit.sync import Prompt, Model, Conduit, Response, Verbosity
-from conduit.model.models.modelstore import ModelStore
+from conduit.core.model.models.modelstore import ModelStore
 from pydantic import BaseModel, Field
 from typing import Protocol, runtime_checkable
 from rich.console import Console
@@ -97,7 +97,7 @@ def default_query_function(
 
     # Our chain
     if local:
-        from conduit.model.model_remote import RemoteModel
+        from conduit.core.model.model_remote import RemoteModel
 
         logger.info("Using local model.")
         if preferred_model not in ModelStore().local_models():

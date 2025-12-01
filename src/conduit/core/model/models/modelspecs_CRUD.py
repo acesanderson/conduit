@@ -2,7 +2,7 @@
 CRUD functions for TinyDB; handles serializing / deserializing our ModelCapabilities objects.
 """
 
-from conduit.model.models.modelspec import ModelSpec
+from conduit.core.model.models.modelspec import ModelSpec
 from tinydb import TinyDB, Query
 from pathlib import Path
 

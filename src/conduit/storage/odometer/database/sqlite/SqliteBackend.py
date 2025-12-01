@@ -1,5 +1,5 @@
-from conduit.odometer.database.PersistenceBackend import PersistenceBackend
-from conduit.odometer.TokenEvent import TokenEvent
+from conduit.storage.odometer.database.PersistenceBackend import PersistenceBackend
+from conduit.storage.odometer.TokenEvent import TokenEvent
 from typing import override
 from datetime import date
 from pathlib import Path
