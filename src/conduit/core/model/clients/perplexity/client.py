@@ -5,16 +5,20 @@ You want both the 'content' and 'citations' fields from the response object.
 """
 
 from __future__ import annotations
-from conduit.core.model.clients.client import Client, Usage
-from conduit.core.model.clients.perplexity_content import (
+from conduit.core.model.clients.client_base import Client
+from conduit.storage.odometer.usage import Usage
+from conduit.core.model.clients.payload_base import Payload
+from conduit.core.model.clients.perplexity.payload import PerplexityPayload
+from conduit.core.model.clients.perplexity.adapter import convert_message_to_perplexity
+from conduit.core.model.clients.perplexity.perplexity_content import (
     PerplexityContent,
     PerplexityCitation,
 )
-from openai import OpenAI, AsyncOpenAI
+from openai import OpenAI, AsyncOpenAI, Stream, AsyncStream as OpenAIAsyncStream
 from openai.types.chat.chat_completion import ChatCompletion
 from pydantic import BaseModel
 from abc import ABC
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, override, Any
 import instructor
 from instructor import Instructor
 import json
@@ -49,6 +53,48 @@ class PerplexityClient(Client, ABC):
             raise ValueError("PERPLEXITY_API_KEY environment variable not set.")
         else:
             return api_key
+
+    @override
+    def _convert_message(self, message: Message) -> dict[str, Any]:
+        """
+        Converts a single internal Message DTO into Perplexity's specific dictionary format.
+        Since Perplexity uses OpenAI spec, we delegate to the Perplexity adapter (which uses OpenAI).
+        """
+        return convert_message_to_perplexity(message)
+
+    @override
+    def _convert_request(self, request: Request) -> Payload:
+        """
+        Translates the internal generic Request DTO into the specific
+        dictionary parameters required by Perplexity's SDK (OpenAI-compatible).
+
+        Perplexity-specific parameters:
+        - return_citations: Enable citation return
+        - return_images: Enable image return
+        - search_recency_filter: Time-based filtering
+        """
+        # load client_params
+        client_params = request.client_params or {}
+        allowed_params = {"return_citations", "search_recency_filter"}
+        for param in client_params.keys():
+            if param not in allowed_params:
+                raise ValueError(
+                    f"Invalid client_param '{param}' for PerplexityClient. Allowed params: {allowed_params}"
+                )
+        # convert messages
+        converted_messages = self._convert_messages(request.messages)
+        # build payload
+        perplexity_payload = PerplexityPayload(
+            model=request.model,
+            messages=converted_messages,
+            temperature=request.temperature,
+            top_p=request.top_p,
+            max_tokens=request.max_tokens,
+            stream=request.stream,
+            # Perplexity-specific params
+            **client_params,
+        )
+        return perplexity_payload
 
     @override
     def tokenize(self, model: str, payload: str | list[Message]) -> int:
@@ -127,21 +173,28 @@ class PerplexityClientSync(PerplexityClient):
     def query(
         self, request: Request
     ) -> tuple[str | BaseModel | PerplexityContent | SyncStream, Usage]:
+        payload = self._convert_request(request)
+        payload_dict = payload.model_dump(exclude_none=True)
+
+        # Now, make the call
         structured_response = None
         if request.response_model is not None:
             # Use instructor for structured responses
             structured_response, result = (
                 self._client.chat.completions.create_with_completion(
-                    **request.to_perplexity()
+                    response_model=request.response_model, **payload_dict
                 )
             )
         else:
-            # Use raw client for unstructured responses
-            perplexity_params = request.to_perplexity()
-            perplexity_params.pop("response_model", None)  # Remove None response_model
-            result = self._raw_client.chat.completions.create(**perplexity_params)
+            # Use raw client for unstructured responses to access citations
+            result = self._raw_client.chat.completions.create(**payload_dict)
 
         # Capture usage
+        if isinstance(result, Stream):
+            # Handle streaming response if needed; usage is handled by StreamParser
+            usage = Usage(input_tokens=0, output_tokens=0)
+            return result, usage
+
         usage = Usage(
             input_tokens=result.usage.prompt_tokens,
             output_tokens=result.usage.completion_tokens,
@@ -153,7 +206,9 @@ class PerplexityClientSync(PerplexityClient):
 
         if isinstance(result, ChatCompletion):
             # Construct a PerplexityContent object from the response
-            citations = result.search_results
+            citations = (
+                result.search_results if hasattr(result, "search_results") else None
+            )
             # Handle potential None or empty citations
             if not citations:
                 citations = []
@@ -185,6 +240,10 @@ class PerplexityClientAsync(PerplexityClient):
     async def query(
         self, request: Request
     ) -> tuple[str | BaseModel | PerplexityContent | AsyncStream, Usage]:
+        payload = self._convert_request(request)
+        payload_dict = payload.model_dump(exclude_none=True)
+
+        # Now, make the call
         structured_response = None
         if request.response_model is not None:
             # Use instructor for structured responses
@@ -192,28 +251,22 @@ class PerplexityClientAsync(PerplexityClient):
                 structured_response,
                 result,
             ) = await self._client.chat.completions.create_with_completion(
-                **request.to_perplexity()
+                response_model=request.response_model, **payload_dict
             )
         else:
-            # Use raw client for unstructured responses
-            perplexity_params = request.to_perplexity()
-            perplexity_params.pop("response_model", None)  # Remove None response_model
-            result = await self._raw_client.chat.completions.create(**perplexity_params)
+            # Use raw client for unstructured responses to access citations
+            result = await self._raw_client.chat.completions.create(**payload_dict)
 
         # Capture usage
-        if hasattr(result, "usage"):
-            # Raw OpenAI/Perplexity response
-            usage = Usage(
-                input_tokens=result.usage.prompt_tokens,
-                output_tokens=result.usage.completion_tokens,
-            )
-        else:
-            # Instructor wrapped response - need to get usage from _raw_response
-            raw_response = result._raw_response  # instructor stores original here
-            usage = Usage(
-                input_tokens=raw_response.usage.prompt_tokens,
-                output_tokens=raw_response.usage.completion_tokens,
-            )
+        if isinstance(result, OpenAIAsyncStream):
+            # Handle streaming response if needed; usage is handled by StreamParser
+            usage = Usage(input_tokens=0, output_tokens=0)
+            return result, usage
+
+        usage = Usage(
+            input_tokens=result.usage.prompt_tokens,
+            output_tokens=result.usage.completion_tokens,
+        )
 
         if structured_response is not None:
             # If we have a structured response, return it along with usage
@@ -221,7 +274,9 @@ class PerplexityClientAsync(PerplexityClient):
 
         if isinstance(result, ChatCompletion):
             # Construct a PerplexityContent object from the response
-            citations = result.search_results
+            citations = (
+                result.search_results if hasattr(result, "search_results") else None
+            )
             if not citations:
                 citations = []
 
