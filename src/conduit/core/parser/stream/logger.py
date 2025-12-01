@@ -7,7 +7,7 @@ to see exactly what content arrives in each chunk and diagnose parsing issues.
 
 import logging
 from collections.abc import Iterator, AsyncIterator
-from conduit.parser.stream.protocol import SyncStream, AsyncStream, StreamChunk
+from conduit.core.parser.stream.protocol import SyncStream, AsyncStream, StreamChunk
 
 
 logger = logging.getLogger(__name__)

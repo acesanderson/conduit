@@ -1,6 +1,6 @@
-from conduit.odometer.Odometer import Odometer
-from conduit.odometer.SessionOdometer import SessionOdometer
-from conduit.odometer.database.PersistenceBackend import PersistenceBackend
+from conduit.storage.odometer.Odometer import Odometer
+from conduit.storage.odometer.SessionOdometer import SessionOdometer
+from conduit.storage.odometer.database.PersistenceBackend import PersistenceBackend
 from datetime import date, timedelta
 from pydantic import Field
 
@@ -20,7 +20,7 @@ class PersistentOdometer(Odometer):
         if backend is None:
             # Your existing backend creation logic
             try:
-                from conduit.odometer.database.pgres.PostgresBackend import (
+                from conduit.storage.odometer.database.pgres.PostgresBackend import (
                     PostgresBackend,
                 )
 
@@ -28,7 +28,7 @@ class PersistentOdometer(Odometer):
             except Exception as e:
                 print(f"Real error: {e}")
                 raise
-                # from conduit.odometer.database.sqlite.SqliteBackend import SQLiteBackend
+                # from conduit.storage.odometer.database.sqlite.SqliteBackend import SQLiteBackend
                 #
                 # self.backend = SQLiteBackend("odometer.db")
         else:

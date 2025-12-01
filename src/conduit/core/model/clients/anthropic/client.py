@@ -1,6 +1,6 @@
 from __future__ import annotations
-from conduit.model.clients.client_base import Client
-from conduit.odometer.usage import Usage
+from conduit.core.model.clients.client_base import Client
+from conduit.storage.odometer.usage import Usage
 from anthropic import Anthropic, AsyncAnthropic, Stream
 from pydantic import BaseModel
 from typing import TYPE_CHECKING, override
@@ -10,9 +10,9 @@ from instructor import Instructor
 import os
 
 if TYPE_CHECKING:
-    from conduit.request.request import Request
-    from conduit.parser.stream.protocol import SyncStream, AsyncStream
-    from conduit.message.message import Message
+    from conduit.domain.request.request import Request
+    from conduit.core.parser.stream.protocol import SyncStream, AsyncStream
+    from conduit.domain.message.message import Message
 
 
 class AnthropicClient(Client, ABC):

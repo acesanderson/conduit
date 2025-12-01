@@ -1,9 +1,9 @@
 from __future__ import annotations
-from conduit.model.model_base import ModelBase
-from conduit.model.clients.client import Client
-from conduit.progress.wrappers import progress_display
-from conduit.result.result import ConduitResult
-from conduit.result.error import ConduitError
+from conduit.core.model.model_base import ModelBase
+from conduit.core.model.clients.client import Client
+from conduit.utils.progress.wrappers import progress_display
+from conduit.domain.result.result import ConduitResult
+from conduit.domain.result.error import ConduitError
 from pydantic import ValidationError
 from typing import override
 from time import time
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class ModelSync(ModelBase):
     @override
     def get_client(self, model_name: str) -> Client:
-        from conduit.model.models.modelstore import ModelStore
+        from conduit.core.model.models.modelstore import ModelStore
 
         return ModelStore.get_client(model_name, "sync")
 

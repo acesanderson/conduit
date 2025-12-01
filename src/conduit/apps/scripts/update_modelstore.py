@@ -1,4 +1,4 @@
-from conduit.model.models.modelstore import ModelStore
+from conduit.core.model.models.modelstore import ModelStore
 
 
 def main():

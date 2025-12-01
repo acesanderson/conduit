@@ -3,7 +3,7 @@ Repository class for managing provider specifications.
 This module provides functions to create, read, update, and delete provider specifications.
 """
 
-from conduit.model.models.providerspec import ProviderSpec
+from conduit.core.model.models.providerspec import ProviderSpec
 from pathlib import Path
 
 dir_path = Path(__file__).parent

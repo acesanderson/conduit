@@ -1,10 +1,10 @@
-from conduit.result.error import ConduitError, ErrorInfo, ErrorDetail
-from conduit.result.response import Response
-from conduit.request.request import Request
-from conduit.message.textmessage import TextMessage
-from conduit.message.imagemessage import ImageMessage
-from conduit.message.audiomessage import AudioMessage
-from conduit.message.messages import Messages
+from conduit.domain.result.error import ConduitError, ErrorInfo, ErrorDetail
+from conduit.domain.result.response import Response
+from conduit.domain.request.request import Request
+from conduit.domain.message.textmessage import TextMessage
+from conduit.domain.message.imagemessage import ImageMessage
+from conduit.domain.message.audiomessage import AudioMessage
+from conduit.domain.message.messages import Messages
 from datetime import datetime
 from pathlib import Path
 

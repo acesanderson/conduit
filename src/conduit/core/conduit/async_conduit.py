@@ -1,10 +1,10 @@
-from conduit.conduit.sync_conduit import SyncConduit, Prompt
-from conduit.model.model_async import ModelAsync
-from conduit.result.response import Response
-from conduit.result.error import ConduitError
-from conduit.parser.parser import Parser
-from conduit.progress.verbosity import Verbosity
-from conduit.message.messagestore import MessageStore
+from conduit.core.conduit.sync_conduit import SyncConduit, Prompt
+from conduit.core.model.model_async import ModelAsync
+from conduit.domain.result.response import Response
+from conduit.domain.result.error import ConduitError
+from conduit.core.parser.parser import Parser
+from conduit.utils.progress.verbosity import Verbosity
+from conduit.domain.message.messagestore import MessageStore
 from typing import TYPE_CHECKING, Optional
 import asyncio
 import logging
@@ -142,8 +142,8 @@ class AsyncConduit(SyncConduit):
         tracker = None
         if verbose:
             console = self.model.console or self.__class__._console
-            from conduit.progress.tracker import ConcurrentTracker
-            from conduit.progress.wrappers import create_concurrent_progress_tracker
+            from conduit.utils.progress.tracker import ConcurrentTracker
+            from conduit.utils.progress.wrappers import create_concurrent_progress_tracker
 
             tracker = create_concurrent_progress_tracker(console, len(prompt_strings))
             tracker.emit_concurrent_start()
@@ -182,7 +182,7 @@ class AsyncConduit(SyncConduit):
 
             # Wrap with concurrent tracking if available
             if tracker:
-                from conduit.progress.wrappers import concurrent_wrapper
+                from conduit.utils.progress.wrappers import concurrent_wrapper
 
                 return await concurrent_wrapper(do_work(), tracker)
             else:
@@ -233,8 +233,8 @@ class AsyncConduit(SyncConduit):
         tracker = None
         if verbose:
             console = self.model.console or self.__class__._console
-            from conduit.progress.tracker import ConcurrentTracker
-            from conduit.progress.wrappers import create_concurrent_progress_tracker
+            from conduit.utils.progress.tracker import ConcurrentTracker
+            from conduit.utils.progress.wrappers import create_concurrent_progress_tracker
 
             tracker = create_concurrent_progress_tracker(
                 console, len(input_variables_list)
@@ -273,7 +273,7 @@ class AsyncConduit(SyncConduit):
 
             # Wrap with concurrent tracking if available
             if tracker:
-                from conduit.progress.wrappers import concurrent_wrapper
+                from conduit.utils.progress.wrappers import concurrent_wrapper
 
                 return await concurrent_wrapper(do_work(), tracker)
             else:

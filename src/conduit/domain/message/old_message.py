@@ -55,15 +55,15 @@ class Message(BaseModel, ABC):
 
         # Import only when needed
         if message_type == "text":
-            from conduit.message.textmessage import TextMessage
+            from conduit.domain.message.textmessage import TextMessage
 
             return TextMessage.from_cache_dict(cache_dict)
         elif message_type == "audio":
-            from conduit.message.audiomessage import AudioMessage
+            from conduit.domain.message.audiomessage import AudioMessage
 
             return AudioMessage.from_cache_dict(cache_dict)
         elif message_type == "image":
-            from conduit.message.imagemessage import ImageMessage
+            from conduit.domain.message.imagemessage import ImageMessage
 
             return ImageMessage.from_cache_dict(cache_dict)
         else:

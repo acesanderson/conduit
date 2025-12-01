@@ -5,9 +5,9 @@ If XMLStreamingParser has a hit:
 - run parse_tool_call to execute the tool and get the result
 """
 
-from conduit.tools.tool import ToolCallError
-from conduit.tools.registry import ToolRegistry
-from conduit.tools.tools import (
+from conduit.capabilities.tools.tool import ToolCallError
+from conduit.capabilities.tools.registry import ToolRegistry
+from conduit.capabilities.tools.tools import (
     FileReadTool,
     FileReadChunkTool,
     FileSearchTool,

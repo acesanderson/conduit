@@ -3,7 +3,7 @@ For Google Gemini models.
 """
 
 from __future__ import annotations
-from conduit.model.clients.client import Client, Usage
+from conduit.core.model.clients.client import Client, Usage
 from openai import OpenAI, AsyncOpenAI, Stream
 from typing import TYPE_CHECKING, override
 import instructor
@@ -13,9 +13,9 @@ from pydantic import BaseModel
 import os
 
 if TYPE_CHECKING:
-    from conduit.parser.stream.protocol import SyncStream, AsyncStream
-    from conduit.request.request import Request
-    from conduit.message.message import Message
+    from conduit.core.parser.stream.protocol import SyncStream, AsyncStream
+    from conduit.domain.request.request import Request
+    from conduit.domain.message.message import Message
 
 
 class GoogleClient(Client, ABC):

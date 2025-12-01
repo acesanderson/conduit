@@ -9,11 +9,11 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
-    from conduit.model.clients.payload_base import Payload
-    from conduit.odometer.usage import Usage
-    from conduit.parser.stream.protocol import SyncStream, AsyncStream
-    from conduit.request.request import Request
-    from conduit.message.message import Message
+    from conduit.core.model.clients.payload_base import Payload
+    from conduit.storage.odometer.usage import Usage
+    from conduit.core.parser.stream.protocol import SyncStream, AsyncStream
+    from conduit.domain.request.request import Request
+    from conduit.domain.message.message import Message
 
 
 class Client(ABC):

@@ -10,7 +10,7 @@ from pathlib import Path
 import tomllib
 import json
 from dataclasses import dataclass
-from conduit.progress.verbosity import Verbosity
+from conduit.utils.progress.verbosity import Verbosity
 from rich.console import Console
 from xdg_base_dirs import (
     xdg_config_home,

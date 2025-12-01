@@ -1,5 +1,5 @@
-from conduit.result.response import Response
-from conduit.request.request import Request
+from conduit.domain.result.response import Response
+from conduit.domain.request.request import Request
 from typing import Any
 from pathlib import Path
 from xdg_base_dirs import xdg_cache_home

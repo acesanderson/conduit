@@ -1,9 +1,9 @@
 from collections.abc import Iterator
 from pydantic import BaseModel, Field
-from conduit.message.message import Message
-from conduit.message.textmessage import TextMessage
-from conduit.message.imagemessage import ImageMessage
-from conduit.message.audiomessage import AudioMessage
+from conduit.domain.message.message import Message
+from conduit.domain.message.textmessage import TextMessage
+from conduit.domain.message.imagemessage import ImageMessage
+from conduit.domain.message.audiomessage import AudioMessage
 from typing import override
 import logging
 

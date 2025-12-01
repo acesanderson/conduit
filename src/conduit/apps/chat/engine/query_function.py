@@ -10,7 +10,7 @@ A ChatQueryFunction is responsible for:
 """
 
 from conduit.sync import Conduit, Response, Verbosity, Model
-from conduit.message.messagestore import MessageStore
+from conduit.domain.message.messagestore import MessageStore
 from typing import Protocol, runtime_checkable
 from rich.console import Console
 from instructor.exceptions import InstructorRetryException

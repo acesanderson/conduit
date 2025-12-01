@@ -1,13 +1,13 @@
 from __future__ import annotations
 from pydantic import BaseModel, Field, model_validator
 from conduit.config import settings
-from conduit.message.messages import MessageUnion
-from conduit.progress.verbosity import Verbosity
-from conduit.progress.display_mixins import (
+from conduit.domain.message.messages import MessageUnion
+from conduit.utils.progress.verbosity import Verbosity
+from conduit.utils.progress.display_mixins import (
     RichDisplayParamsMixin,
     PlainDisplayParamsMixin,
 )
-from conduit.request.outputtype import OutputType
+from conduit.domain.request.outputtype import OutputType
 from typing import Any
 import logging
 

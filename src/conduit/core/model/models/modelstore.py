@@ -4,17 +4,17 @@ The list of ollama models is host-specific, and therefore in our state directory
 Ollama context sizes is user-configurable, and therefore in our config directory.
 """
 
-from conduit.model.models.providerstore import ProviderStore
-from conduit.model.models.provider import Provider
-from conduit.model.models.modelspec import ModelSpec
-from conduit.model.models.modelspecs_CRUD import (
+from conduit.core.model.models.providerstore import ProviderStore
+from conduit.core.model.models.provider import Provider
+from conduit.core.model.models.modelspec import ModelSpec
+from conduit.core.model.models.modelspecs_CRUD import (
     get_modelspec_by_name,
     get_all_modelspecs,
     delete_modelspec,
     get_all_model_names,
 )
-from conduit.model.models.research_models import create_modelspec
-from conduit.model.clients.client import Client
+from conduit.core.model.models.research_models import create_modelspec
+from conduit.core.model.clients.client import Client
 from xdg_base_dirs import xdg_state_home, xdg_config_home
 from pathlib import Path
 from typing import Literal
@@ -331,7 +331,7 @@ class ModelStore:
         Get the client for a specific model.
         """
         model_name = cls.validate_model(model_name)
-        from conduit.model.models.modelstore import ModelStore
+        from conduit.core.model.models.modelstore import ModelStore
 
         model_list = ModelStore.models()
         # Handle remote execution mode first -- we don't care about model name here
@@ -357,11 +357,11 @@ class ModelStore:
         execution_mode: Literal["sync", "async", "remote"],
     ) -> Client:
         if execution_mode == "sync":
-            from conduit.model.clients.openai_client import OpenAIClientSync
+            from conduit.core.model.clients.openai_client import OpenAIClientSync
 
             return OpenAIClientSync()
         elif execution_mode == "async":
-            from conduit.model.clients.openai_client import OpenAIClientAsync
+            from conduit.core.model.clients.openai_client import OpenAIClientAsync
 
             return OpenAIClientAsync()
 
@@ -370,11 +370,11 @@ class ModelStore:
         execution_mode: Literal["sync", "async", "remote"],
     ) -> Client:
         if execution_mode == "sync":
-            from conduit.model.clients.anthropic_client import AnthropicClientSync
+            from conduit.core.model.clients.anthropic_client import AnthropicClientSync
 
             return AnthropicClientSync()
         elif execution_mode == "async":
-            from conduit.model.clients.anthropic_client import AnthropicClientAsync
+            from conduit.core.model.clients.anthropic_client import AnthropicClientAsync
 
             return AnthropicClientAsync()
 
@@ -383,11 +383,11 @@ class ModelStore:
         execution_mode: Literal["sync", "async", "remote"],
     ) -> Client:
         if execution_mode == "sync":
-            from conduit.model.clients.google_client import GoogleClientSync
+            from conduit.core.model.clients.google_client import GoogleClientSync
 
             return GoogleClientSync()
         elif execution_mode == "async":
-            from conduit.model.clients.google_client import GoogleClientAsync
+            from conduit.core.model.clients.google_client import GoogleClientAsync
 
             return GoogleClientAsync()
 
@@ -396,11 +396,11 @@ class ModelStore:
         execution_mode: Literal["sync", "async", "remote"],
     ) -> Client:
         if execution_mode == "sync":
-            from conduit.model.clients.ollama_client import OllamaClientSync
+            from conduit.core.model.clients.ollama_client import OllamaClientSync
 
             return OllamaClientSync()
         elif execution_mode == "async":
-            from conduit.model.clients.ollama_client import OllamaClientAsync
+            from conduit.core.model.clients.ollama_client import OllamaClientAsync
 
             return OllamaClientAsync()
 
@@ -409,11 +409,11 @@ class ModelStore:
         execution_mode: Literal["sync", "async", "remote"],
     ) -> Client:
         if execution_mode == "sync":
-            from conduit.model.clients.perplexity_client import PerplexityClientSync
+            from conduit.core.model.clients.perplexity_client import PerplexityClientSync
 
             return PerplexityClientSync()
         elif execution_mode == "async":
-            from conduit.model.clients.perplexity_client import PerplexityClientAsync
+            from conduit.core.model.clients.perplexity_client import PerplexityClientAsync
 
             return PerplexityClientAsync()
 
@@ -422,7 +422,7 @@ class ModelStore:
         execution_mode: Literal["sync", "async", "remote"],
     ) -> Client:
         if execution_mode == "remote":
-            from conduit.model.clients.remote_client import RemoteClient
+            from conduit.core.model.clients.remote_client import RemoteClient
 
             return RemoteClient()
 

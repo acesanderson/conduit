@@ -4,7 +4,7 @@ conversation odomoter: saved in a sqlite3 file (similar naming convention to his
 persistent odometer: saved in postgres
 """
 
-from conduit.odometer.TokenEvent import TokenEvent
+from conduit.storage.odometer.TokenEvent import TokenEvent
 from pydantic import BaseModel, Field
 from datetime import datetime
 

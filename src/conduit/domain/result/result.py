@@ -1,5 +1,5 @@
-from conduit.result.response import Response
-from conduit.result.error import ConduitError
-from conduit.parser.stream.protocol import SyncStream, AsyncStream
+from conduit.domain.result.response import Response
+from conduit.domain.result.error import ConduitError
+from conduit.core.parser.stream.protocol import SyncStream, AsyncStream
 
 ConduitResult = Response | ConduitError | SyncStream | AsyncStream

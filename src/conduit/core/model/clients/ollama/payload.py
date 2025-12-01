@@ -1,4 +1,4 @@
-from conduit.model.clients.openai.payload import OpenAIPayload
+from conduit.core.model.clients.openai.payload import OpenAIPayload
 from typing import Any
 
 

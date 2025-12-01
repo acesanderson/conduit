@@ -1,4 +1,4 @@
-from conduit.cli.cli_class import ConduitCLI
+from conduit.apps.cli.cli_class import ConduitCLI
 
 
 def main():

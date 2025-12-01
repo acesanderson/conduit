@@ -1,6 +1,6 @@
-from conduit.model.model_sync import ModelSync
-from conduit.prompt.prompt import Prompt
-from conduit.conduit.sync_conduit import SyncConduit
+from conduit.core.model.model_sync import ModelSync
+from conduit.core.prompt.prompt import Prompt
+from conduit.core.conduit.sync_conduit import SyncConduit
 from collections.abc import Callable
 import inspect
 import re

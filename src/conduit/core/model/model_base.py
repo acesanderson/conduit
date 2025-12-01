@@ -13,14 +13,14 @@ The **Conduit** class is your **Workflow Orchestrator**; it handles the *context
 
 from __future__ import annotations
 from conduit.config import settings
-from conduit.request.request import Request
-from conduit.request.query import QueryInput
-from conduit.model.clients.client import Usage, Client
-from conduit.parser.stream.protocol import SyncStream, AsyncStream
-from conduit.result.response import Response
-from conduit.result.result import ConduitResult
-from conduit.progress.verbosity import Verbosity
-from conduit.odometer.OdometerRegistry import OdometerRegistry
+from conduit.domain.request.request import Request
+from conduit.domain.request.query import QueryInput
+from conduit.core.model.clients.client import Usage, Client
+from conduit.core.parser.stream.protocol import SyncStream, AsyncStream
+from conduit.domain.result.response import Response
+from conduit.domain.result.result import ConduitResult
+from conduit.utils.progress.verbosity import Verbosity
+from conduit.storage.odometer.OdometerRegistry import OdometerRegistry
 from pydantic import BaseModel
 from typing import TYPE_CHECKING, Any, override
 from abc import ABC, abstractmethod
@@ -29,7 +29,7 @@ import logging
 # Load only if type checking
 if TYPE_CHECKING:
     from rich.console import Console
-    from conduit.cache.cache import ConduitCache
+    from conduit.storage.cache.cache import ConduitCache
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ class ModelBase(ABC):
         verbosity: Verbosity = settings.default_verbosity,
         cache: str | ConduitCache | None = None,
     ):
-        from conduit.model.models.modelstore import ModelStore
+        from conduit.core.model.models.modelstore import ModelStore
 
         self.name: str = ModelStore.validate_model(model_name)
         self.verbosity: Verbosity = verbosity
@@ -57,7 +57,7 @@ class ModelBase(ABC):
         self.client: Client = self.get_client(self.name)
 
         if cache is not None:
-            from conduit.cache.cache import ConduitCache
+            from conduit.storage.cache.cache import ConduitCache
 
             if isinstance(cache, str):
                 # Convenience: Create cache from string name
@@ -72,7 +72,7 @@ class ModelBase(ABC):
     # Config methods (post-init)
     def enable_cache(self) -> None:
         if self.cache is None:
-            from conduit.cache.cache import ConduitCache
+            from conduit.storage.cache.cache import ConduitCache
 
             logger.info("Enabling default cache.")
             self.cache = ConduitCache()
@@ -99,7 +99,7 @@ class ModelBase(ABC):
         Returns a dictionary of available models.
         This is useful for introspection and debugging.
         """
-        from conduit.model.models.modelstore import ModelStore
+        from conduit.core.model.models.modelstore import ModelStore
 
         return ModelStore.models()
 
@@ -162,7 +162,7 @@ class ModelBase(ABC):
             # Construct relevant Message type per requested output_type
             match output_type:
                 case "text":  # result is a string
-                    from conduit.message.textmessage import TextMessage
+                    from conduit.domain.message.textmessage import TextMessage
 
                     assistant_message = TextMessage(
                         role="assistant", content=raw_result
@@ -171,7 +171,7 @@ class ModelBase(ABC):
                     assert isinstance(raw_result, str), (
                         "Image generation request should not return a BaseModel; we need base64 string."
                     )
-                    from conduit.message.imagemessage import ImageMessage
+                    from conduit.domain.message.imagemessage import ImageMessage
 
                     assistant_message = ImageMessage.from_base64(
                         role="assistant", text_content="", image_content=raw_result
@@ -180,7 +180,7 @@ class ModelBase(ABC):
                     assert isinstance(raw_result, str), (
                         "Audio generation (TTS) request should not return a BaseModel; we need base64 string."
                     )
-                    from conduit.message.audiomessage import AudioMessage
+                    from conduit.domain.message.audiomessage import AudioMessage
 
                     assistant_message = AudioMessage.from_base64(
                         role="assistant",

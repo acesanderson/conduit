@@ -1,15 +1,15 @@
 from __future__ import annotations
 from pydantic import BaseModel, Field
-from conduit.request.query import QueryInput
-from conduit.message.textmessage import TextMessage
-from conduit.message.messages import Messages, MessageUnion
-from conduit.parser.parser import Parser
-from conduit.progress.verbosity import Verbosity
-from conduit.progress.display_mixins import (
+from conduit.domain.request.query import QueryInput
+from conduit.domain.message.textmessage import TextMessage
+from conduit.domain.message.messages import Messages, MessageUnion
+from conduit.core.parser.parser import Parser
+from conduit.utils.progress.verbosity import Verbosity
+from conduit.utils.progress.display_mixins import (
     RichDisplayParamsMixin,
     PlainDisplayParamsMixin,
 )
-from conduit.request.clientparams import (
+from conduit.domain.request.clientparams import (
     ClientParamsModels,
     OpenAIParams,
     OllamaParams,
@@ -17,8 +17,8 @@ from conduit.request.clientparams import (
     GoogleParams,
     PerplexityParams,
 )
-from conduit.request.outputtype import OutputType
-from conduit.model.models.provider import Provider
+from conduit.domain.request.outputtype import OutputType
+from conduit.core.model.models.provider import Provider
 import logging
 
 logger = logging.getLogger(__name__)
@@ -145,7 +145,7 @@ class Request(BaseModel, RichDisplayParamsMixin, PlainDisplayParamsMixin):
 
     # Validation methods
     def _set_provider(self):
-        from conduit.model.models.modelstore import ModelStore
+        from conduit.core.model.models.modelstore import ModelStore
 
         for provider in ModelStore.models().keys():
             if self.model in ModelStore.models()[provider]:
@@ -199,7 +199,7 @@ class Request(BaseModel, RichDisplayParamsMixin, PlainDisplayParamsMixin):
         """
         Validate that the model is supported by at least one provider.
         """
-        from conduit.model.models.modelstore import ModelStore
+        from conduit.core.model.models.modelstore import ModelStore
 
         if not ModelStore.is_supported(self.model):
             raise ValueError(f"Model '{self.model}' is not supported.")
@@ -404,7 +404,7 @@ class Request(BaseModel, RichDisplayParamsMixin, PlainDisplayParamsMixin):
         """
         Sets num_ctx in client_params, then delegates to _to_openai_spec.
         """
-        from conduit.model.models.modelstore import ModelStore
+        from conduit.core.model.models.modelstore import ModelStore
 
         if self.client_params:
             assert OllamaParams.model_validate(self.client_params), (

@@ -77,7 +77,7 @@ class CommandHandlers:
         """
         Display available models.
         """
-        from conduit.model.models.modelstore import ModelStore
+        from conduit.core.model.models.modelstore import ModelStore
 
         ms = ModelStore()
         renderable_columns = ms._generate_renderable_model_list()
@@ -95,7 +95,7 @@ class CommandHandlers:
         """
         Set the current model.
         """
-        from conduit.model.model_sync import ModelSync
+        from conduit.core.model.model_sync import ModelSync
 
         try:
             self.model = Model(param)

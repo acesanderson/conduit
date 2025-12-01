@@ -5,8 +5,8 @@ The registry aggregates `Tool` objects, generating unified XML or JSON schemas t
 
 Usage:
 ```python
-from conduit.tools.registry import ToolRegistry
-from conduit.tools.tools import FileReadTool
+from conduit.capabilities.tools.registry import ToolRegistry
+from conduit.capabilities.tools.tools import FileReadTool
 
 # Initialize and register tools
 registry = ToolRegistry()
@@ -23,7 +23,7 @@ result = registry.parse_and_execute(
 ```
 """
 
-from conduit.tools.tool import ToolCall, Tool
+from conduit.capabilities.tools.tool import ToolCall, Tool
 from pathlib import Path
 import logging
 import os
@@ -79,8 +79,8 @@ class ToolRegistry:
         NOTE: this will be get very large as more tools are added; consider specifically only
         loading the tools you need.
         """
-        logger.info("Registering all tools from conduit.tools.tools")
-        from conduit.tools.tools import AllTools
+        logger.info("Registering all tools from conduit.capabilities.tools.tools")
+        from conduit.capabilities.tools.tools import AllTools
 
         for tool in AllTools:
             self.register(tool)

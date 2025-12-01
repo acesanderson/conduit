@@ -1,6 +1,6 @@
 from __future__ import annotations
-from conduit.model.clients.client import Client, Usage
-from conduit.model.clients.load_env import load_env
+from conduit.core.model.clients.client import Client, Usage
+from conduit.core.model.clients.load_env import load_env
 from openai import OpenAI
 from openai import AsyncOpenAI
 from openai import Stream
@@ -12,9 +12,9 @@ import json
 from typing import TYPE_CHECKING, override
 
 if TYPE_CHECKING:
-    from conduit.parser.stream.protocol import SyncStream, AsyncStream
-    from conduit.request.request import Request
-    from conduit.message.message import Message
+    from conduit.core.parser.stream.protocol import SyncStream, AsyncStream
+    from conduit.domain.request.request import Request
+    from conduit.domain.message.message import Message
 
 logger = logging.getLogger(__name__)
 
@@ -52,9 +52,9 @@ class OpenAIClient(Client, ABC):
 
         if isinstance(payload, list):
             # Lazy import to avoid circular dependency
-            from conduit.message.textmessage import TextMessage
-            from conduit.message.imagemessage import ImageMessage
-            from conduit.message.audiomessage import AudioMessage
+            from conduit.domain.message.textmessage import TextMessage
+            from conduit.domain.message.imagemessage import ImageMessage
+            from conduit.domain.message.audiomessage import AudioMessage
 
             tokens_per_message = 3
             num_tokens = 0

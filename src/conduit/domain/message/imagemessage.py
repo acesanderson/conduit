@@ -7,8 +7,8 @@ We have a basic ImageMessage class, which is a wrapper for the OpenAI and Anthro
 """
 
 from pydantic import BaseModel, Field
-from conduit.message.message import Message, MessageType, Role
-from conduit.message.convert_image import convert_image, convert_image_file
+from conduit.domain.message.message import Message, MessageType, Role
+from conduit.domain.message.convert_image import convert_image, convert_image_file
 from pathlib import Path
 from typing import override
 import re

@@ -1,4 +1,4 @@
-from conduit.odometer.Odometer import Odometer
+from conduit.storage.odometer.Odometer import Odometer
 from pydantic import Field
 
 

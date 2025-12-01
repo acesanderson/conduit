@@ -20,11 +20,11 @@ import logging
 
 if TYPE_CHECKING:
     from rich.console import Console
-    from conduit.prompt.prompt import Prompt
-    from conduit.model.model_base import ModelBase
-    from conduit.parser.parser import Parser
-    from conduit.message.messagestore import MessageStore
-    from conduit.progress.verbosity import Verbosity
+    from conduit.core.prompt.prompt import Prompt
+    from conduit.core.model.model_base import ModelBase
+    from conduit.core.parser.parser import Parser
+    from conduit.domain.message.messagestore import MessageStore
+    from conduit.utils.progress.verbosity import Verbosity
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ class ConduitBase:
     # Config methods (if we want to enable/disable components post-init)
     def enable_message_store(self, name: str) -> None:
         if not self.message_store:
-            from conduit.message.messagestore import MessageStore
+            from conduit.domain.message.messagestore import MessageStore
 
             self.message_store = MessageStore(name=name)
 

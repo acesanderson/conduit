@@ -1,6 +1,6 @@
 import argparse
 from collections import namedtuple
-from conduit.model.models.modelstore import ModelStore
+from conduit.core.model.models.modelstore import ModelStore
 
 models = ModelStore.list_models()
 modeltypes = ModelStore.list_model_types()

@@ -6,8 +6,8 @@ Some guidelines for this Mixin:
 """
 
 from conduit.sync import Conduit, Verbosity
-from conduit.cli.printer import Printer
-from conduit.cli.query_function import CLIQueryFunctionInputs
+from conduit.apps.cli.printer import Printer
+from conduit.apps.cli.query_function import CLIQueryFunctionInputs
 import logging
 import sys
 
@@ -84,7 +84,7 @@ class HandlerMixin:
         role = "user"
         text_content = combined_query
 
-        from conduit.message.imagemessage import ImageMessage
+        from conduit.domain.message.imagemessage import ImageMessage
 
         imagemessage = ImageMessage(
             role=role,

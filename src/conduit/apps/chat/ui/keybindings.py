@@ -64,7 +64,7 @@ class KeyBindingsRepo:
             """
             Display current model information
             """
-            from conduit.model.models.modelstore import ModelStore
+            from conduit.core.model.models.modelstore import ModelStore
 
             ms = ModelStore()
             model_spec = ms.get_model(self.engine.model.model)

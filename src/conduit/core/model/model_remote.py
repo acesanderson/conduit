@@ -3,12 +3,12 @@ RemoteModel - A server-based Model implementation that maintains protocol compat
 """
 
 from __future__ import annotations
-from conduit.model.model_base import ModelBase
-from conduit.model.models.modelstore import ModelStore
-from conduit.model.clients.client import Client, Usage
-from conduit.progress.wrappers import progress_display
-from conduit.result.result import ConduitResult
-from conduit.result.error import ConduitError
+from conduit.core.model.model_base import ModelBase
+from conduit.core.model.models.modelstore import ModelStore
+from conduit.core.model.clients.client import Client, Usage
+from conduit.utils.progress.wrappers import progress_display
+from conduit.domain.result.result import ConduitResult
+from conduit.domain.result.error import ConduitError
 from headwater_api.classes import StatusResponse
 from pydantic import ValidationError
 from typing import override

@@ -15,10 +15,10 @@ app.run()
 ```
 """
 
-from conduit.chat.engine.engine import ConduitEngine
-from conduit.chat.engine.exceptions import ConduitChatError
-from conduit.chat.ui.input_interface import InputInterface
-from conduit.chat.ui.ui_command import UICommand
+from conduit.apps.chat.engine.engine import ConduitEngine
+from conduit.apps.chat.engine.exceptions import ConduitChatError
+from conduit.apps.chat.ui.input_interface import InputInterface
+from conduit.apps.chat.ui.ui_command import UICommand
 from rich.console import RenderableType
 
 

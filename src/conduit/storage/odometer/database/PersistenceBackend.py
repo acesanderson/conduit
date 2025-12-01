@@ -1,4 +1,4 @@
-from conduit.odometer.TokenEvent import TokenEvent
+from conduit.storage.odometer.TokenEvent import TokenEvent
 from abc import ABC, abstractmethod
 from datetime import date
 

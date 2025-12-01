@@ -3,7 +3,7 @@ Enhanced progress handlers with verbosity support.
 Maintains backwards compatibility while adding verbosity-aware methods.
 """
 
-from conduit.progress.verbosity import Verbosity
+from conduit.utils.progress.verbosity import Verbosity
 from datetime import datetime
 import time
 import logging
