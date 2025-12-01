@@ -87,7 +87,15 @@ class OllamaClient(Client, ABC):
         dictionary parameters required by Ollama's SDK (via OpenAI spec).
         Ollama supports extra_body for additional configuration options.
         """
+        # load client_params
+        client_params = request.client_params or {}
+        allowed_params = {"num_ctx"}
+        for param in client_params:
+            if param not in allowed_params:
+                raise ValueError(f"Ollama does not support client param: {param}")
+        # convert messages
         converted_messages = self._convert_messages(request.messages)
+        # build paylod
         ollama_payload = OllamaPayload(
             model=request.model,
             messages=converted_messages,
@@ -95,7 +103,8 @@ class OllamaClient(Client, ABC):
             top_p=request.top_p,
             max_tokens=request.max_tokens,
             stream=request.stream,
-            extra_body=None,  # Can be extended for Ollama-specific options
+            # ollama specific params (nested under extra_body)
+            extra_body={**client_params} if client_params else None,
         )
         return ollama_payload
 
