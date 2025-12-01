@@ -1,3 +1,8 @@
-from typing import Literal
+from enum import Enum
 
-Role = Literal["user", "assistant", "system", "tool"]
+
+class Role(Enum):
+    USER = "user"
+    ASSISTANT = "assistant"
+    SYSTEM = "system"
+    TOOL = "tool"
