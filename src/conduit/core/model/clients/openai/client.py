@@ -33,6 +33,13 @@ class OpenAIClient(Client, ABC):
         return api_key
 
     @override
+    def _convert_request(self, request: Request) -> dict[str, Any]:
+        """
+        Translates the internal generic Request DTO into the specific
+        dictionary parameters required by OpenAI's SDK.
+        """
+
+    @override
     def tokenize(self, model: str, payload: str | list[Message]) -> int:
         """
         Return the token count for a string or a message list.
