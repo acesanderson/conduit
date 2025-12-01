@@ -3,22 +3,16 @@ A successful Result.
 """
 
 from conduit.domain.message.message import Message
-from conduit.domain.message.textmessage import TextMessage
-from conduit.domain.message.audiomessage import AudioMessage
-from conduit.domain.message.imagemessage import ImageMessage
-from conduit.domain.message.messages import Messages
 from conduit.domain.request.request import Request
 from conduit.utils.progress.display_mixins import (
     RichDisplayResponseMixin,
     PlainDisplayResponseMixin,
 )
 from pydantic import BaseModel, Field, model_validator
-from datetime import datetime
+import time
 import logging
 
 logger = logging.getLogger(__name__)
-
-MessageUnion = TextMessage | AudioMessage | ImageMessage
 
 
 class Response(BaseModel, RichDisplayResponseMixin, PlainDisplayResponseMixin):
@@ -28,7 +22,7 @@ class Response(BaseModel, RichDisplayResponseMixin, PlainDisplayResponseMixin):
     """
 
     # Core attributes
-    message: MessageUnion
+    message: Message
     request: Request
     input_tokens: int
     output_tokens: int
@@ -38,8 +32,8 @@ class Response(BaseModel, RichDisplayResponseMixin, PlainDisplayResponseMixin):
     emit_tokens: bool = Field(default=True, exclude=True)  # Exclude from serialization
 
     # Initialization attributes
-    timestamp: str = Field(
-        default_factory=lambda: datetime.now().isoformat(),
+    timestamp: int = Field(
+        default_factory=lambda: int(time.time() * 1000),
         description="Timestamp of the response creation",
     )
 
@@ -80,34 +74,6 @@ class Response(BaseModel, RichDisplayResponseMixin, PlainDisplayResponseMixin):
         )
         ModelSync._odometer_registry.emit_token_event(event)
 
-    def to_cache_dict(self) -> dict:
-        """
-        Serialize Response to cache-friendly dictionary.
-        """
-        return {
-            "message": self.message.to_cache_dict(),
-            "request": self.request.to_cache_dict(),
-            "input_tokens": self.input_tokens,
-            "output_tokens": self.output_tokens,
-            "duration": self.duration,
-            "timestamp": self.timestamp,
-        }
-
-    @classmethod
-    def from_cache_dict(cls, cache_dict: dict) -> "Response":
-        """
-        Deserialize Response from cache dictionary.
-        """
-        return cls(
-            message=Message.from_cache_dict(cache_dict["message"]),
-            request=Request.from_cache_dict(cache_dict["request"]),
-            input_tokens=cache_dict["input_tokens"],
-            output_tokens=cache_dict["output_tokens"],
-            duration=cache_dict["duration"],
-            timestamp=cache_dict.get("timestamp", datetime.now().isoformat()),
-            emit_tokens=False,  # Do not emit tokens for cached responses
-        )
-
     @property
     def prompt(self) -> str | None:
         """
@@ -116,8 +82,8 @@ class Response(BaseModel, RichDisplayResponseMixin, PlainDisplayResponseMixin):
         return self.request.messages[-1].content
 
     @property
-    def messages(self) -> Messages:
-        return Messages(messages=self.request.messages + [self.message])
+    def messages(self) -> list[Message]:
+        return [*self.request.messages, self.message]
 
     @property
     def total_tokens(self) -> int:
@@ -136,34 +102,6 @@ class Response(BaseModel, RichDisplayResponseMixin, PlainDisplayResponseMixin):
         This is the model used for the response.
         """
         return self.request.model
-
-    def display(self):
-        """
-        Display image if the latest message is an ImageMessage.
-        """
-        from conduit.domain.message.imagemessage import ImageMessage
-
-        if isinstance(self.message, ImageMessage):
-            self.message.display()
-        else:
-            raise TypeError(
-                f"Cannot display message of type {self.message.__class__.__name__}. "
-                "Only ImageMessage can be displayed."
-            )
-
-    def play(self):
-        """
-        Play audio if the latest message is an AudioMessage.
-        """
-        from conduit.domain.message.audiomessage import AudioMessage
-
-        if isinstance(self.message, AudioMessage):
-            self.message.play()
-        else:
-            raise TypeError(
-                f"Cannot play message of type {self.message.__class__.__name__}. "
-                "Only AudioMessage can be played."
-            )
 
     def __repr__(self):
         attr_list = []
