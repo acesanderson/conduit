@@ -55,7 +55,7 @@ def load_settings() -> Settings:
         "default_console": Console(),
         "server_models": [],
         "paths": {},
-        "default_params": GenerationParams(),
+        "default_params": GenerationParams(model="gpt3"),
     }
 
     # Config files (medium priority)

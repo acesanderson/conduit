@@ -7,14 +7,17 @@ We define preferred defaults for context sizes in a separate json file.
 """
 
 from __future__ import annotations
-from conduit.core.model.clients.client import Client, Usage
 from conduit.config import settings
-from pydantic import BaseModel
-from openai import OpenAI, AsyncOpenAI, Stream
-from pathlib import Path
+from conduit.core.model.clients.client_base import Client
+from conduit.storage.odometer.usage import Usage
+from conduit.core.model.clients.payload_base import Payload
+from conduit.core.model.clients.ollama.payload import OllamaPayload
+from conduit.core.model.clients.ollama.adapter import convert_message_to_ollama
+from conduit.config import settings
+from openai import OpenAI, AsyncOpenAI, Stream, AsyncStream
 from abc import ABC
 from collections import defaultdict
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, override, Any
 import instructor
 from instructor import Instructor
 import json
@@ -27,9 +30,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-OLLAMA_MODELS_PATH = settings.paths["OLLAMA_MODELS_PATH"]
-OLLAMA_CONTEXT_SIZES_PATH = settings.paths["OLLAMA_CONTEXT_SIZES_PATH"]
-
 
 class OllamaClient(Client, ABC):
     """
@@ -39,8 +39,10 @@ class OllamaClient(Client, ABC):
 
     # Load Ollama context sizes from the JSON file
     try:
-        Path(OLLAMA_CONTEXT_SIZES_PATH).parent.mkdir(parents=True, exist_ok=True)
-        with open(OLLAMA_CONTEXT_SIZES_PATH) as f:
+        settings.paths["OLLAMA_CONTEXT_SIZES_PATH"].parent.mkdir(
+            parents=True, exist_ok=True
+        )
+        with open(settings.paths["OLLAMA_CONTEXT_SIZES_PATH"]) as f:
             _ollama_context_data = json.load(f)
 
         # Use defaultdict to set default context size to 4096 if not specified
@@ -48,7 +50,7 @@ class OllamaClient(Client, ABC):
         _ollama_context_sizes.update(_ollama_context_data)
     except Exception:
         logger.warning(
-            f"Could not load Ollama context sizes from {OLLAMA_CONTEXT_SIZES_PATH}. Using default of 32768."
+            f"Could not load Ollama context sizes from {settings.paths['OLLAMA_CONTEXT_SIZES_PATH']}. Using default of 32768."
         )
         _ollama_context_sizes = defaultdict(lambda: 32768)
 
@@ -70,6 +72,33 @@ class OllamaClient(Client, ABC):
         """
         return ""
 
+    @override
+    def _convert_message(self, message: Message) -> dict[str, Any]:
+        """
+        Converts a single internal Message DTO into Ollama's specific dictionary format.
+        Since Ollama uses OpenAI spec, we delegate to the OpenAI adapter.
+        """
+        return convert_message_to_ollama(message)
+
+    @override
+    def _convert_request(self, request: Request) -> Payload:
+        """
+        Translates the internal generic Request DTO into the specific
+        dictionary parameters required by Ollama's SDK (via OpenAI spec).
+        Ollama supports extra_body for additional configuration options.
+        """
+        converted_messages = self._convert_messages(request.messages)
+        ollama_payload = OllamaPayload(
+            model=request.model,
+            messages=converted_messages,
+            temperature=request.temperature,
+            top_p=request.top_p,
+            max_tokens=request.max_tokens,
+            stream=request.stream,
+            extra_body=None,  # Can be extended for Ollama-specific options
+        )
+        return ollama_payload
+
     def update_ollama_models(self):
         """
         Updates the list of Ollama models.
@@ -78,11 +107,11 @@ class OllamaClient(Client, ABC):
         import ollama
 
         # Ensure the directory exists
-        Path(OLLAMA_MODELS_PATH).parent.mkdir(parents=True, exist_ok=True)
+        settings.paths["OLLAMA_MODELS_PATH"].parent.mkdir(parents=True, exist_ok=True)
         # Lazy load ollama module
         ollama_models = [m["model"] for m in ollama.list()["models"]]
         ollama_model_dict = {"ollama": ollama_models}
-        with open(OLLAMA_MODELS_PATH, "w") as f:
+        with open(settings.paths["OLLAMA_MODELS_PATH"], "w") as f:
             json.dump(ollama_model_dict, f)
 
     @override
@@ -133,23 +162,41 @@ class OllamaClientSync(OllamaClient):
     def query(
         self,
         request: Request,
-    ) -> tuple[str | BaseModel | SyncStream, Usage]:
+    ) -> tuple[str | object | SyncStream, Usage]:
+        match request.output_type:
+            case "text":
+                return self._generate_text(request)
+            case "image":
+                return self._generate_image(request)
+            case "audio":
+                return self._generate_audio(request)
+            case _:
+                raise ValueError(f"Unsupported output type: {request.output_type}")
+
+    def _generate_text(
+        self, request: Request
+    ) -> tuple[str | object | SyncStream, Usage]:
+        payload = self._convert_request(request)
+        payload_dict = payload.model_dump(exclude_none=True)
+        # Now, make the call
         structured_response = None
         if request.response_model is not None:
-            # We want the raw response from OpenAI, so we use `create_with_completion`
+            # We want the raw response from Ollama, so we use `create_with_completion`
             structured_response, result = (
                 self._client.chat.completions.create_with_completion(
-                    **request.to_ollama()
+                    response_model=request.response_model, **payload_dict
                 )
             )
         else:
             # Use the standard completion method
-            result = self._client.chat.completions.create(**request.to_ollama())
-        # Handle streaming response if needed
+            result = self._client.chat.completions.create(
+                response_model=request.response_model, **payload_dict
+            )
+        # Capture usage
         if isinstance(result, Stream):
+            # Handle streaming response if needed; usage is handled by StreamParser
             usage = Usage(input_tokens=0, output_tokens=0)
             return result, usage
-        # Capture usage
         usage = Usage(
             input_tokens=result.usage.prompt_tokens,
             output_tokens=result.usage.completion_tokens,
@@ -157,8 +204,20 @@ class OllamaClientSync(OllamaClient):
         if structured_response is not None:
             # If we have a structured response, return it along with usage
             return structured_response, usage
-        # Try to retrieve the text first
-        return result.choices[0].message.content, usage
+        # First try to get text content from the result
+        try:
+            result = result.choices[0].message.content
+            return result, usage
+        except AttributeError:
+            # If the result is a BaseModel or Stream, handle accordingly
+            pass
+        return result, usage
+
+    def _generate_image(self, request: Request) -> tuple[str, Usage]:
+        raise NotImplementedError("Ollama does not support image generation")
+
+    def _generate_audio(self, request: Request) -> tuple[str, Usage]:
+        raise NotImplementedError("Ollama does not support audio generation")
 
 
 class OllamaClientAsync(OllamaClient):
@@ -177,7 +236,10 @@ class OllamaClientAsync(OllamaClient):
     async def query(
         self,
         request: Request,
-    ) -> tuple[str | BaseModel | AsyncStream, Usage]:
+    ) -> tuple[str | object | AsyncStream, Usage]:
+        payload = self._convert_request(request)
+        payload_dict = payload.model_dump(exclude_none=True)
+        # Now, make the call
         structured_response = None
         if request.response_model is not None:
             # We want the raw response from Ollama, so we use `create_with_completion`
@@ -185,16 +247,18 @@ class OllamaClientAsync(OllamaClient):
                 structured_response,
                 result,
             ) = await self._client.chat.completions.create_with_completion(
-                **request.to_ollama()
+                response_model=request.response_model, **payload_dict
             )
         else:
             # Use the standard completion method
-            result = await self._client.chat.completions.create(**request.to_ollama())
-        # Handle streaming response if needed
-        if isinstance(result, Stream):
+            result = await self._client.chat.completions.create(
+                response_model=request.response_model, **payload_dict
+            )
+        # Capture usage
+        if isinstance(result, AsyncStream):
+            # Handle streaming response if needed; usage is handled by StreamParser
             usage = Usage(input_tokens=0, output_tokens=0)
             return result, usage
-        # Capture usage
         usage = Usage(
             input_tokens=result.usage.prompt_tokens,
             output_tokens=result.usage.completion_tokens,
@@ -202,5 +266,5 @@ class OllamaClientAsync(OllamaClient):
         if structured_response is not None:
             # If we have a structured response, return it along with usage
             return structured_response, usage
-        # Try to retrieve the text first
-        return result.choices[0].message.content, usage
+        result = result.choices[0].message.content
+        return result, usage

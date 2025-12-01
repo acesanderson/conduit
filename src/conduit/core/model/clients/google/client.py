@@ -3,13 +3,16 @@ For Google Gemini models.
 """
 
 from __future__ import annotations
-from conduit.core.model.clients.client import Client, Usage
-from openai import OpenAI, AsyncOpenAI, Stream
-from typing import TYPE_CHECKING, override
+from conduit.core.model.clients.client_base import Client
+from conduit.storage.odometer.usage import Usage
+from conduit.core.model.clients.payload_base import Payload
+from conduit.core.model.clients.google.payload import GooglePayload
+from conduit.core.model.clients.google.adapter import convert_message_to_google
+from openai import OpenAI, AsyncOpenAI, Stream, AsyncStream
+from typing import TYPE_CHECKING, override, Any
 import instructor
 from instructor import Instructor
 from abc import ABC
-from pydantic import BaseModel
 import os
 
 if TYPE_CHECKING:
@@ -32,8 +35,32 @@ class GoogleClient(Client, ABC):
         api_key = os.getenv("GOOGLE_API_KEY")
         if not api_key:
             raise ValueError("GOOGLE_API_KEY environment variable not set.")
-        else:
-            return api_key
+        return api_key
+
+    @override
+    def _convert_message(self, message: Message) -> dict[str, Any]:
+        """
+        Converts a single internal Message DTO into Google's specific dictionary format.
+        Since Google uses OpenAI spec, we delegate to the OpenAI adapter.
+        """
+        return convert_message_to_google(message)
+
+    @override
+    def _convert_request(self, request: Request) -> Payload:
+        """
+        Translates the internal generic Request DTO into the specific
+        dictionary parameters required by Google's SDK (via OpenAI spec).
+        """
+        converted_messages = self._convert_messages(request.messages)
+        google_payload = GooglePayload(
+            model=request.model,
+            messages=converted_messages,
+            temperature=request.temperature,
+            top_p=request.top_p,
+            max_tokens=request.max_tokens,
+            stream=request.stream,
+        )
+        return google_payload
 
     @override
     def tokenize(self, model: str, payload: str | list[Message]) -> int:
@@ -95,7 +122,7 @@ class GoogleClientSync(GoogleClient):
         client = instructor.from_openai(
             OpenAI(
                 api_key=self._get_api_key(),
-                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+                base_url="https://generativelanguage.googleapis.com/v1beta/",
             ),
             mode=instructor.Mode.JSON,
         )
@@ -116,23 +143,30 @@ class GoogleClientSync(GoogleClient):
             case _:
                 raise ValueError(f"Unsupported output type: {request.output_type}")
 
-    def _generate_text(self, request: Request) -> tuple:
+    def _generate_text(
+        self, request: Request
+    ) -> tuple[str | object | SyncStream, Usage]:
+        payload = self._convert_request(request)
+        payload_dict = payload.model_dump(exclude_none=True)
+        # Now, make the call
         structured_response = None
         if request.response_model is not None:
             # We want the raw response from Google, so we use `create_with_completion`
             structured_response, result = (
                 self._client.chat.completions.create_with_completion(
-                    **request.to_openai()
+                    response_model=request.response_model, **payload_dict
                 )
             )
         else:
             # Use the standard completion method
-            result = self._client.chat.completions.create(**request.to_openai())
-        # Handle streaming response if needed
+            result = self._client.chat.completions.create(
+                response_model=request.response_model, **payload_dict
+            )
+        # Capture usage
         if isinstance(result, Stream):
+            # Handle streaming response if needed; usage is handled by StreamParser
             usage = Usage(input_tokens=0, output_tokens=0)
             return result, usage
-        # Capture usage
         usage = Usage(
             input_tokens=result.usage.prompt_tokens,
             output_tokens=result.usage.completion_tokens,
@@ -145,23 +179,24 @@ class GoogleClientSync(GoogleClient):
             result = result.choices[0].message.content
             return result, usage
         except AttributeError:
+            # If the result is a BaseModel or Stream, handle accordingly
             pass
-        if isinstance(result, BaseModel):
-            return result, usage
+        return result, usage
 
-    def _generate_image(self, request: Request) -> tuple:
+    def _generate_image(self, request: Request) -> tuple[str, Usage]:
         response = self._client.images.generate(
             model=request.model,
             prompt=request.messages[-1].content,
-            response_format="b64_json",
             n=1,
+            size="1024x1024",
+            response_format="b64_json",
         )
         result = response.data[0].b64_json
         assert isinstance(result, str)
         usage = Usage(input_tokens=0, output_tokens=0)
         return result, usage
 
-    def _generate_audio(self, request: Request) -> tuple:
+    def _generate_audio(self, request: Request) -> tuple[str, Usage]:
         raise NotImplementedError
 
 
@@ -174,7 +209,7 @@ class GoogleClientAsync(GoogleClient):
         client = instructor.from_openai(
             AsyncOpenAI(
                 api_key=self._get_api_key(),
-                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+                base_url="https://generativelanguage.googleapis.com/v1beta/",
             ),
             mode=instructor.Mode.JSON,
         )
@@ -184,23 +219,29 @@ class GoogleClientAsync(GoogleClient):
     async def query(
         self,
         request: Request,
-    ) -> tuple[str | AsyncStream | BaseModel, Usage]:
+    ) -> tuple[str | object | AsyncStream, Usage]:
+        payload = self._convert_request(request)
+        payload_dict = payload.model_dump(exclude_none=True)
+        # Now, make the call
         structured_response = None
         if request.response_model is not None:
-            # We want the raw response from OpenAI, so we use `create_with_completion`
+            # We want the raw response from Google, so we use `create_with_completion`
             (
                 structured_response,
                 result,
             ) = await self._client.chat.completions.create_with_completion(
-                **request.to_openai()
+                response_model=request.response_model, **payload_dict
             )
         else:
             # Use the standard completion method
-            result = await self._client.chat.completions.create(**request.to_openai())
-        # Handle streaming response if needed
-        if isinstance(result, Stream):
-            return result, usage
+            result = await self._client.chat.completions.create(
+                response_model=request.response_model, **payload_dict
+            )
         # Capture usage
+        if isinstance(result, AsyncStream):
+            # Handle streaming response if needed; usage is handled by StreamParser
+            usage = Usage(input_tokens=0, output_tokens=0)
+            return result, usage
         usage = Usage(
             input_tokens=result.usage.prompt_tokens,
             output_tokens=result.usage.completion_tokens,
@@ -208,6 +249,5 @@ class GoogleClientAsync(GoogleClient):
         if structured_response is not None:
             # If we have a structured response, return it along with usage
             return structured_response, usage
-        # First try to get text content from the result
-        result_str = result.choices[0].message.content
-        return result_str, usage
+        result = result.choices[0].message.content
+        return result, usage
