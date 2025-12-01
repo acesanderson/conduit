@@ -1,8 +1,8 @@
-from conduit.parser.stream.parsers import XMLStreamParser
-from conduit.skills.skills import Skills
+from conduit.core.parser.stream.parsers import XMLStreamParser
+from conduit.capabilities.skills.skills import Skills
 from conduit.sync import Prompt
 from conduit.sync import Model, Verbosity
-from conduit.message.messages import Messages
+from conduit.domain.message.messages import Messages
 from pathlib import Path
 
 VERBOSITY = Verbosity.PROGRESS

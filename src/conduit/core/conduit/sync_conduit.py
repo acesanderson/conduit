@@ -1,12 +1,12 @@
-from conduit.conduit.conduit_base import ConduitBase
-from conduit.result.result import ConduitResult
-from conduit.result.response import Response
-from conduit.result.error import ConduitError
-from conduit.parser.parser import Parser
-from conduit.progress.verbosity import Verbosity
-from conduit.message.messages import MessageUnion
-from conduit.message.message import Message
-from conduit.message.textmessage import TextMessage
+from conduit.core.conduit.conduit_base import ConduitBase
+from conduit.domain.result.result import ConduitResult
+from conduit.domain.result.response import Response
+from conduit.domain.result.error import ConduitError
+from conduit.core.parser.parser import Parser
+from conduit.utils.progress.verbosity import Verbosity
+from conduit.domain.message.messages import MessageUnion
+from conduit.domain.message.message import Message
+from conduit.domain.message.textmessage import TextMessage
 import logging
 
 logger = logging.getLogger(__name__)

@@ -108,7 +108,7 @@ class Prompt:
         """
         Tokenizes the prompt string using the specified model's tokenizer.
         """
-        from conduit.model.model_sync import ModelSync
+        from conduit.core.model.model_sync import ModelSync
 
         model_obj = ModelSync(model)
         tokens: int = model_obj.tokenize(text=self.prompt_string)

@@ -1,8 +1,8 @@
-from conduit.skills.stream_parser import StreamToolParser
-from conduit.skills.skills import Skills
+from conduit.capabilities.skills.stream_parser import StreamToolParser
+from conduit.capabilities.skills.skills import Skills
 from conduit.sync import Prompt
 from conduit.sync import Model, Verbosity
-from conduit.message.messages import Messages
+from conduit.domain.message.messages import Messages
 from pathlib import Path
 import logging
 import os

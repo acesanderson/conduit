@@ -25,7 +25,7 @@ dispatcher.execute_command('/model "claude-sonnet-4"')
 
 from conduit.chat.engine.command import Command, CommandResult
 from conduit.sync import Model, Verbosity, Response
-from conduit.message.messagestore import MessageStore
+from conduit.domain.message.messagestore import MessageStore
 import re
 from conduit.chat.engine.query_function import (
     ChatQueryFunctionProtocol,

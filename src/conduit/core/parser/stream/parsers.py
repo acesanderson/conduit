@@ -1,7 +1,7 @@
 import json
 from abc import ABC, abstractmethod
 from typing import Any
-from conduit.parser.stream.protocol import SyncStream, AsyncStream
+from conduit.core.parser.stream.protocol import SyncStream, AsyncStream
 
 
 class StreamParser(ABC):

@@ -1,3 +1,3 @@
-from conduit.logs import logging_config
+from conduit.utils.logs import logging_config
 
 _ = logging_config

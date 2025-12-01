@@ -9,18 +9,18 @@ responses = conduit.run(input_variables_list)
 """
 
 # Orchestration classes
-from conduit.conduit.async_conduit import AsyncConduit
-from conduit.model.model_async import ModelAsync
-from conduit.prompt.prompt import Prompt
+from conduit.core.conduit.async_conduit import AsyncConduit
+from conduit.core.model.model_async import ModelAsync
+from conduit.core.prompt.prompt import Prompt
 
 # Cache
-from conduit.cache.cache import ConduitCache
+from conduit.storage.cache.cache import ConduitCache
 
 # Primitives: dataclasses / enums
-from conduit.result.response import Response
-from conduit.progress.verbosity import Verbosity
-from conduit.message.message import Message
-from conduit.request.request import Request
+from conduit.domain.result.response import Response
+from conduit.utils.progress.verbosity import Verbosity
+from conduit.domain.message.message import Message
+from conduit.domain.request.request import Request
 
 __all__ = [
     "AsyncConduit",

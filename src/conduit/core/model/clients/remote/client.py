@@ -1,6 +1,6 @@
 from conduit.config import settings
-from conduit.model.clients.client import Client, Usage
-from conduit.result.result import ConduitResult
+from conduit.core.model.clients.client import Client, Usage
+from conduit.domain.result.result import ConduitResult
 from headwater_api.classes import StatusResponse
 from headwater_client.client.headwater_client import HeadwaterClient
 from typing import override, TYPE_CHECKING
@@ -8,8 +8,8 @@ import json
 import logging
 
 if TYPE_CHECKING:
-    from conduit.request.request import Request
-    from conduit.message.message import Message
+    from conduit.domain.request.request import Request
+    from conduit.domain.message.message import Message
 
 logger = logging.getLogger(__name__)
 

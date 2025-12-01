@@ -1,5 +1,5 @@
-from conduit.message.message import Message, MessageType, Role
-from conduit.message.imagemessage import OpenAITextContent
+from conduit.domain.message.message import Message, MessageType, Role
+from conduit.domain.message.imagemessage import OpenAITextContent
 from pydantic import BaseModel, Field
 from typing import Literal, override
 from pathlib import Path

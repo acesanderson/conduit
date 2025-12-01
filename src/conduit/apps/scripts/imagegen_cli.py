@@ -3,7 +3,7 @@ from io import BytesIO
 import google.generativeai as genai
 from PIL import Image
 import argparse
-from conduit.message.imagemessage import ImageMessage
+from conduit.domain.message.imagemessage import ImageMessage
 import base64
 
 

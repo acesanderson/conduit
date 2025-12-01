@@ -4,11 +4,11 @@ Chat interface factory and command registry combining user-facing conversation m
 The primary factory function `create_chat_app` instantiates a fully configured ChatApp by assembling dependencies (Model, MessageStore, InputInterface) and injecting them into a ConduitChat instance that serves as both command registry and handler provider. This design enables users to launch a complete chat session with a single function call while allowing command discovery and routing to happen automatically through mixin inheritance.
 """
 
-from conduit.progress.verbosity import Verbosity
-from conduit.chat.app import ChatApp
-from conduit.chat.engine.engine import ConduitEngine
-from conduit.chat.ui.input_interface import InputInterface
-from conduit.message.messagestore import MessageStore
+from conduit.utils.progress.verbosity import Verbosity
+from conduit.apps.chat.app import ChatApp
+from conduit.apps.chat.engine.engine import ConduitEngine
+from conduit.apps.chat.ui.input_interface import InputInterface
+from conduit.domain.message.messagestore import MessageStore
 
 
 def create_chat_app(

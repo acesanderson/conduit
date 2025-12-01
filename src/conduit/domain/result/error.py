@@ -1,4 +1,4 @@
-from conduit.progress.display_mixins import (
+from conduit.utils.progress.display_mixins import (
     RichDisplayConduitErrorMixin,
     PlainDisplayConduitErrorMixin,
 )

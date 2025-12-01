@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from conduit.model.models.provider import Provider
+from conduit.core.model.models.provider import Provider
 from typing import Optional
 
 

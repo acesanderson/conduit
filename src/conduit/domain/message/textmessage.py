@@ -3,8 +3,8 @@ Message is the default message type recognized as industry standard (role + cont
 Our Message class is inherited from specialized types like AudioMessage, ImageMessage, etc.
 """
 
-from conduit.prompt.prompt import Prompt
-from conduit.message.message import Message, MessageType
+from conduit.core.prompt.prompt import Prompt
+from conduit.domain.message.message import Message, MessageType
 from pydantic import BaseModel, Field
 import logging
 
@@ -96,11 +96,11 @@ class TextMessage(Message):
     def _deserialize_pydantic(cls, obj_dict: dict) -> BaseModel:
         # First, handle PerplexityContent specifically, since it's not technically a structured response request.
         if obj_dict.get("__class__") == "PerplexityContent":
-            from conduit.model.clients.perplexity_content import PerplexityContent
+            from conduit.core.model.clients.perplexity_content import PerplexityContent
 
             return PerplexityContent.model_validate(obj_dict)
 
-        from conduit.parser.parser import Parser
+        from conduit.core.parser.parser import Parser
 
         class_name = obj_dict.pop("__class__")
 

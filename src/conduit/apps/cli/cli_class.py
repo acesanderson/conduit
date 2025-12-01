@@ -12,12 +12,12 @@ This allows you to tailor the behavior of ConduitCLI while leveraging its existi
 
 from argparse import ArgumentParser, Namespace
 from conduit.config import settings
-from conduit.cli.config_loader import ConfigLoader
-from conduit.cli.handlers import HandlerMixin
-from conduit.cli.query_function import CLIQueryFunctionProtocol, default_query_function
-from conduit.cli.printer import Printer
-from conduit.progress.verbosity import Verbosity
-from conduit.model.models.modelstore import ModelStore
+from conduit.apps.cli.config_loader import ConfigLoader
+from conduit.apps.cli.handlers import HandlerMixin
+from conduit.apps.cli.query_function import CLIQueryFunctionProtocol, default_query_function
+from conduit.apps.cli.printer import Printer
+from conduit.utils.progress.verbosity import Verbosity
+from conduit.core.model.models.modelstore import ModelStore
 from xdg_base_dirs import xdg_data_home, xdg_cache_home, xdg_config_home
 from pathlib import Path
 import sys
@@ -104,7 +104,7 @@ class ConduitCLI(HandlerMixin):
         # Persistence
         if persistent:
             logger.info(f"Using persistent history at {self.history_file}")
-            from conduit.message.messagestore import MessageStore
+            from conduit.domain.message.messagestore import MessageStore
             from conduit.sync import Conduit
 
             self.history_file.parent.mkdir(parents=True, exist_ok=True)
@@ -116,7 +116,7 @@ class ConduitCLI(HandlerMixin):
         if cache:
             logger.info(f"Using cache at {self.cache_file}")
             from conduit.sync import Model
-            from conduit.cache.cache import ConduitCache
+            from conduit.storage.cache.cache import ConduitCache
 
             self.cache_file.parent.mkdir(parents=True, exist_ok=True)
             Model.conduit_cache = ConduitCache()

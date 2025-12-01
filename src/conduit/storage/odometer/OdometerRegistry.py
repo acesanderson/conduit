@@ -1,7 +1,7 @@
-from conduit.odometer.SessionOdometer import SessionOdometer
-from conduit.odometer.ConversationOdometer import ConversationOdometer
-from conduit.odometer.PersistentOdometer import PersistentOdometer
-from conduit.odometer.TokenEvent import TokenEvent
+from conduit.storage.odometer.SessionOdometer import SessionOdometer
+from conduit.storage.odometer.ConversationOdometer import ConversationOdometer
+from conduit.storage.odometer.PersistentOdometer import PersistentOdometer
+from conduit.storage.odometer.TokenEvent import TokenEvent
 import atexit, signal, sys
 
 

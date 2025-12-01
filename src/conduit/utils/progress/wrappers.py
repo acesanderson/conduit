@@ -3,7 +3,7 @@ Enhanced progress wrappers with verbosity support.
 Maintains backwards compatibility while adding new verbosity parameter.
 """
 
-from conduit.progress.verbosity import Verbosity
+from conduit.utils.progress.verbosity import Verbosity
 from functools import wraps
 import time
 import sys
@@ -74,7 +74,7 @@ def sync_wrapper(
         # Only show completion for PROGRESS and above
         if verbosity >= Verbosity.PROGRESS:
             # Check if result is an error
-            from conduit.result.error import ConduitError
+            from conduit.domain.result.error import ConduitError
 
             if isinstance(result, ConduitError):
                 if hasattr(handler, "show_failed"):
@@ -165,7 +165,7 @@ async def async_wrapper(
         # Only show completion for PROGRESS and above
         if verbosity >= Verbosity.PROGRESS:
             # Check if result is an error
-            from conduit.result.error import ConduitError
+            from conduit.domain.result.error import ConduitError
 
             if isinstance(result, ConduitError):
                 if hasattr(handler, "show_failed"):
@@ -266,12 +266,12 @@ def progress_display(func):
 
         if self.console:
             # Lazy import Rich components only when needed
-            from conduit.progress.handlers import RichProgressHandler
+            from conduit.utils.progress.handlers import RichProgressHandler
 
             handler = RichProgressHandler(self.console)
         else:
             # Built-in PlainProgressHandler - no imports
-            from conduit.progress.handlers import PlainProgressHandler
+            from conduit.utils.progress.handlers import PlainProgressHandler
 
             handler = PlainProgressHandler()
 
@@ -294,12 +294,12 @@ def progress_display(func):
 
         if self.console:
             # Lazy import Rich components only when needed
-            from conduit.progress.handlers import RichProgressHandler
+            from conduit.utils.progress.handlers import RichProgressHandler
 
             handler = RichProgressHandler(self.console)
         else:
             # Built-in PlainProgressHandler - no imports
-            from conduit.progress.handlers import PlainProgressHandler
+            from conduit.utils.progress.handlers import PlainProgressHandler
 
             handler = PlainProgressHandler()
 
@@ -329,14 +329,14 @@ async def concurrent_wrapper(operation, tracker):
 def create_concurrent_progress_tracker(console, total: int):
     """Factory function to create appropriate concurrent tracker"""
     if console:
-        from conduit.progress.handlers import RichProgressHandler
+        from conduit.utils.progress.handlers import RichProgressHandler
 
         handler = RichProgressHandler(console)
     else:
-        from conduit.progress.handlers import PlainProgressHandler
+        from conduit.utils.progress.handlers import PlainProgressHandler
 
         handler = PlainProgressHandler()
 
-    from conduit.progress.tracker import ConcurrentTracker
+    from conduit.utils.progress.tracker import ConcurrentTracker
 
     return ConcurrentTracker(handler, total)

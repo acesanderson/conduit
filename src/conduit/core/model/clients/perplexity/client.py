@@ -5,8 +5,8 @@ You want both the 'content' and 'citations' fields from the response object.
 """
 
 from __future__ import annotations
-from conduit.model.clients.client import Client, Usage
-from conduit.model.clients.perplexity_content import (
+from conduit.core.model.clients.client import Client, Usage
+from conduit.core.model.clients.perplexity_content import (
     PerplexityContent,
     PerplexityCitation,
 )
@@ -21,9 +21,9 @@ import json
 import os
 
 if TYPE_CHECKING:
-    from conduit.parser.stream.protocol import SyncStream, AsyncStream
-    from conduit.request.request import Request
-    from conduit.message.message import Message
+    from conduit.core.parser.stream.protocol import SyncStream, AsyncStream
+    from conduit.domain.request.request import Request
+    from conduit.domain.message.message import Message
 
 
 class PerplexityClient(Client, ABC):
@@ -70,7 +70,7 @@ class PerplexityClient(Client, ABC):
         # CASE 2: Message History
         if isinstance(payload, list):
             # Lazy import to avoid circular dependency
-            from conduit.message.textmessage import TextMessage
+            from conduit.domain.message.textmessage import TextMessage
 
             # Standard OpenAI-compatible overhead approximation
             tokens_per_message = 3

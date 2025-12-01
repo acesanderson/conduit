@@ -8,13 +8,13 @@ asyncio.run(one_off_query())
 """
 
 from conduit.config import settings
-from conduit.tools.tools.fetch_url import FetchUrlTool
-from conduit.tools.parsing_implementation import is_tool_call, execute_tool_call
-from conduit.tools.registry import ToolRegistry
-from conduit.parser.stream.parsers import XMLStreamParser
-from conduit.message.textmessage import TextMessage
-from conduit.model.model_async import ModelAsync
-from conduit.prompt.prompt import Prompt
+from conduit.capabilities.tools.tools.fetch_url import FetchUrlTool
+from conduit.capabilities.tools.parsing_implementation import is_tool_call, execute_tool_call
+from conduit.capabilities.tools.registry import ToolRegistry
+from conduit.core.parser.stream.parsers import XMLStreamParser
+from conduit.domain.message.textmessage import TextMessage
+from conduit.core.model.model_async import ModelAsync
+from conduit.core.prompt.prompt import Prompt
 from pathlib import Path
 import asyncio
 

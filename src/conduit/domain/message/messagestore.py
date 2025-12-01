@@ -9,11 +9,11 @@ With MessageStore, you can:
 The MessageStore IS a Messages object with superpowers.
 """
 
-from conduit.message.message import Message, Role
-from conduit.message.textmessage import TextMessage
-from conduit.message.imagemessage import ImageMessage
-from conduit.message.audiomessage import AudioMessage
-from conduit.message.messages import Messages
+from conduit.domain.message.message import Message, Role
+from conduit.domain.message.textmessage import TextMessage
+from conduit.domain.message.imagemessage import ImageMessage
+from conduit.domain.message.audiomessage import AudioMessage
+from conduit.domain.message.messages import Messages
 from xdg_base_dirs import xdg_data_home, xdg_state_home
 from rich.console import Console
 from rich.rule import Rule
@@ -136,7 +136,7 @@ class MessageStore(Messages):
 
     @property
     def context_window(self) -> int:
-        from conduit.model.models.modelstore import ModelStore
+        from conduit.core.model.models.modelstore import ModelStore
 
         ms = ModelStore()
         if not self.last_used_model_name:
@@ -166,7 +166,7 @@ class MessageStore(Messages):
         Ensure system message exists. Idempotent.
         """
         if not self.system_message:
-            from conduit.message.textmessage import create_system_message
+            from conduit.domain.message.textmessage import create_system_message
 
             msg = create_system_message(system_message_content)[0]
             self.insert(0, msg)

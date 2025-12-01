@@ -1,14 +1,14 @@
-from conduit.model.models.modelspec import ModelSpecList, ModelSpec
-from conduit.model.models.modelspecs_CRUD import (
+from conduit.core.model.models.modelspec import ModelSpecList, ModelSpec
+from conduit.core.model.models.modelspecs_CRUD import (
     create_modelspecs_from_scratch,
     add_modelspec,
     get_all_modelspecs,
     in_db,
 )
-from conduit.model.model_sync import ModelSync
-from conduit.conduit.sync_conduit import SyncConduit
-from conduit.prompt.prompt import Prompt
-from conduit.parser.parser import Parser
+from conduit.core.model.model_sync import ModelSync
+from conduit.core.conduit.sync_conduit import SyncConduit
+from conduit.core.prompt.prompt import Prompt
+from conduit.core.parser.parser import Parser
 from rich.console import Console
 
 
@@ -156,7 +156,7 @@ def create_modelspec(model: str) -> None:
     """
     Create a new ModelSpec in the database.
     """
-    from conduit.model.models.modelstore import ModelStore
+    from conduit.core.model.models.modelstore import ModelStore
 
     provider = ModelStore.identify_provider(model)
     model_spec = get_capabilities_by_model(provider, model)
