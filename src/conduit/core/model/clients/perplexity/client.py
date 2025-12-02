@@ -25,6 +25,7 @@ import json
 import os
 
 if TYPE_CHECKING:
+    from conduit.domain.result.result import ConduitResult
     from conduit.core.parser.stream.protocol import SyncStream, AsyncStream
     from conduit.domain.request.request import Request
     from conduit.domain.message.message import Message
@@ -158,6 +159,7 @@ class PerplexityClient(Client, ABC):
 
 
 class PerplexityClientSync(PerplexityClient):
+    @override
     def __init__(self):
         self._client: Instructor = self._initialize_client()
 
@@ -170,9 +172,7 @@ class PerplexityClientSync(PerplexityClient):
         return instructor.from_perplexity(self._raw_client)
 
     @override
-    def query(
-        self, request: Request
-    ) -> tuple[str | BaseModel | PerplexityContent | SyncStream, Usage]:
+    def query(self, request: Request) -> ConduitResult:
         payload = self._convert_request(request)
         payload_dict = payload.model_dump(exclude_none=True)
 
@@ -237,9 +237,7 @@ class PerplexityClientAsync(PerplexityClient):
         return instructor.from_perplexity(self._raw_client)
 
     @override
-    async def query(
-        self, request: Request
-    ) -> tuple[str | BaseModel | PerplexityContent | AsyncStream, Usage]:
+    async def query(self, request: Request) -> ConduitResult:
         payload = self._convert_request(request)
         payload_dict = payload.model_dump(exclude_none=True)
 

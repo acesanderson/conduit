@@ -118,8 +118,8 @@ class AssistantMessage(BaseModel):
     role: Literal[Role.ASSISTANT] = Role.ASSISTANT
 
     # text
-    content: str | None = None  # The visible text / JSON string
-    reasoning: str | None = None  # Hidden Chain of Thought
+    content: str | list[str] | None = None
+    reasoning: str | None = None
 
     # action
     tool_calls: list[ToolCall] | None = None
@@ -129,7 +129,7 @@ class AssistantMessage(BaseModel):
     images: list[ImageOutput] | None = None
 
     # Special structured output (e.g. parsed JSON, XML, etc.) from Instructor
-    parsed: Any | None = Field(default=None, exclude=True)
+    parsed: BaseModel | list[BaseModel] | None = Field(default=None, exclude=True)
 
     @model_validator(mode="after")
     def validate_structure(self) -> AssistantMessage:

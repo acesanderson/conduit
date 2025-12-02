@@ -4,8 +4,12 @@ from conduit.storage.odometer.usage import Usage
 from conduit.core.model.clients.payload_base import Payload
 from conduit.core.model.clients.anthropic.payload import AnthropicPayload
 from conduit.core.model.clients.anthropic.adapter import convert_message_to_anthropic
-from anthropic import Anthropic, AsyncAnthropic, Stream, AsyncStream as AnthropicAsyncStream
-from pydantic import BaseModel
+from anthropic import (
+    Anthropic,
+    AsyncAnthropic,
+    Stream,
+    AsyncStream as AnthropicAsyncStream,
+)
 from typing import TYPE_CHECKING, override, Any
 from abc import ABC
 import instructor
@@ -15,7 +19,8 @@ import os
 if TYPE_CHECKING:
     from conduit.domain.request.request import Request
     from conduit.core.parser.stream.protocol import SyncStream, AsyncStream
-    from conduit.domain.message.message import Message, SystemMessage
+    from conduit.domain.message.message import Message
+    from conduit.domain.result.result import ConduitResult
 
 
 class AnthropicClient(Client, ABC):
@@ -139,7 +144,7 @@ class AnthropicClientSync(AnthropicClient):
     def query(
         self,
         request: Request,
-    ) -> tuple[str | BaseModel | SyncStream, Usage]:
+    ) -> ConduitResult:
         payload = self._convert_request(request)
         payload_dict = payload.model_dump(exclude_none=True)
 
@@ -147,10 +152,8 @@ class AnthropicClientSync(AnthropicClient):
         structured_response = None
         if request.response_model is not None:
             # We want the raw response from Anthropic, so we use `create_with_completion`
-            structured_response, result = (
-                self._client.messages.create_with_completion(
-                    response_model=request.response_model, **payload_dict
-                )
+            structured_response, result = self._client.messages.create_with_completion(
+                response_model=request.response_model, **payload_dict
             )
         else:
             # Use the standard completion method
@@ -197,7 +200,7 @@ class AnthropicClientAsync(AnthropicClient):
     async def query(
         self,
         request: Request,
-    ) -> tuple[str | BaseModel | AsyncStream, Usage]:
+    ) -> ConduitResult:
         payload = self._convert_request(request)
         payload_dict = payload.model_dump(exclude_none=True)
 

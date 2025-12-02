@@ -1,12 +1,8 @@
-from conduit.utils.progress.display_mixins import (
-    RichDisplayConduitErrorMixin,
-    PlainDisplayConduitErrorMixin,
-)
-from typing import Optional, Any
+from typing import Any
 from pydantic import BaseModel, Field
 import traceback
-from datetime import datetime
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +17,10 @@ class ErrorInfo(BaseModel):
     category: str = Field(
         ..., description="Error category: 'client', 'server', 'network', 'parsing'"
     )
-    timestamp: datetime = Field(..., description="When the error occurred")
+    timestamp: int = Field(
+        default_factory=lambda: int(time.time() * 1000),
+        description="Unix timestamp in milliseconds",
+    )
 
     model_config = {"frozen": True}  # Equivalent to dataclass(frozen=True)
 
@@ -32,29 +31,24 @@ class ErrorDetail(BaseModel):
     exception_type: str = Field(
         ..., description="Type of exception like 'ValidationError', 'APIException'"
     )
-    stack_trace: Optional[str] = Field(
-        None, description="Full stack trace if available"
-    )
-    raw_response: Optional[Any] = Field(
+    stack_trace: str | None = Field(None, description="Full stack trace if available")
+    raw_response: Any | None = Field(
         None, description="Original response that caused error"
     )
-    request_params: Optional[dict] = Field(None, description="Params that led to error")
-    retry_count: Optional[int] = Field(None, description="If retries were attempted")
+    request_params: dict | None = Field(None, description="Params that led to error")
+    retry_count: int | None = Field(None, description="If retries were attempted")
 
     model_config = {"frozen": True}  # Equivalent to dataclass(frozen=True)
 
 
-class ConduitError(
-    BaseModel, RichDisplayConduitErrorMixin, PlainDisplayConduitErrorMixin
-):
+class ConduitError(BaseModel):
     """
     An unsuccessful Result.
     Complete error information.
-    We mixin our display classes to provide to_plain and to_rich methods in service of our Progress / Verbosity implementation.
     """
 
     info: ErrorInfo = Field(..., description="Core error information")
-    detail: Optional[ErrorDetail] = Field(
+    detail: ErrorDetail | None = Field(
         None, description="Detailed debugging information"
     )
 

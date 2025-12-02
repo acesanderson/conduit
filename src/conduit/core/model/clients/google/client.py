@@ -16,6 +16,7 @@ from abc import ABC
 import os
 
 if TYPE_CHECKING:
+    from conduit.domain.result.result import ConduitResult
     from conduit.core.parser.stream.protocol import SyncStream, AsyncStream
     from conduit.domain.request.request import Request
     from conduit.domain.message.message import Message
@@ -142,7 +143,7 @@ class GoogleClientSync(GoogleClient):
     def query(
         self,
         request: Request,
-    ) -> tuple[str | SyncStream | BaseModel, Usage]:
+    ) -> ConduitResult:
         match request.output_type:
             case "text":
                 return self._generate_text(request)
@@ -153,9 +154,7 @@ class GoogleClientSync(GoogleClient):
             case _:
                 raise ValueError(f"Unsupported output type: {request.output_type}")
 
-    def _generate_text(
-        self, request: Request
-    ) -> tuple[str | object | SyncStream, Usage]:
+    def _generate_text(self, request: Request) -> ConduitResult:
         payload = self._convert_request(request)
         payload_dict = payload.model_dump(exclude_none=True)
         # Now, make the call
@@ -193,7 +192,7 @@ class GoogleClientSync(GoogleClient):
             pass
         return result, usage
 
-    def _generate_image(self, request: Request) -> tuple[str, Usage]:
+    def _generate_image(self, request: Request) -> ConduitResult:
         response = self._client.images.generate(
             model=request.model,
             prompt=request.messages[-1].content,
@@ -206,7 +205,7 @@ class GoogleClientSync(GoogleClient):
         usage = Usage(input_tokens=0, output_tokens=0)
         return result, usage
 
-    def _generate_audio(self, request: Request) -> tuple[str, Usage]:
+    def _generate_audio(self, request: Request) -> ConduitResult:
         raise NotImplementedError
 
 
@@ -229,7 +228,7 @@ class GoogleClientAsync(GoogleClient):
     async def query(
         self,
         request: Request,
-    ) -> tuple[str | object | AsyncStream, Usage]:
+    ) -> ConduitResult:
         payload = self._convert_request(request)
         payload_dict = payload.model_dump(exclude_none=True)
         # Now, make the call

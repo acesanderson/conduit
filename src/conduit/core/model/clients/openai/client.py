@@ -16,6 +16,7 @@ import os
 from typing import TYPE_CHECKING, override
 
 if TYPE_CHECKING:
+    from conduit.domain.result.result import ConduitResult
     from conduit.core.parser.stream.protocol import SyncStream, AsyncStream
     from conduit.domain.request.request import Request
     from conduit.domain.message.message import Message
@@ -150,7 +151,7 @@ class OpenAIClientSync(OpenAIClient):
     def query(
         self,
         request: Request,
-    ) -> tuple[str | object | SyncStream, Usage]:
+    ) -> ConduitResult:
         match request.output_type:
             case "text":
                 return self._generate_text(request)
@@ -161,9 +162,7 @@ class OpenAIClientSync(OpenAIClient):
             case _:
                 raise ValueError(f"Unsupported output type: {request.output_type}")
 
-    def _generate_text(
-        self, request: Request
-    ) -> tuple[str | object | SyncStream, Usage]:
+    def _generate_text(self, request: Request) -> ConduitResult:
         payload = self._convert_request(request)
         payload_dict = payload.model_dump(exclude_none=True)
         # Now, make the call
@@ -201,7 +200,7 @@ class OpenAIClientSync(OpenAIClient):
             pass
         return result, usage
 
-    def _generate_image(self, request: Request) -> tuple[str, Usage]:
+    def _generate_image(self, request: Request) -> ConduitResult:
         response = self._client.images.generate(
             model=request.model,
             prompt=request.messages[-1].content,
@@ -214,7 +213,7 @@ class OpenAIClientSync(OpenAIClient):
         usage = Usage(input_tokens=0, output_tokens=0)
         return result, usage
 
-    def _generate_audio(self, request: Request) -> tuple[str, Usage]:
+    def _generate_audio(self, request: Request) -> ConduitResult:
         raise NotImplementedError
 
 
@@ -231,7 +230,7 @@ class OpenAIClientAsync(OpenAIClient):
     async def query(
         self,
         request: Request,
-    ) -> tuple[str | object | AsyncStream, Usage]:
+    ) -> ConduitResult:
         payload = self._convert_request(request)
         payload_dict = payload.model_dump(exclude_none=True)
         # Now, make the call

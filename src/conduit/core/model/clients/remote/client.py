@@ -1,5 +1,5 @@
 from conduit.config import settings
-from conduit.core.model.clients.client import Client, Usage
+from conduit.core.model.clients.client_base import Client
 from conduit.domain.result.result import ConduitResult
 from headwater_api.classes import StatusResponse
 from headwater_client.client.headwater_client import HeadwaterClient
@@ -64,7 +64,7 @@ class RemoteClient(Client):
     def _get_api_key(self) -> str: ...
 
     @override
-    def query(self, request: Request) -> tuple[ConduitResult, Usage]:
+    def query(self, request: Request) -> ConduitResult:
         """
         Query the remote model via HeadwaterClient.
         Unlike other clients, we get a full Response object (including token usage) back.
