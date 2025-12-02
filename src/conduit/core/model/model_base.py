@@ -14,8 +14,9 @@ The **Conduit** class is your **Workflow Orchestrator**; it handles the *context
 from __future__ import annotations
 from conduit.config import settings
 from conduit.domain.request.request import Request
-from conduit.domain.request.query import QueryInput
-from conduit.core.model.clients.client import Usage, Client
+from conduit.domain.request.query_input import QueryInput, constrain_query_input
+from conduit.core.model.clients.client_base import Client
+from conduit.storage.odometer.usage import Usage
 from conduit.core.parser.stream.protocol import SyncStream, AsyncStream
 from conduit.domain.result.response import Response
 from conduit.domain.result.result import ConduitResult
@@ -30,6 +31,7 @@ import logging
 if TYPE_CHECKING:
     from rich.console import Console
     from conduit.storage.cache.cache import ConduitCache
+    from conduit.domain.message.message import Message
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +71,7 @@ class ModelBase(ABC):
         else:
             self.cache = None
 
-    # Config methods (post-init)
+    # Optional config methods (post-init)
     def enable_cache(self) -> None:
         if self.cache is None:
             from conduit.storage.cache.cache import ConduitCache
@@ -118,22 +120,24 @@ class ModelBase(ABC):
         PURE CPU: Constructs and validates the Request object.
         """
 
+        # First, see if we have a request already, if so, pass through
         request: Request = kwargs.pop("request", None)
+        if request is not None:
+            return request
+        if not isinstance(request, Request):
+            raise TypeError(f"request must be a Request, got {type(req)}")
 
-        if request is None:
-            if query_input is None:
-                raise ValueError("query_input is required when no request is provided.")
-
-            # inject defaults
-            kwargs.setdefault("model", self.name)
-
-            request: Request = Request.from_query_input(
-                query_input=query_input, **kwargs
-            )
-        else:
-            if not isinstance(request, Request):
-                raise TypeError(f"request must be a Request, got {type(req)}")
-
+        # Otherwise, build request from query_input
+        if query_input is None:
+            raise ValueError("query_input is required when no request is provided.")
+        # constrain query_input per model capabilities
+        query_input: list[Message] = constrain_query_input(query_input=query_input)
+        # inject defaults
+        kwargs.setdefault("model", self.name)
+        request = Request(
+            messages=query_input,
+            **kwargs,
+        )
         return request
 
     def _process_response(

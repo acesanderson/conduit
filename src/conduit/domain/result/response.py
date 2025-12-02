@@ -1,5 +1,7 @@
 """
-A successful Result.
+Model and client interaction:
+- Model sends a Request, which is: conversation (list[Message]) + generation_params
+- Request sends Response, which is: the request (list[Message]) + generation_params + the assistant message
 """
 
 from conduit.domain.message.message import Message
