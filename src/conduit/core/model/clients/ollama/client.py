@@ -24,6 +24,7 @@ import json
 import logging
 
 if TYPE_CHECKING:
+    from conduit.domain.result.result import ConduitResult
     from conduit.core.parser.stream.protocol import SyncStream, AsyncStream
     from conduit.domain.request.request import Request
     from conduit.domain.message.message import Message
@@ -36,6 +37,10 @@ class OllamaClient(Client, ABC):
     This is a base class; we have two subclasses: OpenAIClientSync and OpenAIClientAsync.
     Don't import this.
     """
+
+    def __init__(self):
+        self._client: Instructor = self._initialize_client()
+        self.update_ollama_models()  # This allows us to keep the model file up to date.
 
     # Load Ollama context sizes from the JSON file
     try:
@@ -53,10 +58,6 @@ class OllamaClient(Client, ABC):
             f"Could not load Ollama context sizes from {settings.paths['OLLAMA_CONTEXT_SIZES_PATH']}. Using default of 32768."
         )
         _ollama_context_sizes = defaultdict(lambda: 32768)
-
-    def __init__(self):
-        self._client: Instructor = self._initialize_client()
-        self.update_ollama_models()  # This allows us to keep the model file up to date.
 
     @override
     def _initialize_client(self) -> Instructor:
@@ -171,7 +172,7 @@ class OllamaClientSync(OllamaClient):
     def query(
         self,
         request: Request,
-    ) -> tuple[str | object | SyncStream, Usage]:
+    ) -> ConduitResult:
         match request.output_type:
             case "text":
                 return self._generate_text(request)
@@ -182,9 +183,7 @@ class OllamaClientSync(OllamaClient):
             case _:
                 raise ValueError(f"Unsupported output type: {request.output_type}")
 
-    def _generate_text(
-        self, request: Request
-    ) -> tuple[str | object | SyncStream, Usage]:
+    def _generate_text(self, request: Request) -> ConduitResult:
         payload = self._convert_request(request)
         payload_dict = payload.model_dump(exclude_none=True)
         # Now, make the call
@@ -222,10 +221,10 @@ class OllamaClientSync(OllamaClient):
             pass
         return result, usage
 
-    def _generate_image(self, request: Request) -> tuple[str, Usage]:
+    def _generate_image(self, request: Request) -> ConduitResult:
         raise NotImplementedError("Ollama does not support image generation")
 
-    def _generate_audio(self, request: Request) -> tuple[str, Usage]:
+    def _generate_audio(self, request: Request) -> ConduitResult:
         raise NotImplementedError("Ollama does not support audio generation")
 
 
@@ -245,7 +244,7 @@ class OllamaClientAsync(OllamaClient):
     async def query(
         self,
         request: Request,
-    ) -> tuple[str | object | AsyncStream, Usage]:
+    ) -> ConduitResult:
         payload = self._convert_request(request)
         payload_dict = payload.model_dump(exclude_none=True)
         # Now, make the call

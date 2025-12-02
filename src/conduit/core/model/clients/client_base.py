@@ -6,17 +6,21 @@ ABC abstract methods are like pydantic validators for classes. They ensure that 
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
-from pydantic import BaseModel
+import logging
 
 if TYPE_CHECKING:
     from conduit.core.model.clients.payload_base import Payload
-    from conduit.storage.odometer.usage import Usage
-    from conduit.core.parser.stream.protocol import SyncStream, AsyncStream
     from conduit.domain.request.request import Request
+    from conduit.domain.result.result import ConduitResult
     from conduit.domain.message.message import Message
 
 
+logger = logging.getLogger(__name__)
+
+
 class Client(ABC):
+    # odometer_registry: OdometerRegistry | None = None <-- move to Client
+
     @abstractmethod
     def __init__(self):
         """
@@ -69,17 +73,13 @@ class Client(ABC):
         pass
 
     @abstractmethod
-    def query(
-        self, request: Request
-    ) -> tuple[str | BaseModel | SyncStream | AsyncStream, Usage]:
+    def query(self, request: Request) -> ConduitResult:
         """
         All client subclasses must have a query function that can take:
         - a Request object, which contains all the parameters needed for the query
 
         And returns
-        - A tuple of
-            - either a string (i.e. text generation) or a Pydantic model (function calling)
-            - a Usage object containing input and output token counts
+        - a ConduitResult object, which contains the response data in a standardized format.
         """
         pass
 
@@ -96,6 +96,36 @@ class Client(ABC):
                   including message overhead (roles, start/end tokens, etc).
         """
         pass
+
+    def emit_token_event(self):
+        """
+        Emit a TokenEvent to the OdometerRegistry if it exists.
+        Shoot this off WHENEVER you create a Response object.
+        """
+        raise NotImplementedError("Rework this so it's shot off from Client")
+        from conduit.storage.odometer.TokenEvent import TokenEvent
+        from conduit.core.model.model_sync import ModelSync
+
+        assert self.request.provider, "Provider must be set in the request"
+
+        # Get hostname
+        import socket
+
+        try:
+            host = socket.gethostname()
+        except Exception as e:
+            logger.error(f"Failed to get hostname: {e}")
+            host = "unknown"
+
+        event = TokenEvent(
+            provider=self.request.provider,
+            model=self.request.model,
+            input_tokens=self.input_tokens,
+            output_tokens=self.output_tokens,
+            timestamp=int(datetime.fromisoformat(self.timestamp).timestamp()),
+            host=host,
+        )
+        ModelSync._odometer_registry.emit_token_event(event)
 
     def __repr__(self):
         """
