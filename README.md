@@ -1,9 +1,3 @@
-Here is the aspirational `README.md` for **Conduit v2**.
-
-This document treats the library not just as a collection of scripts, but as a rigid framework with a specific opinion on how LLM applications should be architected.
-
------
-
 # Conduit
 
 **The Universal Runtime for LLM Applications.**
@@ -160,3 +154,4 @@ final_conv = conduit.run(conv)
   * **Remote Execution:** Because `Conversation` is pure data, the Engine can serialize the state, send it to a `Headwater` server, execute the heavy compute there, and return the mutated state.
   * **Branching:** Moving from a List-based history to a Tree-based history to support "regenerate" and "alternative timeline" features without data duplication.
   * **Telemetry:** The `Odometer` system will track token usage across the FSM lifecycle, attributing costs to specific states (Reasoning vs. Generation vs. Tooling).
+

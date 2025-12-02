@@ -1,3 +1,9 @@
+"""
+NOTE: Typing is a mess in python. We have two types for Message:
+- Message: The Pydantic Type Alias (Annotated Union). Use for serialization, validation, and static type hints.
+- MessageBase: The actual Class. Use for runtime checks (isinstance) and inheritance.
+"""
+
 from __future__ import annotations
 from conduit.domain.message.role import Role
 from pydantic import BaseModel, Field, model_validator
@@ -70,6 +76,7 @@ class ToolCall(BaseModel):
 class MessageBase(BaseModel):
     """
     Base class for all message types.
+    Use this for isinstance checks.
     """
 
     timestamp: int = Field(default_factory=lambda: int(time.time() * 1000))

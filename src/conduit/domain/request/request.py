@@ -1,15 +1,13 @@
 """
-Think of it this way:
-messages + generation_params  -> Request
-
-Such that:
-conduit.params + conversation.messages -> Request
+Model and client interaction:
+- Model sends a Request, which is: conversation (list[Message]) + generation_params
+- Request sends Response, which is: the request (list[Message]) + generation_params + the assistant message
 """
 
 from __future__ import annotations
 from pydantic import BaseModel, Field, model_validator
 from conduit.domain.request.generation_params import GenerationParams
-from conduit.domain.request.outputtype import OutputType
+from conduit.domain.request.output_type import OutputType
 from conduit.domain.message.message import Message
 from conduit.utils.progress.display_mixins import (
     RichDisplayParamsMixin,
