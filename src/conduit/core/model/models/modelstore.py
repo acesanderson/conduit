@@ -4,6 +4,7 @@ The list of ollama models is host-specific, and therefore in our state directory
 Ollama context sizes is user-configurable, and therefore in our config directory.
 """
 
+from conduit.config import settings
 from conduit.core.model.models.providerstore import ProviderStore
 from conduit.core.model.models.provider import Provider
 from conduit.core.model.models.modelspec import ModelSpec
@@ -14,8 +15,7 @@ from conduit.core.model.models.modelspecs_CRUD import (
     get_all_model_names,
 )
 from conduit.core.model.models.research_models import create_modelspec
-from conduit.core.model.clients.client import Client
-from xdg_base_dirs import xdg_state_home, xdg_config_home
+from conduit.core.model.clients.client_base import Client
 from pathlib import Path
 from typing import Literal
 import json
@@ -28,9 +28,6 @@ logger = logging.getLogger(__name__)
 # Our data stores
 DIR_PATH = Path(__file__).parent
 MODELS_PATH = DIR_PATH / "models.json"
-OLLAMA_MODELS_PATH = xdg_state_home() / "conduit" / "ollama_models.json"
-OLLAMA_CONTEXT_SIZES_PATH = xdg_config_home() / "conduit" / "ollama_context_sizes.json"
-SERVER_MODELS_PATH = xdg_state_home() / "conduit" / "server_models.json"
 ALIASES_PATH = DIR_PATH / "aliases.json"
 
 
@@ -47,12 +44,12 @@ class ModelStore:
         """
         with open(MODELS_PATH) as f:
             models_json = json.load(f)
-        if OLLAMA_MODELS_PATH.exists():
-            with open(OLLAMA_MODELS_PATH) as f:
+        if settings.paths["OLLAMA_MODELS_PATH"].exists():
+            with open(settings.paths["OLLAMA_MODELS_PATH"]) as f:
                 ollama_models = json.load(f)
             models_json["ollama"] = ollama_models["ollama"]
-        if SERVER_MODELS_PATH.exists():
-            with open(SERVER_MODELS_PATH) as f:
+        if settings.paths["SERVER_MODELS_PATH"].exists():
+            with open(settings.paths["SERVER_MODELS_PATH"]) as f:
                 server_models = json.load(f)
             models_json["ollama"] += server_models["ollama"]
         return models_json
@@ -146,8 +143,8 @@ class ModelStore:
         Get the preferred num_ctx for a given ollama model.
         """
         default_value = 32768
-        if OLLAMA_CONTEXT_SIZES_PATH.exists():
-            with open(OLLAMA_CONTEXT_SIZES_PATH) as f:
+        if settings.paths["OLLAMA_CONTEXT_SIZES_PATH"].exists():
+            with open(settings.paths["OLLAMA_CONTEXT_SIZES_PATH"]) as f:
                 context_sizes = json.load(f)
             if ollama_model in context_sizes:
                 return context_sizes[ollama_model]
@@ -357,11 +354,11 @@ class ModelStore:
         execution_mode: Literal["sync", "async", "remote"],
     ) -> Client:
         if execution_mode == "sync":
-            from conduit.core.model.clients.openai_client import OpenAIClientSync
+            from conduit.core.model.clients.openai.client import OpenAIClientSync
 
             return OpenAIClientSync()
         elif execution_mode == "async":
-            from conduit.core.model.clients.openai_client import OpenAIClientAsync
+            from conduit.core.model.clients.openai.client import OpenAIClientAsync
 
             return OpenAIClientAsync()
 
@@ -370,11 +367,11 @@ class ModelStore:
         execution_mode: Literal["sync", "async", "remote"],
     ) -> Client:
         if execution_mode == "sync":
-            from conduit.core.model.clients.anthropic_client import AnthropicClientSync
+            from conduit.core.model.clients.anthropic.client import AnthropicClientSync
 
             return AnthropicClientSync()
         elif execution_mode == "async":
-            from conduit.core.model.clients.anthropic_client import AnthropicClientAsync
+            from conduit.core.model.clients.anthropic.client import AnthropicClientAsync
 
             return AnthropicClientAsync()
 
@@ -383,11 +380,11 @@ class ModelStore:
         execution_mode: Literal["sync", "async", "remote"],
     ) -> Client:
         if execution_mode == "sync":
-            from conduit.core.model.clients.google_client import GoogleClientSync
+            from conduit.core.model.clients.google.client import GoogleClientSync
 
             return GoogleClientSync()
         elif execution_mode == "async":
-            from conduit.core.model.clients.google_client import GoogleClientAsync
+            from conduit.core.model.clients.google.client import GoogleClientAsync
 
             return GoogleClientAsync()
 
@@ -396,11 +393,11 @@ class ModelStore:
         execution_mode: Literal["sync", "async", "remote"],
     ) -> Client:
         if execution_mode == "sync":
-            from conduit.core.model.clients.ollama_client import OllamaClientSync
+            from conduit.core.model.clients.ollama.client import OllamaClientSync
 
             return OllamaClientSync()
         elif execution_mode == "async":
-            from conduit.core.model.clients.ollama_client import OllamaClientAsync
+            from conduit.core.model.clients.ollama.client import OllamaClientAsync
 
             return OllamaClientAsync()
 
@@ -409,11 +406,15 @@ class ModelStore:
         execution_mode: Literal["sync", "async", "remote"],
     ) -> Client:
         if execution_mode == "sync":
-            from conduit.core.model.clients.perplexity_client import PerplexityClientSync
+            from conduit.core.model.clients.perplexity.client import (
+                PerplexityClientSync,
+            )
 
             return PerplexityClientSync()
         elif execution_mode == "async":
-            from conduit.core.model.clients.perplexity_client import PerplexityClientAsync
+            from conduit.core.model.clients.perplexity.client import (
+                PerplexityClientAsync,
+            )
 
             return PerplexityClientAsync()
 
@@ -422,7 +423,7 @@ class ModelStore:
         execution_mode: Literal["sync", "async", "remote"],
     ) -> Client:
         if execution_mode == "remote":
-            from conduit.core.model.clients.remote_client import RemoteClient
+            from conduit.core.model.clients.remote.client import RemoteClient
 
             return RemoteClient()
 

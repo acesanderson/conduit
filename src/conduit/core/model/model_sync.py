@@ -1,6 +1,6 @@
 from __future__ import annotations
 from conduit.core.model.model_base import ModelBase
-from conduit.core.model.clients.client import Client
+from conduit.core.model.clients.client_base import Client
 from conduit.utils.progress.wrappers import progress_display
 from conduit.domain.result.result import ConduitResult
 from conduit.domain.result.error import ConduitError
