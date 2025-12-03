@@ -4,6 +4,13 @@ from conduit.storage.odometer.usage import Usage
 from conduit.core.model.clients.payload_base import Payload
 from conduit.core.model.clients.openai.payload import OpenAIPayload
 from conduit.core.model.clients.openai.adapter import convert_message_to_openai
+from conduit.core.model.clients.openai.audio_params import OpenAIAudioParams
+from conduit.core.model.clients.openai.image_params import OpenAIImageParams
+from conduit.core.model.clients.openai.transcription_params import OpenAITranscriptionParams
+from conduit.domain.result.response import Response
+from conduit.domain.result.response_metadata import ResponseMetadata, StopReason
+from conduit.domain.result.error import ConduitError, ErrorInfo, ErrorDetail
+from conduit.domain.message.message import AssistantMessage, ImageOutput
 from openai import OpenAI
 from openai import AsyncOpenAI
 from openai import Stream, AsyncStream
@@ -13,7 +20,9 @@ from instructor import Instructor
 import logging
 import json
 import os
-from typing import TYPE_CHECKING, override
+import time
+import base64
+from typing import TYPE_CHECKING, override, Any
 
 if TYPE_CHECKING:
     from conduit.domain.result.result import ConduitResult
@@ -54,12 +63,12 @@ class OpenAIClient(Client, ABC):
         """
         converted_messages = self._convert_messages(request.messages)
         openai_payload = OpenAIPayload(
-            model=request.model,
+            model=request.params.model,
             messages=converted_messages,
-            temperature=request.temperature,
-            top_p=request.top_p,
-            max_tokens=request.max_tokens,
-            stream=request.stream,
+            temperature=request.params.temperature,
+            top_p=request.params.top_p,
+            max_tokens=request.params.max_tokens,
+            stream=request.params.stream,
         )
         return openai_payload
 
@@ -159,62 +168,379 @@ class OpenAIClientSync(OpenAIClient):
                 return self._generate_image(request)
             case "audio":
                 return self._generate_audio(request)
+            case "transcription":
+                return self._transcribe_audio(request)
             case _:
                 raise ValueError(f"Unsupported output type: {request.output_type}")
 
     def _generate_text(self, request: Request) -> ConduitResult:
+        """
+        Generate text using OpenAI's API and return a ConduitResult.
+
+        Returns:
+            - Response object for successful non-streaming requests
+            - Stream object for streaming requests
+            - ConduitError for error cases
+        """
         payload = self._convert_request(request)
         payload_dict = payload.model_dump(exclude_none=True)
-        # Now, make the call
-        structured_response = None
-        if request.response_model is not None:
-            # We want the raw response from OpenAI, so we use `create_with_completion`
-            structured_response, result = (
-                self._client.chat.completions.create_with_completion(
-                    response_model=request.response_model, **payload_dict
-                )
-            )
-        else:
-            # Use the standard completion method
-            result = self._client.chat.completions.create(
-                response_model=request.response_model, **payload_dict
-            )
-        # Capture usage
-        if isinstance(result, Stream):
-            # Handle streaming response if needed; usage is handled by StreamParser
-            usage = Usage(input_tokens=0, output_tokens=0)
-            return result, usage
-        usage = Usage(
-            input_tokens=result.usage.prompt_tokens,
-            output_tokens=result.usage.completion_tokens,
-        )
-        if structured_response is not None:
-            # If we have a structured response, return it along with usage
-            return structured_response, usage
-        # First try to get text content from the result
+
+        # Track timing
+        start_time = time.time()
+
         try:
-            result = result.choices[0].message.content
-            return result, usage
-        except AttributeError:
-            # If the result is a BaseModel or Stream, handle accordingly
-            pass
-        return result, usage
+            # Make the API call
+            structured_response = None
+            if request.params.response_model is not None:
+                # We want the raw response from OpenAI, so we use `create_with_completion`
+                structured_response, result = (
+                    self._client.chat.completions.create_with_completion(
+                        response_model=request.params.response_model, **payload_dict
+                    )
+                )
+            else:
+                # Use the standard completion method
+                result = self._client.chat.completions.create(
+                    response_model=request.params.response_model, **payload_dict
+                )
+
+            # Handle streaming response
+            if isinstance(result, Stream):
+                # For streaming, return the Stream object directly (it's part of ConduitResult)
+                return result
+
+            # Assemble response metadata
+            duration = (time.time() - start_time) * 1000  # Convert to milliseconds
+            model_stem = result.model
+            input_tokens = result.usage.prompt_tokens
+            output_tokens = result.usage.completion_tokens
+
+            # Determine stop reason
+            stop_reason = StopReason.STOP
+            if hasattr(result.choices[0], "finish_reason"):
+                finish_reason = result.choices[0].finish_reason
+                if finish_reason == "length":
+                    stop_reason = StopReason.LENGTH
+                elif finish_reason == "tool_calls":
+                    stop_reason = StopReason.TOOL_CALLS
+                elif finish_reason == "content_filter":
+                    stop_reason = StopReason.CONTENT_FILTER
+
+            # Create AssistantMessage with content or parsed output
+            if structured_response is not None:
+                # For structured responses, use the parsed field
+                assistant_message = AssistantMessage(
+                    content=None,  # No text content for structured responses
+                    parsed=structured_response,
+                )
+            else:
+                # For text responses, extract the text content
+                content = result.choices[0].message.content
+                assistant_message = AssistantMessage(content=content)
+
+            # Create ResponseMetadata
+            metadata = ResponseMetadata(
+                duration=duration,
+                model_slug=model_stem,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                stop_reason=stop_reason,
+            )
+
+            # Create and return Response
+            return Response(
+                message=assistant_message,
+                request=request,
+                metadata=metadata,
+            )
+
+        except Exception as e:
+            # Handle errors by returning ConduitError
+            duration = (time.time() - start_time) * 1000
+            logger.error(f"Error in OpenAI text generation: {e}")
+            return ConduitError.from_exception(
+                exc=e,
+                code="openai_api_error",
+                category="client",
+                request_params=payload_dict,
+            )
 
     def _generate_image(self, request: Request) -> ConduitResult:
-        response = self._client.images.generate(
-            model=request.model,
-            prompt=request.messages[-1].content,
-            n=1,
-            size="1024x1024",
-            response_format="b64_json",
-        )
-        result = response.data[0].b64_json
-        assert isinstance(result, str)
-        usage = Usage(input_tokens=0, output_tokens=0)
-        return result, usage
+        """
+        Generate an image using OpenAI's DALL-E and return a ConduitResult.
+
+        Returns:
+            - Response object with ImageOutput in AssistantMessage.images
+            - ConduitError for error cases
+        """
+        start_time = time.time()
+
+        try:
+            # Extract text prompt from the last message
+            last_message = request.messages[-1]
+            if isinstance(last_message.content, str):
+                prompt = last_message.content
+            else:
+                # Handle multimodal content - extract text
+                prompt = " ".join(
+                    [
+                        block.text
+                        for block in last_message.content
+                        if hasattr(block, "text")
+                    ]
+                )
+
+            # Get image parameters (use defaults if not provided)
+            image_params = OpenAIImageParams()
+            if (
+                request.params.client_params
+                and "image_params" in request.params.client_params
+            ):
+                image_params = request.params.client_params["image_params"]
+
+            # Use the raw OpenAI client (not Instructor) for image generation
+            # The Instructor wrapper doesn't expose images.generate properly
+            raw_client = OpenAI(api_key=self._get_api_key())
+
+            # Call the images.generate endpoint
+            response = raw_client.images.generate(
+                model=image_params.model.value,
+                prompt=prompt,
+                size=image_params.size.value,
+                quality=image_params.quality.value,
+                style=image_params.style.value,
+                response_format=image_params.response_format.value,
+                n=image_params.n,
+            )
+
+            duration = (time.time() - start_time) * 1000
+
+            # Convert response to ImageOutput objects
+            image_outputs = []
+            for image_data in response.data:
+                image_output = ImageOutput(
+                    url=image_data.url if hasattr(image_data, "url") else None,
+                    b64_json=image_data.b64_json
+                    if hasattr(image_data, "b64_json")
+                    else None,
+                    revised_prompt=image_data.revised_prompt
+                    if hasattr(image_data, "revised_prompt")
+                    else None,
+                )
+                image_outputs.append(image_output)
+
+            # Create AssistantMessage with images
+            assistant_message = AssistantMessage(images=image_outputs)
+
+            # Create ResponseMetadata (DALL-E doesn't provide token counts)
+            metadata = ResponseMetadata(
+                duration=duration,
+                model_slug=image_params.model.value,
+                input_tokens=0,  # DALL-E doesn't provide token counts
+                output_tokens=0,
+                stop_reason=StopReason.STOP,
+            )
+
+            # Create and return Response
+            return Response(
+                message=assistant_message,
+                request=request,
+                metadata=metadata,
+            )
+
+        except Exception as e:
+            duration = (time.time() - start_time) * 1000
+            logger.error(f"Error in OpenAI image generation: {e}")
+            return ConduitError.from_exception(
+                exc=e,
+                code="openai_image_error",
+                category="client",
+                request_params={
+                    "model": request.params.model,
+                    "prompt": prompt if "prompt" in locals() else "N/A",
+                },
+            )
 
     def _generate_audio(self, request: Request) -> ConduitResult:
-        raise NotImplementedError
+        """
+        Generate audio using OpenAI's TTS API and return a ConduitResult.
+
+        Returns:
+            - Response object with base64-encoded audio data
+            - ConduitError for error cases
+        """
+        start_time = time.time()
+
+        try:
+            # Extract text from the last message
+            last_message = request.messages[-1]
+            if isinstance(last_message.content, str):
+                text_input = last_message.content
+            else:
+                # Handle multimodal content - extract text
+                text_input = " ".join(
+                    [
+                        block.text
+                        for block in last_message.content
+                        if hasattr(block, "text")
+                    ]
+                )
+
+            # Get audio parameters (use defaults if not provided)
+            audio_params = OpenAIAudioParams()
+            if (
+                request.params.client_params
+                and "audio_params" in request.params.client_params
+            ):
+                audio_params = request.params.client_params["audio_params"]
+
+            # Use the raw OpenAI client (not Instructor) for TTS
+            # The Instructor wrapper doesn't expose audio.speech
+            raw_client = OpenAI(api_key=self._get_api_key())
+
+            # Call the audio.speech.create endpoint
+            response = raw_client.audio.speech.create(
+                model=audio_params.model.value,
+                voice=audio_params.voice.value,
+                input=text_input,
+                response_format=audio_params.response_format.value,
+                speed=audio_params.speed,
+            )
+
+            duration = (time.time() - start_time) * 1000
+
+            # Convert audio bytes to base64
+            audio_bytes = response.read()
+            audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
+
+            # Create AssistantMessage with audio data
+            assistant_message = AssistantMessage(content=audio_base64)
+
+            # Create ResponseMetadata (TTS doesn't provide token counts)
+            metadata = ResponseMetadata(
+                duration=duration,
+                model_slug=audio_params.model.value,
+                input_tokens=0,  # TTS doesn't provide token counts
+                output_tokens=0,
+                stop_reason=StopReason.STOP,
+            )
+
+            # Create and return Response
+            return Response(
+                message=assistant_message,
+                request=request,
+                metadata=metadata,
+            )
+
+        except Exception as e:
+            duration = (time.time() - start_time) * 1000
+            logger.error(f"Error in OpenAI audio generation: {e}")
+            return ConduitError.from_exception(
+                exc=e,
+                code="openai_audio_error",
+                category="client",
+                request_params={
+                    "model": request.params.model,
+                    "text": text_input if "text_input" in locals() else "N/A",
+                },
+            )
+
+    def _transcribe_audio(self, request: Request) -> ConduitResult:
+        """
+        Transcribe audio using OpenAI's Whisper API and return a ConduitResult.
+
+        Returns:
+            - Response object with transcription text in AssistantMessage.content
+            - ConduitError for error cases
+        """
+        start_time = time.time()
+
+        try:
+            # Extract audio data from the message
+            last_message = request.messages[-1]
+            audio_data = None
+            audio_format = "mp3"
+
+            if isinstance(last_message.content, list):
+                # Find AudioContent in the message
+                for block in last_message.content:
+                    if hasattr(block, "data") and hasattr(block, "format"):
+                        audio_data = block.data
+                        audio_format = block.format
+                        break
+
+            if not audio_data:
+                raise ValueError("No audio content found in message")
+
+            # Get transcription parameters (use defaults if not provided)
+            transcription_params = OpenAITranscriptionParams()
+            if (
+                request.params.client_params
+                and "transcription_params" in request.params.client_params
+            ):
+                transcription_params = request.params.client_params[
+                    "transcription_params"
+                ]
+
+            # Use the raw OpenAI client (not Instructor) for transcription
+            raw_client = OpenAI(api_key=self._get_api_key())
+
+            # Convert base64 audio to bytes
+            import io
+
+            audio_bytes = base64.b64decode(audio_data)
+            audio_file = io.BytesIO(audio_bytes)
+            audio_file.name = f"audio.{audio_format}"
+
+            # Call the audio.transcriptions.create endpoint
+            response = raw_client.audio.transcriptions.create(
+                model=transcription_params.model.value,
+                file=audio_file,
+                language=transcription_params.language,
+                prompt=transcription_params.prompt,
+                response_format=transcription_params.response_format.value,
+                temperature=transcription_params.temperature,
+            )
+
+            duration = (time.time() - start_time) * 1000
+
+            # Extract transcription text
+            if isinstance(response, str):
+                transcription_text = response
+            else:
+                # For JSON format, extract text field
+                transcription_text = response.text
+
+            # Create AssistantMessage with transcription
+            assistant_message = AssistantMessage(content=transcription_text)
+
+            # Create ResponseMetadata (Whisper doesn't provide token counts)
+            metadata = ResponseMetadata(
+                duration=duration,
+                model_slug=transcription_params.model.value,
+                input_tokens=0,  # Whisper doesn't provide token counts
+                output_tokens=0,
+                stop_reason=StopReason.STOP,
+            )
+
+            # Create and return Response
+            return Response(
+                message=assistant_message,
+                request=request,
+                metadata=metadata,
+            )
+
+        except Exception as e:
+            duration = (time.time() - start_time) * 1000
+            logger.error(f"Error in OpenAI audio transcription: {e}")
+            return ConduitError.from_exception(
+                exc=e,
+                code="openai_transcription_error",
+                category="client",
+                request_params={
+                    "model": request.params.model,
+                },
+            )
 
 
 class OpenAIClientAsync(OpenAIClient):
@@ -231,34 +557,397 @@ class OpenAIClientAsync(OpenAIClient):
         self,
         request: Request,
     ) -> ConduitResult:
+        """
+        Async query method that returns a ConduitResult.
+
+        Returns:
+            - Response object for successful non-streaming requests
+            - AsyncStream for streaming requests
+            - ConduitError for error cases
+        """
+        match request.output_type:
+            case "text":
+                return await self._generate_text(request)
+            case "audio":
+                return await self._generate_audio(request)
+            case "image":
+                return await self._generate_image(request)
+            case "transcription":
+                return await self._transcribe_audio(request)
+            case _:
+                return ConduitError.simple(
+                    code="unsupported_output_type",
+                    message=f"Async client doesn't support output_type: {request.output_type}",
+                    category="client",
+                )
+
+    async def _generate_text(self, request: Request) -> ConduitResult:
+        """
+        Generate text using OpenAI's API and return a ConduitResult.
+
+        Returns:
+            - Response object for successful non-streaming requests
+            - AsyncStream for streaming requests
+            - ConduitError for error cases
+        """
+
         payload = self._convert_request(request)
         payload_dict = payload.model_dump(exclude_none=True)
-        # Now, make the call
-        structured_response = None
-        if request.response_model is not None:
-            # We want the raw response from OpenAI, so we use `create_with_completion`
-            (
-                structured_response,
-                result,
-            ) = await self._client.chat.completions.create_with_completion(
-                response_model=request.response_model, **payload_dict
+
+        # Track timing
+        start_time = time.time()
+
+        try:
+            # Make the API call
+            structured_response = None
+            if request.params.response_model is not None:
+                # We want the raw response from OpenAI, so we use `create_with_completion`
+                (
+                    structured_response,
+                    result,
+                ) = await self._client.chat.completions.create_with_completion(
+                    response_model=request.params.response_model, **payload_dict
+                )
+            else:
+                # Use the standard completion method
+                result = await self._client.chat.completions.create(
+                    response_model=request.params.response_model, **payload_dict
+                )
+
+            # Handle streaming response
+            if isinstance(result, AsyncStream):
+                # For streaming, return the AsyncStream object directly (it's part of ConduitResult)
+                return result
+
+            # Assemble response metadata
+            duration = (time.time() - start_time) * 1000  # Convert to milliseconds
+            model_stem = result.model
+            input_tokens = result.usage.prompt_tokens
+            output_tokens = result.usage.completion_tokens
+
+            # Determine stop reason
+            stop_reason = StopReason.STOP
+            if hasattr(result.choices[0], "finish_reason"):
+                finish_reason = result.choices[0].finish_reason
+                if finish_reason == "length":
+                    stop_reason = StopReason.LENGTH
+                elif finish_reason == "tool_calls":
+                    stop_reason = StopReason.TOOL_CALLS
+                elif finish_reason == "content_filter":
+                    stop_reason = StopReason.CONTENT_FILTER
+
+            # Create AssistantMessage with content or parsed output
+            if structured_response is not None:
+                # For structured responses, use the parsed field
+                assistant_message = AssistantMessage(
+                    content=None,  # No text content for structured responses
+                    parsed=structured_response,
+                )
+            else:
+                # For text responses, extract the text content
+                content = result.choices[0].message.content
+                assistant_message = AssistantMessage(content=content)
+
+            # Create ResponseMetadata
+            metadata = ResponseMetadata(
+                duration=duration,
+                model_slug=model_stem,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                stop_reason=stop_reason,
             )
-        else:
-            # Use the standard completion method
-            result = await self._client.chat.completions.create(
-                response_model=request.response_model, **payload_dict
+
+            # Create and return Response
+            return Response(
+                message=assistant_message,
+                request=request,
+                metadata=metadata,
             )
-        # Capture usage
-        if isinstance(result, AsyncStream):
-            # Handle streaming response if needed; usage is handled by StreamParser
-            usage = Usage(input_tokens=0, output_tokens=0)
-            return result, usage
-        usage = Usage(
-            input_tokens=result.usage.prompt_tokens,
-            output_tokens=result.usage.completion_tokens,
-        )
-        if structured_response is not None:
-            # If we have a structured response, return it along with usage
-            return structured_response, usage
-        result = result.choices[0].message.content
-        return result, usage
+
+        except Exception as e:
+            # Handle errors by returning ConduitError
+            duration = (time.time() - start_time) * 1000
+            logger.error(f"Error in OpenAI async text generation: {e}")
+            return ConduitError.from_exception(
+                exc=e,
+                code="openai_async_api_error",
+                category="client",
+                request_params=payload_dict,
+            )
+
+    async def _generate_audio(self, request: Request) -> ConduitResult:
+        """
+        Generate audio using OpenAI's TTS API and return a ConduitResult.
+
+        Returns:
+            - Response object with base64-encoded audio data
+            - ConduitError for error cases
+        """
+        start_time = time.time()
+
+        try:
+            # Extract text from the last message
+            last_message = request.messages[-1]
+            if isinstance(last_message.content, str):
+                text_input = last_message.content
+            else:
+                # Handle multimodal content - extract text
+                text_input = " ".join(
+                    [
+                        block.text
+                        for block in last_message.content
+                        if hasattr(block, "text")
+                    ]
+                )
+
+            # Get audio parameters (use defaults if not provided)
+            audio_params = OpenAIAudioParams()
+            if (
+                request.params.client_params
+                and "audio_params" in request.params.client_params
+            ):
+                audio_params = request.params.client_params["audio_params"]
+
+            # Use the raw AsyncOpenAI client (not Instructor) for TTS
+            # The Instructor wrapper doesn't expose audio.speech
+            raw_client = AsyncOpenAI(api_key=self._get_api_key())
+
+            # Call the audio.speech.create endpoint
+            response = await raw_client.audio.speech.create(
+                model=audio_params.model.value,
+                voice=audio_params.voice.value,
+                input=text_input,
+                response_format=audio_params.response_format.value,
+                speed=audio_params.speed,
+            )
+
+            duration = (time.time() - start_time) * 1000
+
+            # Convert audio bytes to base64
+            audio_bytes = response.read()
+            audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
+
+            # Create AssistantMessage with audio data
+            assistant_message = AssistantMessage(content=audio_base64)
+
+            # Create ResponseMetadata (TTS doesn't provide token counts)
+            metadata = ResponseMetadata(
+                duration=duration,
+                model_slug=audio_params.model.value,
+                input_tokens=0,  # TTS doesn't provide token counts
+                output_tokens=0,
+                stop_reason=StopReason.STOP,
+            )
+
+            # Create and return Response
+            return Response(
+                message=assistant_message,
+                request=request,
+                metadata=metadata,
+            )
+
+        except Exception as e:
+            duration = (time.time() - start_time) * 1000
+            logger.error(f"Error in OpenAI async audio generation: {e}")
+            return ConduitError.from_exception(
+                exc=e,
+                code="openai_async_audio_error",
+                category="client",
+                request_params={
+                    "model": request.params.model,
+                    "text": text_input if "text_input" in locals() else "N/A",
+                },
+            )
+
+    async def _generate_image(self, request: Request) -> ConduitResult:
+        """
+        Generate an image using OpenAI's DALL-E and return a ConduitResult.
+
+        Returns:
+            - Response object with ImageOutput in AssistantMessage.images
+            - ConduitError for error cases
+        """
+        start_time = time.time()
+
+        try:
+            # Extract text prompt from the last message
+            last_message = request.messages[-1]
+            if isinstance(last_message.content, str):
+                prompt = last_message.content
+            else:
+                # Handle multimodal content - extract text
+                prompt = " ".join(
+                    [
+                        block.text
+                        for block in last_message.content
+                        if hasattr(block, "text")
+                    ]
+                )
+
+            # Get image parameters (use defaults if not provided)
+            image_params = OpenAIImageParams()
+            if (
+                request.params.client_params
+                and "image_params" in request.params.client_params
+            ):
+                image_params = request.params.client_params["image_params"]
+
+            # Use the raw AsyncOpenAI client (not Instructor) for image generation
+            # The Instructor wrapper doesn't expose images.generate properly
+            raw_client = AsyncOpenAI(api_key=self._get_api_key())
+
+            # Call the images.generate endpoint
+            response = await raw_client.images.generate(
+                model=image_params.model.value,
+                prompt=prompt,
+                size=image_params.size.value,
+                quality=image_params.quality.value,
+                style=image_params.style.value,
+                response_format=image_params.response_format.value,
+                n=image_params.n,
+            )
+
+            duration = (time.time() - start_time) * 1000
+
+            # Convert response to ImageOutput objects
+            image_outputs = []
+            for image_data in response.data:
+                image_output = ImageOutput(
+                    url=image_data.url if hasattr(image_data, "url") else None,
+                    b64_json=image_data.b64_json
+                    if hasattr(image_data, "b64_json")
+                    else None,
+                    revised_prompt=image_data.revised_prompt
+                    if hasattr(image_data, "revised_prompt")
+                    else None,
+                )
+                image_outputs.append(image_output)
+
+            # Create AssistantMessage with images
+            assistant_message = AssistantMessage(images=image_outputs)
+
+            # Create ResponseMetadata (DALL-E doesn't provide token counts)
+            metadata = ResponseMetadata(
+                duration=duration,
+                model_slug=image_params.model.value,
+                input_tokens=0,  # DALL-E doesn't provide token counts
+                output_tokens=0,
+                stop_reason=StopReason.STOP,
+            )
+
+            # Create and return Response
+            return Response(
+                message=assistant_message,
+                request=request,
+                metadata=metadata,
+            )
+
+        except Exception as e:
+            duration = (time.time() - start_time) * 1000
+            logger.error(f"Error in OpenAI async image generation: {e}")
+            return ConduitError.from_exception(
+                exc=e,
+                code="openai_async_image_error",
+                category="client",
+                request_params={
+                    "model": request.params.model,
+                    "prompt": prompt if "prompt" in locals() else "N/A",
+                },
+            )
+
+    async def _transcribe_audio(self, request: Request) -> ConduitResult:
+        """
+        Transcribe audio using OpenAI's Whisper API and return a ConduitResult.
+
+        Returns:
+            - Response object with transcription text in AssistantMessage.content
+            - ConduitError for error cases
+        """
+        start_time = time.time()
+
+        try:
+            # Extract audio data from the message
+            last_message = request.messages[-1]
+            audio_data = None
+            audio_format = "mp3"
+
+            if isinstance(last_message.content, list):
+                # Find AudioContent in the message
+                for block in last_message.content:
+                    if hasattr(block, "data") and hasattr(block, "format"):
+                        audio_data = block.data
+                        audio_format = block.format
+                        break
+
+            if not audio_data:
+                raise ValueError("No audio content found in message")
+
+            # Get transcription parameters (use defaults if not provided)
+            transcription_params = OpenAITranscriptionParams()
+            if (
+                request.params.client_params
+                and "transcription_params" in request.params.client_params
+            ):
+                transcription_params = request.params.client_params[
+                    "transcription_params"
+                ]
+
+            # Use the raw AsyncOpenAI client (not Instructor) for transcription
+            raw_client = AsyncOpenAI(api_key=self._get_api_key())
+
+            # Convert base64 audio to bytes
+            import io
+
+            audio_bytes = base64.b64decode(audio_data)
+            audio_file = io.BytesIO(audio_bytes)
+            audio_file.name = f"audio.{audio_format}"
+
+            # Call the audio.transcriptions.create endpoint
+            response = await raw_client.audio.transcriptions.create(
+                model=transcription_params.model.value,
+                file=audio_file,
+                language=transcription_params.language,
+                prompt=transcription_params.prompt,
+                response_format=transcription_params.response_format.value,
+                temperature=transcription_params.temperature,
+            )
+
+            duration = (time.time() - start_time) * 1000
+
+            # Extract transcription text
+            if isinstance(response, str):
+                transcription_text = response
+            else:
+                # For JSON format, extract text field
+                transcription_text = response.text
+
+            # Create AssistantMessage with transcription
+            assistant_message = AssistantMessage(content=transcription_text)
+
+            # Create ResponseMetadata (Whisper doesn't provide token counts)
+            metadata = ResponseMetadata(
+                duration=duration,
+                model_slug=transcription_params.model.value,
+                input_tokens=0,  # Whisper doesn't provide token counts
+                output_tokens=0,
+                stop_reason=StopReason.STOP,
+            )
+
+            # Create and return Response
+            return Response(
+                message=assistant_message,
+                request=request,
+                metadata=metadata,
+            )
+
+        except Exception as e:
+            duration = (time.time() - start_time) * 1000
+            logger.error(f"Error in OpenAI async audio transcription: {e}")
+            return ConduitError.from_exception(
+                exc=e,
+                code="openai_async_transcription_error",
+                category="client",
+                request_params={
+                    "model": request.params.model,
+                },
+            )

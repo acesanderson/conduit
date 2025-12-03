@@ -17,7 +17,7 @@ class GenerationParams(BaseModel):
     max_tokens: int | None = Field(default=None, ge=1)
     stop: list[str] | None = None
     stream: bool = False
-    client_params: dict[str, Any] | None = None
+    client_params: dict | None = None
 
     # For structured responses; excluded from serialization, trust me
     response_model: type[BaseModel] | None = Field(default=None, exclude=True)
