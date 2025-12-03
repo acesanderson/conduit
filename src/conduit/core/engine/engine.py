@@ -1,5 +1,5 @@
 """
-Conduit takes a Conversation and runs it through an LLM or other processing.
+Our Engine takes a Conversation and runs it through an LLM or other processing.
 Think of it as a FSM that processes the conversation.
 LLMs produce the next token; Conduit produces the next Message.
 """
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from conduit.domain.request.generation_params import GenerationParams
 
 
-class Conduit:
+class Engine:
     def __init__(self, params: GenerationParams = settings.default_params) -> None:
         self.params: GenerationParams = params
 
