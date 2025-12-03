@@ -1,6 +1,7 @@
 """
 MAJOR REFACTOR INCOMING:
 - Model is really a collection of factories and orchestrators around Clients.
+- It's a "Request" factory.
 - All query methods pass through _execute, which is wrapped with middleware for caching, progress, odometer, etc.
 """
 
@@ -9,16 +10,10 @@ from conduit.config import settings
 from conduit.domain.request.request import Request
 from conduit.domain.request.query_input import QueryInput, constrain_query_input
 from conduit.core.clients.client_base import Client
-from conduit.storage.odometer.usage import Usage
-from conduit.core.parser.stream.protocol import SyncStream, AsyncStream
-from conduit.domain.result.response import Response
-from conduit.domain.result.result import ConduitResult
 from conduit.utils.progress.verbosity import Verbosity
 from conduit.storage.odometer.OdometerRegistry import OdometerRegistry
 from conduit import middleware
-from pydantic import BaseModel
-from typing import TYPE_CHECKING, Any, override
-from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, override
 import logging
 
 # Load only if type checking
@@ -27,11 +22,12 @@ if TYPE_CHECKING:
     from conduit.storage.cache.cache import ConduitCache
     from conduit.domain.message.message import Message
     from conduit.domain.request.request import Request
+    from conduit.domain.result.result import ConduitResult
 
 logger = logging.getLogger(__name__)
 
 
-class ModelBase(ABC):
+class ModelBase:
     """
     Stem class for Model implementations; not to be used directly.
     """
@@ -44,7 +40,7 @@ class ModelBase(ABC):
         model_name: str = settings.preferred_model,
         console: Console | None = settings.default_console,
         verbosity: Verbosity = settings.default_verbosity,
-        cache: str | ConduitCache | None = None,
+        cache_engine: str | ConduitCache | None = None,
     ):
         from conduit.core.model.models.modelstore import ModelStore
 
@@ -53,16 +49,15 @@ class ModelBase(ABC):
         self.console: Console | None = console
         self.client: Client = self.get_client(self.name)
 
-        if cache is not None:
+        if cache_engine is not None:
             from conduit.storage.cache.cache import ConduitCache
 
-            if isinstance(cache, str):
+            if isinstance(cache_engine, str):
                 # Convenience: Create cache from string name
-
-                logger.info(f"Initializing cache with name: '{cache}'")
-                self.cache: str | ConduitCache | None = ConduitCache(name=cache)
+                logger.info(f"Initializing cache with name: '{cache_engine}'")
+                self.cache: str | ConduitCache | None = ConduitCache(name=cache_engine)
             else:  # It's already a ConduitCache instance
-                self.cache = cache
+                self.cache = cache_engine
         else:
             self.cache = None
 
@@ -108,10 +103,17 @@ class ModelBase(ABC):
         cls._odometer_registry.session_odometer.stats()
 
     # Query methods: these are orchestrated in subclasses
+
     # @middleware.progress
     # @middleware.cache
     # @middleware.odometer
-    async def _execute(self, request: Request) -> ConduitResult:
+    def _execute(self, request: Request) -> ConduitResult:
+        return await self.client.send(request)
+
+    # @middleware.progress
+    # @middleware.cache
+    # @middleware.odometer
+    async def _execute_async(self, request: Request) -> ConduitResult:
         return await self.client.send(request)
 
     def _prepare_request(
@@ -141,110 +143,19 @@ class ModelBase(ABC):
         )
         return request
 
-    def _process_response(
-        self,
-        raw_result: Any,
-        usage: Usage,
-        request: Request,
-        start_time: float,
-        stop_time: float,
-    ) -> ConduitResult:
-        """
-        PURE CPU: Converts raw client output into a standard Response object.
-        """
-        output_type = request.output_type
-        # Streaming responses are returned as-is
-        if isinstance(raw_result, (SyncStream, AsyncStream)):
-            logger.info("Returning streaming response.")
-            return raw_result
-        # Non-streaming responses
-        if isinstance(raw_result, Response):
-            logger.info("Returning existing Response object.")
-            response = raw_result
-        # Handle string or BaseModel results
-        if isinstance(raw_result, (str, BaseModel)):
-            logger.info("Constructing Response object from result string or BaseModel.")
-            # Construct relevant Message type per requested output_type
-            match output_type:
-                case "text":  # result is a string
-                    from conduit.domain.message.textmessage import TextMessage
-
-                    assistant_message = TextMessage(
-                        role="assistant", content=raw_result
-                    )
-                case "image":  # result is a base64 string of an image
-                    assert isinstance(raw_result, str), (
-                        "Image generation request should not return a BaseModel; we need base64 string."
-                    )
-                    from conduit.domain.message.imagemessage import ImageMessage
-
-                    assistant_message = ImageMessage.from_base64(
-                        role="assistant", text_content="", image_content=raw_result
-                    )
-                case "audio":  # result is a base64 string of an audio
-                    assert isinstance(raw_result, str), (
-                        "Audio generation (TTS) request should not return a BaseModel; we need base64 string."
-                    )
-                    from conduit.domain.message.audiomessage import AudioMessage
-
-                    assistant_message = AudioMessage.from_base64(
-                        role="assistant",
-                        audio_content=raw_result,
-                        text_content="",
-                        format="mp3",
-                    )
-
-            response = Response(
-                message=assistant_message,
-                request=request,
-                duration=stop_time - start_time,
-                input_tokens=usage.input_tokens,
-                output_tokens=usage.output_tokens,
-            )
-            return response
-        else:
-            raise TypeError(
-                f"Unexpected result type: {type(raw_result)}. Expected Response, BaseModel, or str."
-            )
-
-    # I/O Helpers (Synchronous by default)
-    def _check_cache(self, request: Request) -> Response | None:
-        """
-        PURE CPU: Checks the cache for existing results. (well, we may wrap in async later)
-        """
-        if self.conduit_cache:
-            cached_result = self.conduit_cache.check_for_model(request)
-            if isinstance(cached_result, Response):
-                return cached_result
-            elif cached_result == None:
-                logger.info("No cached result found, proceeding with query.")
-                pass
-            elif cached_result and not isinstance(cached_result, ConduitResult):
-                logger.error(
-                    f"Cache returned a non-ConduitResult type: {type(cached_result)}. Ensure the cache is properly configured."
-                )
-                raise ValueError(
-                    f"Cache returned a non-ConduitResult type: {type(cached_result)}. Ensure the cache is properly configured."
-                )
-        else:
-            raise ValueError("No cache configured for this model instance.")
-
-    def _save_cache(self, request: Request, response: Response):
-        """
-        PURE CPU: Saves the response to the cache. (well, we may wrap in async later)
-        """
-        if self.conduit_cache:
-            self.conduit_cache.store_for_model(request, response)
-
     # Expected methods in subclasses
-    @abstractmethod
-    def get_client(self, model_name: str) -> Client: ...
+    def get_client(self) -> Client:
+        raise NotImplementedError(
+            "get_client must be implemented in subclasses (sync or async)."
+        )
 
-    @abstractmethod
-    def query(self, query_input: QueryInput, **kwargs) -> ConduitResult: ...
+    def query(self) -> ConduitResult:
+        raise NotImplementedError(
+            "query must be implemented in subclasses (sync or async)."
+        )
 
-    @abstractmethod
-    def tokenize(self, text: str) -> int: ...
+    def tokenize(self) -> int:
+        raise NotImplementedError("tokenize must be implemented in subclasses.")
 
     # Dunders
     @override
