@@ -1,3 +1,7 @@
+"""
+Major refactor incoming -- new Request and Response classes.
+"""
+
 from conduit.domain.result.response import Response
 from conduit.domain.request.request import Request
 from typing import Any
