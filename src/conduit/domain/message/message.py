@@ -12,7 +12,56 @@ import time
 import uuid
 
 
-# content types
+# Multimodal display helpers
+def display(image_content: str) -> None:
+    """
+    Display a base64-encoded image using chafa.
+    Your mileage may vary depending on the terminal and chafa version.
+    """
+    import subprocess
+    import base64
+    import os
+
+    try:
+        image_data = base64.b64decode(image_content)
+        cmd = ["chafa", "-"]
+
+        # If in tmux or SSH, force text mode for consistency
+        if (
+            os.environ.get("TMUX")
+            or os.environ.get("SSH_CLIENT")
+            or os.environ.get("SSH_CONNECTION")
+        ):
+            cmd.extend(["--format", "symbols", "--symbols", "block"])
+        process = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+        process.communicate(input=image_data)
+    except Exception as e:
+        print(f"Error displaying image: {e}")
+
+
+def play(audio_content: str):
+    """
+    Play the audio from the base64 content (no file required).
+    """
+    from pydub import AudioSegment
+    from pydub.playback import play
+    import base64
+    import io
+
+    # Decode base64 to bytes
+    audio_bytes = base64.b64decode(audio_content)
+
+    # Create a file-like object from bytes
+    audio_buffer = io.BytesIO(audio_bytes)
+
+    # Load audio from the buffer
+    audio = AudioSegment.from_file(audio_buffer, format=format)
+
+    # Play the audio
+    play(audio)
+
+
+# Content types
 class TextContent(BaseModel):
     type: Literal["text"] = "text"
     text: str
