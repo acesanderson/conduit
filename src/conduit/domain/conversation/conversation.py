@@ -1,5 +1,6 @@
 """
 A Conversation wraps a list[Message] with extra metadata, validation, and helper methods.
+It's also a core data object for persistence.
 """
 
 from __future__ import annotations
@@ -66,7 +67,10 @@ class Conversation(BaseModel):
             case Role.SYSTEM:
                 return ConversationState.INCOMPLETE
 
-    def tokens(self, model_name: str) -> int: ...
+    def tokens(self, model_name: str) -> int:
+        raise NotImplementedError(
+            "Token counting not yet implemented for Conversation."
+        )
 
     # Methods
     def add_message(self, message: Message):
@@ -75,34 +79,6 @@ class Conversation(BaseModel):
         """
         if self.last and self.last.role == message.role:
             raise ValueError("Cannot add two consecutive messages with the same role.")
-        self.messages.append(message)
-
-    def add_new(self, role: Role, content: str):
-        """
-        Convenience method to create and add a new text message.
-        """
-        if self.last and self.last.role == role:
-            raise ValueError("Cannot add two consecutive messages with the same role.")
-        match role:
-            case "user":
-                from conduit.domain.message.message import UserMessage
-
-                message = UserMessage(content=content)
-            case "assistant":
-                from conduit.domain.message.message import AssistantMessage
-
-                message = AssistantMessage(content=content)
-            case "system":
-                if self.system:
-                    raise ValueError(
-                        "A system message already exists in this conversation."
-                    )
-                else:
-                    from conduit.domain.message.message import SystemMessage
-
-                    message = SystemMessage(content=content)
-            case "tool":
-                raise ValueError("Tool messages cannot be added via add_new.")
         self.messages.append(message)
 
     def ensure_system_message(self, system_content: str | None = None):
