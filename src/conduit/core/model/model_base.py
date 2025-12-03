@@ -1,27 +1,21 @@
 """
-### Model vs. Conduit: The Division of Labor
-
-The **Conduit** class is your **Workflow Orchestrator**; it handles the *context* of the application—templating prompts, managing conversation history, and governing the shape of the execution flow. The **Model** class is your **Execution Runtime**; it handles the *mechanics* of intelligence. It is responsible for normalizing disparate provider APIs (OpenAI, Anthropic, Ollama) into a unified standard, managing low-level infrastructure like token accounting and caching, and executing the actual network I/O.
-
-### The Model Family Taxonomy
-
-* **`ModelSync` (Blocking I/O):** The default implementation that executes requests synchronously, blocking the main thread until completion; ideal for linear scripts, CLIs, and simple tools.
-* **`ModelAsync` (Non-Blocking I/O):** An asynchronous implementation that returns awaitable coroutines, designed for integration with Python's `asyncio` event loop to support high-concurrency applications.
-* **`RemoteModel` (Proxy Execution):** A lightweight client that serializes requests and delegates execution to a centralized `Headwater` server, abstracting away local provider dependencies and API key management.
-* **`ModelBase` (The Abstract Stem):** The foundational abstract class that defines the core Request/Response protocol, cache logic, and odometer tracking shared by all execution strategies.
+MAJOR REFACTOR INCOMING:
+- Model is really a collection of factories and orchestrators around Clients.
+- All query methods pass through _execute, which is wrapped with middleware for caching, progress, odometer, etc.
 """
 
 from __future__ import annotations
 from conduit.config import settings
 from conduit.domain.request.request import Request
 from conduit.domain.request.query_input import QueryInput, constrain_query_input
-from conduit.core.model.clients.client_base import Client
+from conduit.core.clients.client_base import Client
 from conduit.storage.odometer.usage import Usage
 from conduit.core.parser.stream.protocol import SyncStream, AsyncStream
 from conduit.domain.result.response import Response
 from conduit.domain.result.result import ConduitResult
 from conduit.utils.progress.verbosity import Verbosity
 from conduit.storage.odometer.OdometerRegistry import OdometerRegistry
+from conduit import middleware
 from pydantic import BaseModel
 from typing import TYPE_CHECKING, Any, override
 from abc import ABC, abstractmethod
@@ -32,6 +26,7 @@ if TYPE_CHECKING:
     from rich.console import Console
     from conduit.storage.cache.cache import ConduitCache
     from conduit.domain.message.message import Message
+    from conduit.domain.request.request import Request
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +108,12 @@ class ModelBase(ABC):
         cls._odometer_registry.session_odometer.stats()
 
     # Query methods: these are orchestrated in subclasses
+    # @middleware.progress
+    # @middleware.cache
+    # @middleware.odometer
+    async def _execute(self, request: Request) -> ConduitResult:
+        return await self.client.send(request)
+
     def _prepare_request(
         self, query_input: QueryInput | None = None, **kwargs
     ) -> Request:
