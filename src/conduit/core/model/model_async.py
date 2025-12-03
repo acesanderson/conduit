@@ -1,7 +1,6 @@
 from conduit.core.model.model_base import ModelBase
-from conduit.core.model.clients.client import Client
+from conduit.core.clients.client_base import Client
 from conduit.core.model.models.modelstore import ModelStore
-from conduit.utils.progress.wrappers import progress_display
 from conduit.domain.result.result import ConduitResult
 from conduit.domain.result.error import ConduitError
 from time import time
@@ -18,34 +17,12 @@ class ModelAsync(ModelBase):
     def get_client(self, model_name: str) -> Client:
         return ModelStore.get_client(model_name, "async")
 
-    @progress_display
     @override
     async def query(self, query_input=None, **kwargs) -> ConduitResult:
         try:
-            # 1. CPU: Prepare
             request = self._prepare_request(query_input, **kwargs)
-
-            # 2. I/O: Cache Read (Blocking)
-            if kwargs.get("cache", False):
-                cached = await asyncio.to_thread(
-                    self._check_cache, request
-                )  # cache is I/O bound
-                if cached:
-                    return cached
-
-            # 3. I/O: Network Call (Blocking)
-            start = time()
-            raw_result, usage = await self.client.query(request)
-            stop = time()
-
-            # 4. CPU: Process
-            response = self._process_response(raw_result, usage, request, start, stop)
-
-            # 5. I/O: Cache Write (Blocking)
-            if kwargs.get("cache", False):
-                await asyncio.to_thread(self._save_cache, request, response)
-
-            return response
+            conduit_result = await self._execute_async(request, **kwargs)
+            return conduit_result
         except ValidationError as e:
             conduit_error = ConduitError.from_exception(
                 e,
