@@ -97,35 +97,12 @@ class Client(ABC):
         """
         pass
 
-    def emit_token_event(self):
+    def emit_token_event(self) -> None:
         """
         Emit a TokenEvent to the OdometerRegistry if it exists.
         Shoot this off WHENEVER you create a Response object.
         """
         raise NotImplementedError("Rework this so it's shot off from Client")
-        from conduit.storage.odometer.TokenEvent import TokenEvent
-        from conduit.core.model.model_sync import ModelSync
-
-        assert self.request.provider, "Provider must be set in the request"
-
-        # Get hostname
-        import socket
-
-        try:
-            host = socket.gethostname()
-        except Exception as e:
-            logger.error(f"Failed to get hostname: {e}")
-            host = "unknown"
-
-        event = TokenEvent(
-            provider=self.request.provider,
-            model=self.request.model,
-            input_tokens=self.input_tokens,
-            output_tokens=self.output_tokens,
-            timestamp=int(datetime.fromisoformat(self.timestamp).timestamp()),
-            host=host,
-        )
-        ModelSync._odometer_registry.emit_token_event(event)
 
     def __repr__(self):
         """
