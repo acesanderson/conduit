@@ -67,7 +67,10 @@ class ConduitError(BaseModel):
     ) -> "ConduitError":
         """Create ConduitError from an exception with full context"""
         info = ErrorInfo(
-            code=code, message=str(exc), category=category, timestamp=datetime.now()
+            code=code,
+            message=str(exc),
+            category=category,
+            timestamp=int(time.time() * 1000),
         )
 
         detail = ErrorDetail(
