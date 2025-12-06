@@ -1,6 +1,5 @@
 from pydantic import BaseModel, Field
 from conduit.core.model.models.provider import Provider
-from typing import Optional
 
 
 class ModelSpec(BaseModel):
@@ -8,7 +7,7 @@ class ModelSpec(BaseModel):
         ...,
         description="The name of the model, e.g. gpt-4o, claude-2, gemini-1.5-flash, etc.",
     )
-    description: Optional[str] = Field(
+    description: str | None = Field(
         ..., description="A brief description of the model's capabilities and features."
     )
 
@@ -27,11 +26,10 @@ class ModelSpec(BaseModel):
     )
 
     # Model characteristics
-    parameter_count: Optional[str] = Field(
+    parameter_count: str | None = Field(
         None, description="Parameter count (e.g., '7b', '70b', '405b')"
     )
-    context_window: int = Field(..., description="Maximum context window in tokens")
-    knowledge_cutoff: Optional[str] = Field(
+    knowledge_cutoff: str | None = Field(
         default=None,
         description="Date when the model's knowledge was last updated; None if unknown or continuously updated",
     )
