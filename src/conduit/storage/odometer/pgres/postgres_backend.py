@@ -1,9 +1,10 @@
-from conduit.storage.odometer.database.persistence_backend import PersistenceBackend
+from datetime import date, datetime
+import logging
+from typing import override
+
+from conduit.storage.odometer.pgres.persistence_backend import PersistenceBackend
 from conduit.storage.odometer.token_event import TokenEvent
 from dbclients import get_postgres_client
-from datetime import date, datetime
-from typing import override
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -16,8 +17,8 @@ class PostgresBackend(PersistenceBackend):
         self._initialized: bool = False
         self._ensure_schema()
 
-    def _ensure_schema(self):
-        """Create tables if they don't exist"""
+    def _ensure_schema(self) -> None:
+        """Create tables if they don't exist."""
         if self._initialized:
             return
 
@@ -33,7 +34,6 @@ class PostgresBackend(PersistenceBackend):
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         
-        -- Create indexes if they don't exist
         CREATE INDEX IF NOT EXISTS idx_token_events_timestamp ON token_events(timestamp);
         CREATE INDEX IF NOT EXISTS idx_token_events_provider ON token_events(provider);
         CREATE INDEX IF NOT EXISTS idx_token_events_model ON token_events(model);
@@ -53,7 +53,7 @@ class PostgresBackend(PersistenceBackend):
 
     @override
     def store_events(self, events: list[TokenEvent]) -> None:
-        """Store raw token events using bulk insert"""
+        """Store raw token events using bulk insert."""
         if not events:
             return
 
@@ -65,7 +65,6 @@ class PostgresBackend(PersistenceBackend):
         try:
             with get_db_connection() as conn:
                 with conn.cursor() as cursor:
-                    # Prepare data for bulk insert
                     event_data = [
                         (
                             event.provider,
@@ -77,12 +76,9 @@ class PostgresBackend(PersistenceBackend):
                         )
                         for event in events
                     ]
-
-                    # Execute bulk insert
                     cursor.executemany(insert_sql, event_data)
                     conn.commit()
-                    logger.info(f"Stored {len(events)} token events")
-
+                    logger.info("Stored %d token events", len(events))
         except Exception as e:
             logger.error(f"Failed to store events: {e}")
             raise
@@ -96,11 +92,9 @@ class PostgresBackend(PersistenceBackend):
         model: str | None = None,
         host: str | None = None,
     ) -> list[TokenEvent]:
-        """Query token events with filters"""
-
-        # Build dynamic query
-        where_conditions = []
-        params = []
+        """Query token events with filters."""
+        where_conditions: list[str] = []
+        params: list[object] = []
 
         if start_date:
             start_timestamp = int(
@@ -128,8 +122,10 @@ class PostgresBackend(PersistenceBackend):
             where_conditions.append("host = %s")
             params.append(host)
 
-        # Build the query
-        base_query = "SELECT provider, model, input_tokens, output_tokens, timestamp, host FROM token_events"
+        base_query = (
+            "SELECT provider, model, input_tokens, output_tokens, timestamp, host "
+            "FROM token_events"
+        )
         if where_conditions:
             query = f"{base_query} WHERE {' AND '.join(where_conditions)}"
         else:
@@ -143,22 +139,21 @@ class PostgresBackend(PersistenceBackend):
                     cursor.execute(query, params)
                     rows = cursor.fetchall()
 
-                    # Convert rows to TokenEvent objects
-                    events = []
-                    for row in rows:
-                        events.append(
-                            TokenEvent(
-                                provider=row[0],
-                                model=row[1],
-                                input_tokens=row[2],
-                                output_tokens=row[3],
-                                timestamp=row[4],
-                                host=row[5],
-                            )
-                        )
+            events: list[TokenEvent] = []
+            for row in rows:
+                events.append(
+                    TokenEvent(
+                        provider=row[0],
+                        model=row[1],
+                        input_tokens=row[2],
+                        output_tokens=row[3],
+                        timestamp=row[4],
+                        host=row[5],
+                    )
+                )
 
-                    logger.info(f"Retrieved {len(events)} token events")
-                    return events
+            logger.info("Retrieved %d token events", len(events))
+            return events
 
         except Exception as e:
             logger.error(f"Failed to retrieve events: {e}")
@@ -171,16 +166,13 @@ class PostgresBackend(PersistenceBackend):
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> dict[str, dict[str, int]]:
-        """Get aggregated statistics"""
-
-        # Validate group_by parameter
+        """Get aggregated statistics."""
         valid_groups = ["provider", "model", "host", "date"]
         if group_by not in valid_groups:
             raise ValueError(f"group_by must be one of {valid_groups}")
 
-        # Build date conditions
-        where_conditions = []
-        params = []
+        where_conditions: list[str] = []
+        params: list[object] = []
 
         if start_date:
             start_timestamp = int(
@@ -196,7 +188,6 @@ class PostgresBackend(PersistenceBackend):
             where_conditions.append("timestamp <= %s")
             params.append(end_timestamp)
 
-        # Build group by clause
         if group_by == "date":
             group_clause = "DATE(to_timestamp(timestamp))"
             select_clause = f"{group_clause} as group_key"
@@ -204,7 +195,6 @@ class PostgresBackend(PersistenceBackend):
             group_clause = group_by
             select_clause = f"{group_by} as group_key"
 
-        # Build the query
         base_query = f"""
         SELECT 
             {select_clause},
@@ -228,28 +218,27 @@ class PostgresBackend(PersistenceBackend):
                     cursor.execute(query, params)
                     rows = cursor.fetchall()
 
-                    # Convert to expected format
-                    result = {}
-                    for row in rows:
-                        group_key = str(row[0])  # Convert date objects to string
-                        result[group_key] = {
-                            "input": row[1],
-                            "output": row[2],
-                            "total": row[3],
-                            "events": row[4],
-                        }
+            result: dict[str, dict[str, int]] = {}
+            for row in rows:
+                group_key = str(row[0])
+                result[group_key] = {
+                    "input": row[1],
+                    "output": row[2],
+                    "total": row[3],
+                    "events": row[4],
+                }
 
-                    logger.info(
-                        f"Retrieved aggregates for {len(result)} groups by {group_by}"
-                    )
-                    return result
+            logger.info(
+                "Retrieved aggregates for %d groups by %s", len(result), group_by
+            )
+            return result
 
         except Exception as e:
             logger.error(f"Failed to retrieve aggregates: {e}")
             raise
 
     def health_check(self) -> bool:
-        """Test if backend is accessible and healthy"""
+        """Test if backend is accessible and healthy."""
         try:
             with get_db_connection() as conn:
                 with conn.cursor() as cursor:
@@ -260,7 +249,7 @@ class PostgresBackend(PersistenceBackend):
             return False
 
     def get_total_events(self) -> int:
-        """Get total number of events stored"""
+        """Get total number of events stored."""
         try:
             with get_db_connection() as conn:
                 with conn.cursor() as cursor:
@@ -271,7 +260,7 @@ class PostgresBackend(PersistenceBackend):
             return 0
 
     def get_overall_stats(self) -> dict:
-        """Get overall statistics without fetching individual events"""
+        """Get overall statistics without fetching individual events."""
         query = """
         SELECT 
             COUNT(*) as requests,
