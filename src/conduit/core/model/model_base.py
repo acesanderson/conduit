@@ -11,7 +11,7 @@ from conduit.domain.request.request import Request
 from conduit.domain.request.query_input import QueryInput, constrain_query_input
 from conduit.core.clients.client_base import Client
 from conduit.utils.progress.verbosity import Verbosity
-from conduit.storage.odometer.OdometerRegistry import OdometerRegistry
+from conduit.storage.odometer.odometer_registry import OdometerRegistry
 from conduit import middleware
 from typing import TYPE_CHECKING, override
 import logging

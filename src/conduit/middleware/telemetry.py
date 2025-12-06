@@ -1,30 +1,18 @@
+from __future__ import annotations
 from collections.abc import Callable
 from conduit.middleware.protocol import Instrumentable
 from conduit.domain.result.response import Response
 from conduit.domain.request.request import Request
 from conduit.domain.result.result import ConduitResult
-from conduit.storage.odometer.OdometerRegistry import OdometerRegistry
-from conduit.storage.odometer.TokenEvent import TokenEvent
+from conduit.storage.odometer.token_event import TokenEvent
 import functools
-import socket
 import logging
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from conduit.storage.odometer.odometer_registry import OdometerRegistry
 
 logger = logging.getLogger(__name__)
-
-
-def emit_token_event(registry: OdometerRegistry) -> None:
-    """
-    Emit a TokenEvent to the OdometerRegistry if it exists.
-    """
-
-    # Get hostname
-wn"
-
-    event = TokenEvent(
-        model=request.model,
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-    )
 
 
 def odometer_sync(
@@ -48,25 +36,18 @@ def odometer_sync(
             )
         result = func(*args, **kwargs)
 
-        if isinstance(result, Response):
-            if result.metadata.output_tokens == 0:
-                # Grab registry
-                registry = self.odometer_registry
-                # Build TokenEvent
-                model = request.model
-                input_tokens = result.metadata.input_tokens
-                output_tokens = result.metadata.output_tokens
-                event = TokenEvent(
-                    model=model,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                )
-
-
-
-
-            input_tokens = result.metadata.get("input_tokens", 0)
-            output_tokens = result.metadata.get("output_tokens", 0)
+        if isinstance(result, Response) and result.metadata.output_tokens > 0:
+            # Grab registry
+            registry: OdometerRegistry = self.odometer_registry
+            # Build TokenEvent
+            model: str = request.model
+            input_tokens = result.metadata.input_tokens
+            output_tokens = result.metadata.output_tokens
+            event = TokenEvent(
+                model=model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
             registry.emit_token_event(event)
 
         return result
