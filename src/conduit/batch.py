@@ -9,7 +9,7 @@ responses = conduit.run(input_variables_list)
 """
 
 # Orchestration classes
-from conduit.core.conduit.async_conduit import AsyncConduit
+from conduit.core.conduit.conduit_async import ConduitAsync
 from conduit.core.model.model_async import ModelAsync
 from conduit.core.prompt.prompt import Prompt
 
@@ -23,7 +23,7 @@ from conduit.domain.message.message import Message
 from conduit.domain.request.request import Request
 
 __all__ = [
-    "AsyncConduit",
+    "ConduitAsync",
     "ConduitCache",
     "Message",
     "ModelAsync",

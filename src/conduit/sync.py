@@ -8,7 +8,7 @@ response = conduit.run(input_data)
 """
 
 # Orchestration classes
-from conduit.core.conduit.sync_conduit import SyncConduit
+from conduit.core.conduit.conduit_sync import SyncConduit
 from conduit.core.model.model_sync import ModelSync
 from conduit.core.prompt.prompt import Prompt
 

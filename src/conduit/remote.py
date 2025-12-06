@@ -8,7 +8,7 @@ response = model.query(prompt_str)
 # Orchestration classes
 from conduit.core.model.model_remote import RemoteModel
 from conduit.core.prompt.prompt import Prompt
-from conduit.core.conduit.sync_conduit import SyncConduit as Conduit
+from conduit.core.conduit.conduit_sync import ConduitSync as Conduit
 
 # Cache
 from conduit.storage.cache.cache import ConduitCache
