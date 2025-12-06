@@ -35,7 +35,7 @@ class Request(BaseModel):
         Excludes volatile metadata (timestamps) to ensure semantic caching.
         """
         # Exclude timestamps from all messages to ensure stable hashing
-        # This assumes 'timestamp' is the field name in MessageBase
+        # This assumes 'timestamp' is the field name in Message
         exclusions = {"messages": {"__all__": {"timestamp": True}}}
 
         data = self.model_dump(mode="json", exclude_none=True, exclude=exclusions)

@@ -5,12 +5,12 @@ You want both the 'content' and 'citations' fields from the response object.
 """
 
 from __future__ import annotations
-from conduit.core.model.clients.client_base import Client
+from conduit.core.clients.client_base import Client
 from conduit.storage.odometer.usage import Usage
-from conduit.core.model.clients.payload_base import Payload
-from conduit.core.model.clients.perplexity.payload import PerplexityPayload
-from conduit.core.model.clients.perplexity.adapter import convert_message_to_perplexity
-from conduit.core.model.clients.perplexity.perplexity_content import (
+from conduit.core.clients.payload_base import Payload
+from conduit.core.clients.perplexity.payload import PerplexityPayload
+from conduit.core.clients.perplexity.adapter import convert_message_to_perplexity
+from conduit.core.clients.perplexity.perplexity_content import (
     PerplexityContent,
     PerplexityCitation,
 )

@@ -1,7 +1,7 @@
 """
 NOTE: Typing is a mess in python. We have two types for Message:
-- Message: The Pydantic Type Alias (Annotated Union). Use for serialization, validation, and static type hints.
-- MessageBase: The actual Class. Use for runtime checks (isinstance) and inheritance.
+- Message: the base class for all messages, used for isinstance checks.
+- MessageUnion: a discriminated union of all message types, used for parsing/serialization.
 """
 
 from __future__ import annotations
@@ -122,7 +122,7 @@ class ToolCall(BaseModel):
 
 
 # message types
-class MessageBase(BaseModel):
+class Message(BaseModel):
     """
     Base class for all message types.
     Use this for isinstance checks.
@@ -138,7 +138,7 @@ class MessageBase(BaseModel):
         return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.timestamp / 1000))
 
 
-class SystemMessage(MessageBase):
+class SystemMessage(Message):
     """
     System instructions.
     """
@@ -147,7 +147,7 @@ class SystemMessage(MessageBase):
     content: str
 
 
-class UserMessage(MessageBase):
+class UserMessage(Message):
     """
     Messages sent by the human.
     Supports simple strings or complex multimodal chains (Text + Image).
@@ -201,7 +201,7 @@ class AssistantMessage(BaseModel):
         return self
 
 
-class ToolMessage(MessageBase):
+class ToolMessage(Message):
     """
     The result of a tool execution, fed back to the LLM.
     """
@@ -213,7 +213,7 @@ class ToolMessage(MessageBase):
 
 
 # discriminated union
-Message = Annotated[
+MessageUnion = Annotated[
     SystemMessage | UserMessage | AssistantMessage | ToolMessage,
     Field(discriminator="role"),
 ]

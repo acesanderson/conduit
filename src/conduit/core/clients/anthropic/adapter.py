@@ -17,7 +17,7 @@ import re
 def convert_message_to_anthropic(message: Message) -> dict[str, Any]:
     """
     Pure function to adapt an internal Message DTO into an Anthropic-compatible dictionary.
-    
+
     Key differences from OpenAI:
     - Images use {"type": "image", "source": {...}} instead of image_url
     - Audio is not supported
@@ -29,15 +29,15 @@ def convert_message_to_anthropic(message: Message) -> dict[str, Any]:
         # This will be filtered out in _convert_request
         case SystemMessage(content=content):
             return {"role": "user", "content": content}
-        
+
         # 2. User Message (Text or Multimodal)
         case UserMessage(content=content, name=name):
             payload = {"role": "user"}
-            
+
             if isinstance(content, str):
                 payload["content"] = content
                 return payload
-            
+
             # Handle list of content blocks (Multimodal)
             anthropic_content = []
             for block in content:
@@ -64,11 +64,11 @@ def convert_message_to_anthropic(message: Message) -> dict[str, Any]:
                         )
             payload["content"] = anthropic_content
             return payload
-        
+
         # 3. Assistant Message (Text, Reasoning, Tools)
         case AssistantMessage(content=content, tool_calls=calls, audio=audio):
             payload = {"role": "assistant"}
-            
+
             # Anthropic requires content to be present
             if content:
                 payload["content"] = content
@@ -77,14 +77,14 @@ def convert_message_to_anthropic(message: Message) -> dict[str, Any]:
                 payload["content"] = []
             else:
                 payload["content"] = ""
-            
+
             # Handle Tool Calls
             if calls:
                 # Anthropic uses 'tool_use' blocks within content
                 if not isinstance(payload["content"], list):
                     # Convert string content to text block
                     payload["content"] = [{"type": "text", "text": payload["content"]}]
-                
+
                 for call in calls:
                     payload["content"].append(
                         {
@@ -94,15 +94,15 @@ def convert_message_to_anthropic(message: Message) -> dict[str, Any]:
                             "input": call.arguments,  # Anthropic uses dict, not JSON string
                         }
                     )
-            
+
             # Audio output is not supported
             if audio:
                 raise NotImplementedError(
                     "Anthropic API does not support audio output messages."
                 )
-            
+
             return payload
-        
+
         # 4. Tool Result
         case ToolMessage(content=result, tool_call_id=call_id):
             return {
@@ -115,7 +115,7 @@ def convert_message_to_anthropic(message: Message) -> dict[str, Any]:
                     }
                 ],
             }
-        
+
         case _:
             raise ValueError(
                 f"Unknown message type for Anthropic Adapter: {type(message)}"
@@ -125,7 +125,7 @@ def convert_message_to_anthropic(message: Message) -> dict[str, Any]:
 def _parse_image_url(url: str) -> dict[str, str]:
     """
     Parse a data URL to extract media type and base64 data.
-    
+
     Expected format: data:image/png;base64,iVBORw0KG...
     Returns: {"media_type": "image/png", "data": "iVBORw0KG..."}
     """
