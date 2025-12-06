@@ -3,11 +3,11 @@ For Google Gemini models.
 """
 
 from __future__ import annotations
-from conduit.core.model.clients.client_base import Client
+from conduit.core.clients.client_base import Client
 from conduit.storage.odometer.usage import Usage
-from conduit.core.model.clients.payload_base import Payload
-from conduit.core.model.clients.google.payload import GooglePayload
-from conduit.core.model.clients.google.adapter import convert_message_to_google
+from conduit.core.clients.payload_base import Payload
+from conduit.core.clients.google.payload import GooglePayload
+from conduit.core.clients.google.adapter import convert_message_to_google
 from openai import OpenAI, AsyncOpenAI, Stream, AsyncStream
 from typing import TYPE_CHECKING, override, Any
 import instructor

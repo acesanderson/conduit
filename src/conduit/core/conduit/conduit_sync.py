@@ -4,7 +4,7 @@ from conduit.domain.result.response import Response
 from conduit.domain.result.error import ConduitError
 from conduit.core.parser.parser import Parser
 from conduit.utils.progress.verbosity import Verbosity
-from conduit.domain.message.message import MessageBase, UserMessage
+from conduit.domain.message.message import Message, UserMessage
 import logging
 
 logger = logging.getLogger(__name__)
@@ -15,7 +15,7 @@ class ConduitSync(ConduitBase):
         self,
         # Inputs
         input_variables: dict[str, str] | None = None,
-        messages: list[MessageBase] | None = None,
+        messages: list[Message] | None = None,
         parser: Parser | None = None,
         # Configs
         verbose: Verbosity = Verbosity.PROGRESS,
@@ -101,16 +101,16 @@ class ConduitSync(ConduitBase):
 
     def _coerce_messages_and_prompt(
         self,
-        prompt: str | MessageBase | None,
-        messages: list[MessageBase] | None,
-    ) -> list[MessageBase]:
+        prompt: str | Message | None,
+        messages: list[Message] | None,
+    ) -> list[Message]:
         """
         We want a list of messages to submit to ModelSync.query.
         If we have a prompt, we want to convert it into a user message and append it to messages.
         """
         if not messages:
             messages = []
-        if isinstance(prompt, MessageBase):
+        if isinstance(prompt, Message):
             # If we have a message, just append it
             messages.append(prompt)
         elif isinstance(prompt, str):

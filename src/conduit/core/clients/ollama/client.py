@@ -8,11 +8,11 @@ We define preferred defaults for context sizes in a separate json file.
 
 from __future__ import annotations
 from conduit.config import settings
-from conduit.core.model.clients.client_base import Client
+from conduit.core.clients.client_base import Client
 from conduit.storage.odometer.usage import Usage
-from conduit.core.model.clients.payload_base import Payload
-from conduit.core.model.clients.ollama.payload import OllamaPayload
-from conduit.core.model.clients.ollama.adapter import convert_message_to_ollama
+from conduit.core.clients.payload_base import Payload
+from conduit.core.clients.ollama.payload import OllamaPayload
+from conduit.core.clients.ollama.adapter import convert_message_to_ollama
 from conduit.config import settings
 from openai import OpenAI, AsyncOpenAI, Stream, AsyncStream
 from abc import ABC

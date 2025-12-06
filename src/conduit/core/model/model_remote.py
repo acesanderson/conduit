@@ -5,8 +5,7 @@ RemoteModel - A server-based Model implementation that maintains protocol compat
 from __future__ import annotations
 from conduit.core.model.model_base import ModelBase
 from conduit.core.model.models.modelstore import ModelStore
-from conduit.core.model.clients.client import Client, Usage
-from conduit.utils.progress.wrappers import progress_display
+from conduit.core.clients.client_base import Client
 from conduit.domain.result.result import ConduitResult
 from conduit.domain.result.error import ConduitError
 from headwater_api.classes import StatusResponse
@@ -30,7 +29,6 @@ class RemoteModel(ModelBase):
         """Get the underlying HeadwaterClient"""
         return ModelStore.get_client(model_name=self.name, execution_mode="remote")
 
-    @progress_display
     @override
     def query(self, query_input=None, **kwargs) -> ConduitResult:
         if kwargs.get("stream", False):

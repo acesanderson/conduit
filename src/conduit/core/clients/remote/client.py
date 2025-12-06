@@ -1,5 +1,5 @@
 from conduit.config import settings
-from conduit.core.model.clients.client_base import Client
+from conduit.core.clients.client_base import Client
 from conduit.domain.result.result import ConduitResult
 from headwater_api.classes import StatusResponse
 from headwater_client.client.headwater_client import HeadwaterClient

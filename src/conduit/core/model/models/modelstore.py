@@ -145,7 +145,7 @@ class ModelStore:
         default_value = 32768
         if settings.paths["OLLAMA_CONTEXT_SIZES_PATH"].exists():
             with open(settings.paths["OLLAMA_CONTEXT_SIZES_PATH"]) as f:
-                context_sizes = json.load(f)
+                context_sizes: dict = json.load(f)
             if ollama_model in context_sizes:
                 return context_sizes[ollama_model]
             else:
@@ -155,7 +155,7 @@ class ModelStore:
                 return default_value  # Default context size if not specified -- may throw an error for smaller models
         else:
             raise FileNotFoundError(
-                f"Context sizes file not found: {ollama_context_sizes_path}"
+                f"Context sizes file not found: {settings.paths['ollama_context_sizes_path']}"
             )
 
     @classmethod
@@ -163,7 +163,6 @@ class ModelStore:
         """
         Generate a Rich renderable object displaying the list of models in three columns.
         """
-        from rich.console import Console
         from rich.columns import Columns
         from rich.text import Text
 
@@ -294,7 +293,7 @@ class ModelStore:
             if model_spec.model not in model_names:
                 consistent = False
         # Check if all models in models.json have a corresponding ModelSpec object
-        for _, model_list in models.items():
+        for model_list in models.values():
             for model in model_list:
                 if not any(model_spec.model == model for model_spec in model_specs):
                     consistent = False
@@ -333,7 +332,7 @@ class ModelStore:
         model_list = ModelStore.models()
         # Handle remote execution mode first -- we don't care about model name here
         if execution_mode == "remote":
-            return cls._load_remote_client(execution_mode)
+            return cls._load_remote_client()
 
         # Now all sync / async modes
         if model_name in model_list["openai"]:
@@ -354,11 +353,11 @@ class ModelStore:
         execution_mode: Literal["sync", "async", "remote"],
     ) -> Client:
         if execution_mode == "sync":
-            from conduit.core.model.clients.openai.client import OpenAIClientSync
+            from conduit.core.clients.openai.client import OpenAIClientSync
 
             return OpenAIClientSync()
         elif execution_mode == "async":
-            from conduit.core.model.clients.openai.client import OpenAIClientAsync
+            from conduit.core.clients.openai.client import OpenAIClientAsync
 
             return OpenAIClientAsync()
 
@@ -367,11 +366,11 @@ class ModelStore:
         execution_mode: Literal["sync", "async", "remote"],
     ) -> Client:
         if execution_mode == "sync":
-            from conduit.core.model.clients.anthropic.client import AnthropicClientSync
+            from conduit.core.clients.anthropic.client import AnthropicClientSync
 
             return AnthropicClientSync()
         elif execution_mode == "async":
-            from conduit.core.model.clients.anthropic.client import AnthropicClientAsync
+            from conduit.core.clients.anthropic.client import AnthropicClientAsync
 
             return AnthropicClientAsync()
 
@@ -380,11 +379,11 @@ class ModelStore:
         execution_mode: Literal["sync", "async", "remote"],
     ) -> Client:
         if execution_mode == "sync":
-            from conduit.core.model.clients.google.client import GoogleClientSync
+            from conduit.core.clients.google.client import GoogleClientSync
 
             return GoogleClientSync()
         elif execution_mode == "async":
-            from conduit.core.model.clients.google.client import GoogleClientAsync
+            from conduit.core.clients.google.client import GoogleClientAsync
 
             return GoogleClientAsync()
 
@@ -393,11 +392,11 @@ class ModelStore:
         execution_mode: Literal["sync", "async", "remote"],
     ) -> Client:
         if execution_mode == "sync":
-            from conduit.core.model.clients.ollama.client import OllamaClientSync
+            from conduit.core.clients.ollama.client import OllamaClientSync
 
             return OllamaClientSync()
         elif execution_mode == "async":
-            from conduit.core.model.clients.ollama.client import OllamaClientAsync
+            from conduit.core.clients.ollama.client import OllamaClientAsync
 
             return OllamaClientAsync()
 
@@ -406,26 +405,23 @@ class ModelStore:
         execution_mode: Literal["sync", "async", "remote"],
     ) -> Client:
         if execution_mode == "sync":
-            from conduit.core.model.clients.perplexity.client import (
+            from conduit.core.clients.perplexity.client import (
                 PerplexityClientSync,
             )
 
             return PerplexityClientSync()
         elif execution_mode == "async":
-            from conduit.core.model.clients.perplexity.client import (
+            from conduit.core.clients.perplexity.client import (
                 PerplexityClientAsync,
             )
 
             return PerplexityClientAsync()
 
     @staticmethod
-    def _load_remote_client(
-        execution_mode: Literal["sync", "async", "remote"],
-    ) -> Client:
-        if execution_mode == "remote":
-            from conduit.core.model.clients.remote.client import RemoteClient
+    def _load_remote_client() -> Client:
+        from conduit.core.clients.remote.client import RemoteClient
 
-            return RemoteClient()
+        return RemoteClient()
 
     ## Get subsets of models by provider
     @classmethod
