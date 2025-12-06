@@ -8,7 +8,7 @@ from dbclients import get_postgres_client
 
 logger = logging.getLogger(__name__)
 
-get_db_connection = get_postgres_client("context_db", dbname="chain")
+get_db_connection = get_postgres_client("context_db", dbname="conduit")
 
 
 class PostgresBackend(PersistenceBackend):
