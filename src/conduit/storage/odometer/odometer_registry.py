@@ -1,60 +1,56 @@
-from conduit.storage.odometer.session_odometer import SessionOdometer
-from conduit.storage.odometer.persistent_odometer import PersistentOdometer
-from conduit.storage.odometer.token_event import TokenEvent
 import atexit
 import signal
 import sys
+from types import FrameType
+
+from conduit.storage.odometer.pgres.postgres_backend import PostgresBackend
+from conduit.storage.odometer.odometer import Odometer
+from conduit.storage.odometer.token_event import TokenEvent
 
 
 class OdometerRegistry:
     """
-    A registry for odometers that allows for adding, removing, and retrieving odometers.
-    Singleton which attaches to Model class as a class variable (._odometer_registry).
+    Central entry point for tracking token usage in-memory and flushing to persistence.
 
-    Four purposes for this class:
-    1. Centralized management of odometers for session, conversation, and persistent data.
-    2. Handles the registration of new conversation odometers.
-    3. Distributes TokenEvents to the appropriate odometers.
-    4. Ensures that data is saved on program exit or interruption.
+    This is intended to be attached as a singleton on the Model class
+    (e.g. Model._odometer_registry).
     """
 
     def __init__(self):
-        """
-        Initialize the odometer registry with an empty dictionary.
-        """
-        self.session_odometer: SessionOdometer = SessionOdometer()
-        self.persistent_odometer: PersistentOdometer = PersistentOdometer()
-        # Register the persistent odometer to save on exit
+        self.session_odometer: Odometer = Odometer()
+        self.backend: PostgresBackend = PostgresBackend()
+        self._saved: bool = False  # idempotence guard
+
         _ = atexit.register(self._save_on_exit)
-        # Register signal handlers for interrupts
-        _ = signal.signal(signal.SIGINT, self._signal_handler)  # Ctrl+C
-        _ = signal.signal(signal.SIGTERM, self._signal_handler)  # Termination
-        self.is_saved: bool = False  # Idempotence guard
+        _ = signal.signal(signal.SIGINT, self._signal_handler)
+        _ = signal.signal(signal.SIGTERM, self._signal_handler)
 
     def emit_token_event(self, event: TokenEvent) -> None:
         """
-        Main entry point for the TokenEvents sent by Response.__init__().
-        Distributes the event to the appropriate odometers.
+        Main entry point for TokenEvents sent by Response.__init__().
+        Updates the in-memory odometer; persistence happens on exit.
         """
         self.session_odometer.record(event)
-        self.persistent_odometer.record(event)
 
-    def _signal_handler(self, signum, frame) -> None:
+    def _signal_handler(self, signum: int, frame: FrameType | None) -> None:
         """
-        Handle interrupt signals
+        Handle interrupt signals: flush once, then exit.
         """
         self._save_on_exit()
         sys.exit(0)
 
     def _save_on_exit(self) -> None:
         """
-        Called on normal program exit.
+        Called on normal program exit and from the signal handler.
+        Idempotent: multiple calls are safe.
         """
-        if self.is_saved:
+        if self._saved:
             return
-        self.is_saved = True
+
+        self._saved = True
         try:
-            self.persistent_odometer.sync_session_data(self.session_odometer)
+            if self.session_odometer.events:
+                self.backend.store_events(self.session_odometer.events)
         except Exception as e:
             # Log error but don't crash on exit
             print(f"Warning: Failed to save odometer data on exit: {e}")
