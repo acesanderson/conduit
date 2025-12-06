@@ -1,11 +1,15 @@
-from conduit.core.conduit.sync_conduit import SyncConduit, Prompt
+"""
+Major refactor incoming.
+"""
+
+from conduit.core.conduit.conduit_sync import ConduitSync
+from conduit.core.prompt.prompt import Prompt
 from conduit.core.model.model_async import ModelAsync
 from conduit.domain.result.response import Response
 from conduit.domain.result.error import ConduitError
 from conduit.core.parser.parser import Parser
 from conduit.utils.progress.verbosity import Verbosity
-from conduit.domain.message.messagestore import MessageStore
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 import asyncio
 import logging
 
@@ -16,10 +20,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class AsyncConduit(SyncConduit):
-    message_store: Optional[MessageStore] = None
+class ConduitAsync(ConduitSync):
+    message_store: MessageStore | None = None
     # If you want rich progress reporting, add a rich.console.Console object to Conduit. (also can be added at Model level)
-    _console: Optional["Console"] = None
+    _console: "Console" | None = None
 
     def __init__(
         self,
@@ -46,7 +50,7 @@ class AsyncConduit(SyncConduit):
         self,
         input_variables_list: list[dict] | None = None,
         prompt_strings: list[str] | None = None,
-        semaphore: Optional[asyncio.Semaphore] = None,
+        semaphore: asyncio.Semaphore | None = None,
         cache=True,
         verbose: Verbosity = Verbosity.PROGRESS,
         print_response=False,
@@ -67,7 +71,7 @@ class AsyncConduit(SyncConduit):
             prompt_strings (list[str] | None): A list of pre-rendered prompt
                 strings to be sent to the model. Used when no prompt template
                 is involved or prompts are pre-generated. Defaults to None.
-            semaphore (Optional[asyncio.Semaphore]): An optional asyncio.Semaphore
+            semaphore (asyncio.Semaphore | None): An optional asyncio.Semaphore
                 to control the maximum number of concurrent requests. If None,
                 requests will run as fast as possible. Defaults to None.
             cache (bool): If True, responses will be looked up in the cache
@@ -131,7 +135,7 @@ class AsyncConduit(SyncConduit):
     async def _run_prompt_strings(
         self,
         prompt_strings: list[str],
-        semaphore: Optional[asyncio.Semaphore] = None,
+        semaphore: asyncio.Semaphore | None = None,
         cache=True,
         verbose: Verbosity = Verbosity.PROGRESS,
         print_response=False,
@@ -143,7 +147,9 @@ class AsyncConduit(SyncConduit):
         if verbose:
             console = self.model.console or self.__class__._console
             from conduit.utils.progress.tracker import ConcurrentTracker
-            from conduit.utils.progress.wrappers import create_concurrent_progress_tracker
+            from conduit.utils.progress.wrappers import (
+                create_concurrent_progress_tracker,
+            )
 
             tracker = create_concurrent_progress_tracker(console, len(prompt_strings))
             tracker.emit_concurrent_start()
@@ -151,8 +157,8 @@ class AsyncConduit(SyncConduit):
         async def process_with_semaphore_and_tracking(
             prompt_string: str,
             parser: Parser | None,
-            semaphore: Optional[asyncio.Semaphore],
-            tracker: Optional[ConcurrentTracker],
+            semaphore: asyncio.Semaphore | None,
+            tracker: ConcurrentTracker | None,
             cache=True,
             verbose: Verbosity = Verbosity.SILENT,  # Always suppress individual progress during concurrent
             print_response=False,
@@ -219,7 +225,7 @@ class AsyncConduit(SyncConduit):
     async def _run_input_variables(
         self,
         input_variables_list: list[dict],
-        semaphore: Optional[asyncio.Semaphore] = None,
+        semaphore: asyncio.Semaphore | None = None,
         cache=True,
         verbose: Verbosity = Verbosity.PROGRESS,
         print_response=False,
@@ -234,7 +240,9 @@ class AsyncConduit(SyncConduit):
         if verbose:
             console = self.model.console or self.__class__._console
             from conduit.utils.progress.tracker import ConcurrentTracker
-            from conduit.utils.progress.wrappers import create_concurrent_progress_tracker
+            from conduit.utils.progress.wrappers import (
+                create_concurrent_progress_tracker,
+            )
 
             tracker = create_concurrent_progress_tracker(
                 console, len(input_variables_list)
@@ -244,8 +252,8 @@ class AsyncConduit(SyncConduit):
         async def process_with_semaphore_and_tracking(
             input_variables: dict,
             parser: Parser | None,
-            semaphore: Optional[asyncio.Semaphore],
-            tracker: Optional[ConcurrentTracker],
+            semaphore: asyncio.Semaphore | None,
+            tracker: ConcurrentTracker | None,
             cache=True,
             verbose: Verbosity = Verbosity.SILENT,  # Always suppress individual progress during concurrent
             print_response=False,

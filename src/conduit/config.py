@@ -48,7 +48,7 @@ class Settings:
 
 def load_settings() -> Settings:
     # Defaults (lowest priority)
-    config = {
+    config: dict[str, object] = {
         "system_prompt": "You are a helpful assistant.",
         "preferred_model": "gpt3",
         "default_verbosity": Verbosity.PROGRESS,
