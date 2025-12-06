@@ -1,4 +1,4 @@
-from conduit.core.model.clients.openai.adapter import convert_message_to_openai
+from conduit.core.clients.openai.adapter import convert_message_to_openai
 from conduit.domain.message.message import Message
 from typing import Any
 

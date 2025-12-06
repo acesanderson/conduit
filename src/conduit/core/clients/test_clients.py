@@ -1,5 +1,5 @@
 from __future__ import annotations
-from conduit.core.model.clients.openai.client import OpenAIClientSync, OpenAIClientAsync
+from conduit.core.clients.openai.client import OpenAIClientSync, OpenAIClientAsync
 from conduit.domain.request.request import Request
 from conduit.domain.result.response import Response
 from conduit.domain.message.message import (

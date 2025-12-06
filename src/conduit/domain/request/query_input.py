@@ -1,10 +1,4 @@
-"""
-Note: the mix of Message / MessageBase is intentional, as python has different requirements for
-- type checking (mypy, ruff)
-- runtime checks (isinstance)
-"""
-
-from conduit.domain.message.message import Message, MessageBase, UserMessage
+from conduit.domain.message.message import Message, UserMessage
 
 
 QueryInput = str | list[Message] | Message
@@ -16,10 +10,10 @@ def constrain_query_input(query_input: QueryInput) -> list[Message]:
     """
     if isinstance(query_input, str):
         return [UserMessage(content=query_input)]
-    elif isinstance(query_input, MessageBase):
+    elif isinstance(query_input, Message):
         return [query_input]
     elif isinstance(query_input, list) and all(
-        isinstance(msg, MessageBase) for msg in query_input
+        isinstance(msg, Message) for msg in query_input
     ):
         return query_input
     else:

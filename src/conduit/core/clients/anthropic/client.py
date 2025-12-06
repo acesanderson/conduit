@@ -1,9 +1,9 @@
 from __future__ import annotations
-from conduit.core.model.clients.client_base import Client
+from conduit.core.clients.client_base import Client
 from conduit.storage.odometer.usage import Usage
-from conduit.core.model.clients.payload_base import Payload
-from conduit.core.model.clients.anthropic.payload import AnthropicPayload
-from conduit.core.model.clients.anthropic.adapter import convert_message_to_anthropic
+from conduit.core.clients.payload_base import Payload
+from conduit.core.clients.anthropic.payload import AnthropicPayload
+from conduit.core.clients.anthropic.adapter import convert_message_to_anthropic
 from anthropic import (
     Anthropic,
     AsyncAnthropic,

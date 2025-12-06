@@ -56,4 +56,9 @@ class ModelSync(ModelBase):
         Get the token length for the given model.
         Implementation at the client level.
         """
-        return self.client.tokenize(model=self.name, text=text)
+        return self.client.tokenize(model=self.model_name, text=text)
+
+
+if __name__ == "__main__":
+    model = ModelSync(model_name="gpt3")
+    result = model.query("Hello, world!")

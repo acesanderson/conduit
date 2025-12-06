@@ -12,7 +12,10 @@ from conduit.domain.request.query_input import QueryInput, constrain_query_input
 from conduit.core.clients.client_base import Client
 from conduit.utils.progress.verbosity import Verbosity
 from conduit.storage.odometer.odometer_registry import OdometerRegistry
-from conduit import middleware
+
+# from conduit.middleware.telemetry import odometer_sync
+# from conduit.middleware.caching import cache_sync
+# from conduit.middleware.reporting import progress_sync
 from typing import TYPE_CHECKING, override
 import logging
 
@@ -44,10 +47,10 @@ class ModelBase:
     ):
         from conduit.core.model.models.modelstore import ModelStore
 
-        self.name: str = ModelStore.validate_model(model_name)
+        self.model_name: str = ModelStore.validate_model(model_name)
         self.verbosity: Verbosity = verbosity
         self.console: Console | None = console
-        self.client: Client = self.get_client(self.name)
+        self.client: Client = self.get_client(model_name=self.model_name)
 
         if cache_engine is not None:
             from conduit.storage.cache.cache import ConduitCache
@@ -100,7 +103,7 @@ class ModelBase:
         """
         Pretty prints session statistics (from OdometerRegistry.session_odometer).
         """
-        cls._odometer_registry.session_odometer.stats()
+        cls.odometer_registry.session_odometer.stats()
 
     # Query methods: these are orchestrated in subclasses
 
@@ -117,18 +120,20 @@ class ModelBase:
         return await self.client.send(request)
 
     def _prepare_request(
-        self, query_input: QueryInput | None = None, **kwargs
+        self, query_input: QueryInput | None = None, **kwargs: object
     ) -> Request:
         """
         PURE CPU: Constructs and validates the Request object.
         """
 
         # First, see if we have a request already, if so, pass through
-        request: Request = kwargs.pop("request", None)
-        if request is not None:
+        try:
+            request = kwargs["request"]
+            if not isinstance(request, Request):
+                raise TypeError(f"request must be a Request, got {type(request)}")
             return request
-        if not isinstance(request, Request):
-            raise TypeError(f"request must be a Request, got {type(req)}")
+        except KeyError:
+            pass
 
         # Otherwise, build request from query_input
         if query_input is None:
@@ -136,7 +141,7 @@ class ModelBase:
         # constrain query_input per model capabilities
         query_input: list[Message] = constrain_query_input(query_input=query_input)
         # inject defaults
-        kwargs.setdefault("model", self.name)
+        kwargs["model"] = self.model_name
         request = Request(
             messages=query_input,
             **kwargs,
@@ -144,17 +149,17 @@ class ModelBase:
         return request
 
     # Expected methods in subclasses
-    def get_client(self) -> Client:
+    def get_client(self, model_name: str) -> Client:
         raise NotImplementedError(
             "get_client must be implemented in subclasses (sync or async)."
         )
 
-    def query(self) -> ConduitResult:
+    def query(self, query_input: QueryInput, **kwargs: object) -> ConduitResult:
         raise NotImplementedError(
             "query must be implemented in subclasses (sync or async)."
         )
 
-    def tokenize(self) -> int:
+    def tokenize(self, text: str) -> int:
         raise NotImplementedError("tokenize must be implemented in subclasses.")
 
     # Dunders
