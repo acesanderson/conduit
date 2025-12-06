@@ -15,7 +15,7 @@ from conduit.core.model.models.modelspecs_CRUD import (
     get_all_model_names,
 )
 from conduit.core.model.models.research_models import create_modelspec
-from conduit.core.model.clients.client_base import Client
+from conduit.core.clients.client_base import Client
 from pathlib import Path
 from typing import Literal
 import json

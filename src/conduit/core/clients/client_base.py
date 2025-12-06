@@ -5,11 +5,11 @@ ABC abstract methods are like pydantic validators for classes. They ensure that 
 
 from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 import logging
 
 if TYPE_CHECKING:
-    from conduit.core.model.clients.payload_base import Payload
+    from conduit.core.clients.payload_base import Payload
     from conduit.domain.request.request import Request
     from conduit.domain.result.result import ConduitResult
     from conduit.domain.message.message import Message
@@ -19,8 +19,6 @@ logger = logging.getLogger(__name__)
 
 
 class Client(ABC):
-    # odometer_registry: OdometerRegistry | None = None <-- move to Client
-
     @abstractmethod
     def __init__(self):
         """
@@ -104,6 +102,7 @@ class Client(ABC):
         """
         raise NotImplementedError("Rework this so it's shot off from Client")
 
+    @override
     def __repr__(self):
         """
         Standard repr.

@@ -5,8 +5,8 @@ from conduit.core.model.models.modelspecs_CRUD import (
     get_all_modelspecs,
     in_db,
 )
-from conduit.core.model.model_sync import ModelSync
-from conduit.core.conduit.sync_conduit import SyncConduit
+from conduit.core.model.model_sync import ModelSync as Model
+from conduit.core.conduit.conduit_sync import ConduitSync
 from conduit.core.prompt.prompt import Prompt
 from conduit.core.parser.parser import Parser
 from rich.console import Console
