@@ -1,6 +1,6 @@
 from typing import Protocol, runtime_checkable
 from conduit.storage.cache.cache import ConduitCache
-from conduit.storage.odometer.Odometer import Odometer
+from conduit.storage.odometer.OdometerRegistry import OdometerRegistry
 from conduit.utils.progress.verbosity import Verbosity
 
 
@@ -12,4 +12,4 @@ class Instrumentable(Protocol):
 
     cache_engine: ConduitCache | None
     verbosity: Verbosity
-    session_odometer: Odometer | None
+    odometer_registry: OdometerRegistry | None
