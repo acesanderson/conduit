@@ -1,5 +1,5 @@
-from conduit.storage.odometer.database.PersistenceBackend import PersistenceBackend
-from conduit.storage.odometer.TokenEvent import TokenEvent
+from conduit.storage.odometer.database.persistence_backend import PersistenceBackend
+from conduit.storage.odometer.token_event import TokenEvent
 from dbclients import get_postgres_client
 from datetime import date, datetime
 from typing import override
