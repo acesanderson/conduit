@@ -8,14 +8,14 @@ MAJOR REFACTOR INCOMING:
 from __future__ import annotations
 from conduit.config import settings
 from conduit.domain.request.request import Request
+from conduit.domain.request.generation_params import GenerationParams
 from conduit.domain.request.query_input import QueryInput, constrain_query_input
 from conduit.core.clients.client_base import Client
 from conduit.utils.progress.verbosity import Verbosity
 from conduit.storage.odometer.odometer_registry import OdometerRegistry
-
-# from conduit.middleware.telemetry import odometer_sync
-# from conduit.middleware.caching import cache_sync
-# from conduit.middleware.reporting import progress_sync
+from conduit.middleware.progress import progress_sync, progress_async
+from conduit.middleware.telemetry import odometer_sync, odometer_async
+from conduit.middleware.caching import cache_sync, cache_async
 from typing import TYPE_CHECKING, override
 import logging
 
@@ -106,18 +106,17 @@ class ModelBase:
         cls.odometer_registry.session_odometer.stats()
 
     # Query methods: these are orchestrated in subclasses
-
-    # @middleware.progress
-    # @middleware.cache
-    # @middleware.odometer
+    @progress_sync
+    @cache_sync
+    @odometer_sync
     def _execute(self, request: Request) -> ConduitResult:
-        return self.client.send(request)
+        return self.client.query(request)
 
-    # @middleware.progress
-    # @middleware.cache
-    # @middleware.odometer
+    @progress_async
+    @cache_async
+    @odometer_async
     async def _execute_async(self, request: Request) -> ConduitResult:
-        return await self.client.send(request)
+        return await self.query.query_async(request)
 
     def _prepare_request(
         self, query_input: QueryInput | None = None, **kwargs: object
@@ -125,7 +124,6 @@ class ModelBase:
         """
         PURE CPU: Constructs and validates the Request object.
         """
-
         # First, see if we have a request already, if so, pass through
         try:
             request = kwargs["request"]
@@ -140,11 +138,16 @@ class ModelBase:
             raise ValueError("query_input is required when no request is provided.")
         # constrain query_input per model capabilities
         query_input: list[Message] = constrain_query_input(query_input=query_input)
-        # inject defaults
+        # construct GenerationParams
+        params = GenerationParams(
+            model=self.model_name,
+            **kwargs,
+        )
+
         kwargs["model"] = self.model_name
         request = Request(
             messages=query_input,
-            **kwargs,
+            params=params,
         )
         return request
 

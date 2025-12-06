@@ -1,6 +1,5 @@
 from __future__ import annotations
 from conduit.core.clients.client_base import Client
-from conduit.storage.odometer.usage import Usage
 from conduit.core.clients.payload_base import Payload
 from conduit.core.clients.openai.payload import OpenAIPayload
 from conduit.core.clients.openai.adapter import convert_message_to_openai
@@ -9,7 +8,7 @@ from conduit.core.clients.openai.image_params import OpenAIImageParams
 from conduit.core.clients.openai.transcription_params import OpenAITranscriptionParams
 from conduit.domain.result.response import Response
 from conduit.domain.result.response_metadata import ResponseMetadata, StopReason
-from conduit.domain.result.error import ConduitError, ErrorInfo, ErrorDetail
+from conduit.domain.result.error import ConduitError
 from conduit.domain.message.message import AssistantMessage, ImageOutput
 from openai import OpenAI
 from openai import AsyncOpenAI

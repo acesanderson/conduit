@@ -8,20 +8,21 @@ from conduit.storage.odometer.token_event import TokenEvent
 import functools
 import logging
 from typing import TYPE_CHECKING
+from rich.console import Console
 
 if TYPE_CHECKING:
     from conduit.storage.odometer.odometer_registry import OdometerRegistry
 
 logger = logging.getLogger(__name__)
+console = Console()
 
 
-def odometer_sync(
+def progress_sync(
     func: Callable[[Request], ConduitResult],
 ) -> Callable[[Request], ConduitResult]:
     @functools.wraps(func)
-    def sync_wrapper(*args, **kwargs) -> ConduitResult:
+    def sync_wrapper(*args: object, **kwargs: object) -> ConduitResult:
         # 1. Validate & Extract
-        self: Instrumentable
         request: Request
         if len(args) > 1 and isinstance(args[1], Request):
             self = args[0]
@@ -36,38 +37,26 @@ def odometer_sync(
 
         # Pre execute
 
-        print("[Odometer start]")
-        result = func(*args, **kwargs)
-        print("[Odometer end]")
+        with console.status(
+            f"[bold gold1]Processing request for model '{request.params.model}'...",
+            spinner="dots",
+        ):
+            result = func(*args, **kwargs)
+        console.print("[bold green]Request processing complete.")
 
         # Post execute
-
-        # if isinstance(result, Response) and result.metadata.output_tokens > 0:
-        #     # Grab registry
-        #     registry: OdometerRegistry = self.odometer_registry
-        #     # Build TokenEvent
-        #     model: str = request.params.model
-        #     input_tokens = result.metadata.input_tokens
-        #     output_tokens = result.metadata.output_tokens
-        #     event = TokenEvent(
-        #         model=model,
-        #         input_tokens=input_tokens,
-        #         output_tokens=output_tokens,
-        #     )
-        #     registry.emit_token_event(event)
 
         return result
 
     return sync_wrapper
 
 
-def odometer_async(
+def progress_async(
     func: Callable[[Request], ConduitResult],
 ) -> Callable[[Request], ConduitResult]:
     @functools.wraps(func)
     async def async_wrapper(*args: object, **kwargs: object) -> ConduitResult:
         # 1. Validate & Extract
-        self: Instrumentable
         request: Request
         if len(args) > 1 and isinstance(args[1], Request):
             self = args[0]
@@ -82,25 +71,14 @@ def odometer_async(
 
         # Pre execute
 
-        print("[Odometer start]")
-        result = await func(*args, **kwargs)
-        print("[Odometer end]")
+        with console.status(
+            f"[bold gold1]Processing request for model '{request.params.model}'...",
+            spinner="dots",
+        ):
+            result = await func(*args, **kwargs)
+        console.print("[bold green]Request processing complete.")
 
         # Post execute
-
-        # if isinstance(result, Response) and result.metadata.output_tokens > 0:
-        #     # Grab registry
-        #     registry: OdometerRegistry = self.odometer_registry
-        #     # Build TokenEvent
-        #     model: str = request.params.model
-        #     input_tokens = result.metadata.input_tokens
-        #     output_tokens = result.metadata.output_tokens
-        #     event = TokenEvent(
-        #         model=model,
-        #         input_tokens=input_tokens,
-        #         output_tokens=output_tokens,
-        #     )
-        #     registry.emit_token_event(event)
 
         return result
 
