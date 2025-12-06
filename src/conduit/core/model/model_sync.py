@@ -23,19 +23,6 @@ class ModelSync(ModelBase):
             request = self._prepare_request(query_input, **kwargs)
             conduit_result = self._execute(request)
             return conduit_result
-        except ValidationError as e:
-            try:
-                request_request = request.model_dump()
-            except Exception:
-                request_request = {}
-            conduit_error = ConduitError.from_exception(
-                e,
-                code="validation_error",
-                category="client",
-                request_request=request_request,
-            )
-            logger.error(f"Validation error: {conduit_error}")
-            return conduit_error
         except Exception as e:
             try:
                 request_request = request.model_dump()
@@ -62,3 +49,4 @@ class ModelSync(ModelBase):
 if __name__ == "__main__":
     model = ModelSync(model_name="gpt3")
     result = model.query("Hello, world!")
+    print(result)
