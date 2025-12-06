@@ -27,7 +27,7 @@ def cache_sync(
     func: Callable[[Request], ConduitResult],
 ) -> Callable[[Request], ConduitResult]:
     @functools.wraps(func)
-    def sync_wrapper(*args, **kwargs) -> ConduitResult:
+    def sync_wrapper(*args: object, **kwargs: object) -> ConduitResult:
         # 1. Validate & Extract
         self: Instrumentable
         request: Request
@@ -44,21 +44,28 @@ def cache_sync(
             )
 
         # 2. Check Cache
-        if getattr(self, "cache_engine", None) is not None:
-            cached = self.cache_engine.get(request)
-            # Explicit miss semantics: cache.get must return None on miss
-            if cached is not None:
-                return cached
+        # if getattr(self, "cache_engine", None) is not None:
+        #     cached = self.cache_engine.get(request)
+        #     # Explicit miss semantics: cache.get must return None on miss
+        #     if cached is not None:
+        #         return cached
 
         # 3. Execute Original
+
+        # Pre execute
+        print("[Cache start]")
+
         result = func(*args, **kwargs)
 
+        print("[Cache end]")
+        # Post execute
+
         # 4. Store Result (only cache concrete Responses)
-        if (
-            isinstance(result, Response)
-            and getattr(self, "cache_engine", None) is not None
-        ):
-            self.cache_engine.set(request, result)
+        # if (
+        #     isinstance(result, Response)
+        #     and getattr(self, "cache_engine", None) is not None
+        # ):
+        #     self.cache_engine.set(request, result)
 
         return result
 
