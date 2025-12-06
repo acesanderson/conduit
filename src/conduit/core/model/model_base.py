@@ -33,7 +33,7 @@ class ModelBase:
     """
 
     # Class singleton
-    _odometer_registry: OdometerRegistry = OdometerRegistry()
+    odometer_registry: OdometerRegistry = OdometerRegistry()
 
     def __init__(
         self,
@@ -108,7 +108,7 @@ class ModelBase:
     # @middleware.cache
     # @middleware.odometer
     def _execute(self, request: Request) -> ConduitResult:
-        return await self.client.send(request)
+        return self.client.send(request)
 
     # @middleware.progress
     # @middleware.cache

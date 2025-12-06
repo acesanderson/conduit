@@ -78,7 +78,7 @@ class Response(BaseModel):
         return self.request.model
 
     @override
-    def __str__(self):
+    def __str__(self) -> str:
         """
         We want to pass as string when possible.
         Allow json objects (dict) to be pretty printed.

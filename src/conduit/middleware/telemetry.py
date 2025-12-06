@@ -1,65 +1,74 @@
-from collections.abc import Callable, Awaitable
+from collections.abc import Callable
 from conduit.middleware.protocol import Instrumentable
 from conduit.domain.result.response import Response
 from conduit.domain.request.request import Request
 from conduit.domain.result.result import ConduitResult
+from conduit.storage.odometer.OdometerRegistry import OdometerRegistry
+from conduit.storage.odometer.TokenEvent import TokenEvent
 import functools
-import inspect
+import socket
+import logging
+
+logger = logging.getLogger(__name__)
 
 
-def odometer(func: Callable) -> Callable:
-    def _extract_args(args: tuple, kwargs: dict) -> tuple[Instrumentable, Request]:
-        # Extract self
-        if not args:
-            raise TypeError("Decorator expects a bound method (missing 'self').")
+def emit_token_event(registry: OdometerRegistry) -> None:
+    """
+    Emit a TokenEvent to the OdometerRegistry if it exists.
+    """
 
-        instance = args[0]
-        if not isinstance(instance, Instrumentable):
-            raise TypeError(
-                f"The cache decorator can only be applied to methods of Instrumentable classes. Got {type(instance).__name__}"
-            )
+    # Get hostname
+wn"
 
-        # Extract request; It might be the second positional arg, OR a keyword arg
-        if len(args) > 1:
-            req = args[1]
-        elif "request" in kwargs:
-            req = kwargs["request"]
+    event = TokenEvent(
+        model=request.model,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+    )
+
+
+def odometer_sync(
+    func: Callable[[Request], ConduitResult],
+) -> Callable[[Request], ConduitResult]:
+    @functools.wraps(func)
+    def sync_wrapper(*args, **kwargs) -> ConduitResult:
+        # 1. Validate & Extract
+        self: Instrumentable
+        request: Request
+        if len(args) > 1 and isinstance(args[1], Request):
+            self = args[0]
+            request = args[1]
+        elif "request" in kwargs and isinstance(kwargs["request"], Request):
+            self = args[0]
+            request = kwargs["request"]
         else:
-            raise TypeError(
-                f"Could not find 'request' argument in {func.__name__} call."
+            raise ValueError(
+                "The decorated function must have a Request as its second positional "
+                "argument or as a 'request' keyword argument."
             )
+        result = func(*args, **kwargs)
 
-        if not isinstance(req, Request):
-            raise TypeError(
-                f"Argument 'request' must be of type Request. Got {type(req)}."
-            )
+        if isinstance(result, Response):
+            if result.metadata.output_tokens == 0:
+                # Grab registry
+                registry = self.odometer_registry
+                # Build TokenEvent
+                model = request.model
+                input_tokens = result.metadata.input_tokens
+                output_tokens = result.metadata.output_tokens
+                event = TokenEvent(
+                    model=model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                )
 
-        return instance, req
 
-    # ASYNC Wrapper
-    if inspect.iscoroutinefunction(func):
 
-        @functools.wraps(func)
-        async def async_wrapper(*args, **kwargs) -> ConduitResult:
-            # 1. Validate & Extract
-            self, request = _extract_args(args, kwargs)
 
-            ...
+            input_tokens = result.metadata.get("input_tokens", 0)
+            output_tokens = result.metadata.get("output_tokens", 0)
+            registry.emit_token_event(event)
 
-            return result
+        return result
 
-        return async_wrapper
-
-    # Sync wrapper
-    else:
-
-        @functools.wraps(func)
-        def sync_wrapper(*args, **kwargs) -> ConduitResult:
-            # 1. Validate & Extract
-            self, request = _extract_args(args, kwargs)
-
-            ...
-
-            return result
-
-        return sync_wrapper
+    return sync_wrapper
