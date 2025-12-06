@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from conduit.domain.request.generation_params import GenerationParams
 from conduit.domain.request.output_type import OutputType
 from conduit.domain.message.message import Message
+from conduit.utils.progress.verbosity import Verbosity
 import hashlib
 import json
 import logging
@@ -29,6 +30,11 @@ class Request(BaseModel):
     params: GenerationParams
     messages: list[Message]
 
+    # Request params
+    cache: bool | None = None  # Default = None because rare use case
+    include_history: bool = True  # Whether to include conversation history
+    verbosity: Verbosity = Verbosity.PROGRESS
+
     def generate_cache_key(self) -> str:
         """
         Generate a deterministic SHA256 hash.
@@ -36,7 +42,17 @@ class Request(BaseModel):
         """
         # Exclude timestamps from all messages to ensure stable hashing
         # This assumes 'timestamp' is the field name in Message
-        exclusions = {"messages": {"__all__": {"timestamp": True}}}
+        exclusions = {
+            "messages": {
+                "__all__": {
+                    "timestamp": True,
+                    "tool_call_id": True,
+                    "tool_calls": {"__all__": {"id": True}},
+                },
+            },
+            "verbosity": True,
+            "cache": True,
+        }
 
         data = self.model_dump(mode="json", exclude_none=True, exclude=exclusions)
 

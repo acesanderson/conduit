@@ -115,7 +115,7 @@ class ToolCall(BaseModel):
     Represents a request from the Assistant to execute a function.
     """
 
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    tool_call_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     type: Literal["function"] = "function"
     function_name: str
     arguments: dict[str, Any]
