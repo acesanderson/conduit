@@ -2,6 +2,8 @@
 NOTE: Typing is a mess in python. We have two types for Message:
 - Message: the base class for all messages, used for isinstance checks.
 - MessageUnion: a discriminated union of all message types, used for parsing/serialization.
+
+* Enums don't work as discriminators in pydantic, so we use a new field 'role_str' for that purpose.
 """
 
 from __future__ import annotations
@@ -130,6 +132,15 @@ class Message(BaseModel):
 
     timestamp: int = Field(default_factory=lambda: int(time.time() * 1000))
 
+    @model_validator(mode="before")
+    @classmethod
+    def _disallow_base_instantiation(cls, data):
+        if cls is Message:
+            raise TypeError(
+                "Message is an abstract base class and cannot be instantiated directly. Use SystemMessage, UserMessage, AssistantMessage, or ToolMessage. If you need to discriminate between them, use MessageUnion."
+            )
+        return data
+
     @property
     def time(self) -> str:
         """
@@ -143,7 +154,8 @@ class SystemMessage(Message):
     System instructions.
     """
 
-    role: Literal[Role.SYSTEM] = Role.SYSTEM
+    role: Role = Role.SYSTEM
+    role_str: Literal["system"] = "system"
     content: str
 
 
@@ -153,7 +165,8 @@ class UserMessage(Message):
     Supports simple strings or complex multimodal chains (Text + Image).
     """
 
-    role: Literal[Role.USER] = Role.USER
+    role: Role = Role.USER
+    role_str: Literal["user"] = "user"
     content: Content
     name: str | None = None
 
@@ -164,7 +177,8 @@ class AssistantMessage(BaseModel):
     Supports Text, Reasoning, Tools, Audio, Images, and Structured Objects.
     """
 
-    role: Literal[Role.ASSISTANT] = Role.ASSISTANT
+    role: Role = Role.ASSISTANT
+    role_str: Literal["assistant"] = "assistant"
 
     # text
     content: str | list[str] | None = None
@@ -206,7 +220,8 @@ class ToolMessage(Message):
     The result of a tool execution, fed back to the LLM.
     """
 
-    role: Literal[Role.TOOL] = Role.TOOL
+    role: Role = Role.TOOL
+    role_str: Literal["tool"] = "tool"
     content: str  # The output of the tool (usually JSON stringified)
     tool_call_id: str  # Links this result to the Assistant's ToolCall.id
     name: str | None = None  # Optional: name of the tool function
@@ -215,5 +230,5 @@ class ToolMessage(Message):
 # discriminated union
 MessageUnion = Annotated[
     SystemMessage | UserMessage | AssistantMessage | ToolMessage,
-    Field(discriminator="role"),
+    Field(discriminator="role_str"),
 ]

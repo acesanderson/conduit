@@ -3,9 +3,11 @@ from conduit.core.model.model_base import ModelBase
 from conduit.core.clients.client_base import Client
 from conduit.domain.result.result import ConduitResult
 from conduit.domain.result.error import ConduitError
-from pydantic import ValidationError
-from typing import override
+from typing import override, TYPE_CHECKING
 import logging
+
+if TYPE_CHECKING:
+    from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -38,15 +40,17 @@ class ModelSync(ModelBase):
             return conduit_error
 
     @override
-    def tokenize(self, text: str) -> int:
+    def tokenize(self, payload: str | list[BaseModel]) -> int:
         """
         Get the token length for the given model.
         Implementation at the client level.
         """
-        return self.client.tokenize(model=self.model_name, text=text)
+        return self.client.tokenize(model=self.model_name, payload=payload)
 
 
 if __name__ == "__main__":
-    model = ModelSync(model_name="gpt3")
+    model = ModelSync(model_name="gpt3", cache="testing")
     result = model.query("Hello, world!")
     print(result)
+    ts = model.tokenize("i am the very model of a modern major general")
+    print(ts)
