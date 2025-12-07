@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from contextlib import AbstractContextManager
     from psycopg2.extensions import connection
+    from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +166,7 @@ class ModelBase:
             "query must be implemented in subclasses (sync or async)."
         )
 
-    def tokenize(self, text: str) -> int:
+    def tokenize(self, payload: str | list[BaseModel]) -> int:
         raise NotImplementedError("tokenize must be implemented in subclasses.")
 
     # Dunders
