@@ -1,14 +1,19 @@
 from __future__ import annotations
 from typing import runtime_checkable, TYPE_CHECKING, Protocol
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 
 if TYPE_CHECKING:
     from conduit.domain.request.request import Request
     from conduit.domain.result.response import Response
+    from psycopg2.extensions import connection
 
 
 @runtime_checkable
 class ConduitCache(Protocol):
-    def __init__(self, name: str) -> None:
+    def __init__(
+        self, name: str, conn_factory: Callable[[], AbstractContextManager[connection]]
+    ) -> None:
         """
         Initialize a ConduitCache instance.
 

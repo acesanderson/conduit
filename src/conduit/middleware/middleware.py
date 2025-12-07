@@ -38,8 +38,18 @@ def middleware_sync(
 
         # All the magic is in here
         with middleware_context_manager(self, request) as ctx:
-            result = func(*args, **kwargs)
-            ctx["result"] = result
+            # Check for cache hit (passed back from context manager)
+            if ctx["cache_hit"] is True:
+                result = ctx["result"]
+            # If no cache hit, execute the function
+            else:
+                result = func(*args, **kwargs)
+                # Pass result back to context manager for post-processing
+                ctx["result"] = result
+
+        assert "result" in ctx, (
+            "Something went wrong in the middleware context manager; no result found."
+        )
 
         return result
 
