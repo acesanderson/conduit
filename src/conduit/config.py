@@ -53,7 +53,7 @@ def load_settings() -> Settings:
         "system_prompt": "You are a helpful assistant.",
         "preferred_model": "gpt3",
         "default_verbosity": Verbosity.PROGRESS,
-        "default_console": Console(),
+        "default_console": Console(stderr=True),
         "server_models": [],
         "paths": {},
         "default_params": GenerationParams(model="gpt3"),
