@@ -13,16 +13,14 @@ from conduit.domain.request.query_input import QueryInput, constrain_query_input
 from conduit.core.clients.client_base import Client
 from conduit.utils.progress.verbosity import Verbosity
 from conduit.storage.odometer.odometer_registry import OdometerRegistry
-from conduit.middleware.progress import progress_sync, progress_async
-from conduit.middleware.telemetry import odometer_sync, odometer_async
-from conduit.middleware.caching import cache_sync, cache_async
+from conduit.middleware.middleware import middleware_sync, middleware_async
 from typing import TYPE_CHECKING, override
 import logging
 
 # Load only if type checking
 if TYPE_CHECKING:
     from rich.console import Console
-    from conduit.storage.cache.cache import ConduitCache
+    from conduit.storage.cache.protocol import ConduitCache
     from conduit.domain.message.message import Message
     from conduit.domain.request.request import Request
     from conduit.domain.result.result import ConduitResult
@@ -53,7 +51,7 @@ class ModelBase:
         self.client: Client = self.get_client(model_name=self.model_name)
 
         if cache_engine is not None:
-            from conduit.storage.cache.cache import ConduitCache
+            from conduit.storage.cache.protocol import ConduitCache
 
             if isinstance(cache_engine, str):
                 # Convenience: Create cache from string name
@@ -106,15 +104,11 @@ class ModelBase:
         cls.odometer_registry.session_odometer.stats()
 
     # Query methods: these are orchestrated in subclasses
-    @progress_sync
-    @cache_sync
-    @odometer_sync
+    @middleware_sync
     def _execute(self, request: Request) -> ConduitResult:
         return self.client.query(request)
 
-    @progress_async
-    @cache_async
-    @odometer_async
+    @middleware_async
     async def _execute_async(self, request: Request) -> ConduitResult:
         return await self.query.query_async(request)
 
