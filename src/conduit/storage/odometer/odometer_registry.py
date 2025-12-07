@@ -1,11 +1,13 @@
+from conduit.storage.odometer.pgres.postgres_backend import PostgresBackend
+from conduit.storage.odometer.odometer import Odometer
+from conduit.storage.odometer.token_event import TokenEvent
 import atexit
 import signal
 import sys
 from types import FrameType
+import logging
 
-from conduit.storage.odometer.pgres.postgres_backend import PostgresBackend
-from conduit.storage.odometer.odometer import Odometer
-from conduit.storage.odometer.token_event import TokenEvent
+logger = logging.getLogger(__name__)
 
 
 class OdometerRegistry:
@@ -30,6 +32,7 @@ class OdometerRegistry:
         Main entry point for TokenEvents sent by Response.__init__().
         Updates the in-memory odometer; persistence happens on exit.
         """
+        logger.debug(f"OdometerRegistry received TokenEvent: {event}")
         self.session_odometer.record(event)
 
     def _signal_handler(self, signum: int, frame: FrameType | None) -> None:
@@ -44,6 +47,7 @@ class OdometerRegistry:
         Called on normal program exit and from the signal handler.
         Idempotent: multiple calls are safe.
         """
+        logger.debug("OdometerRegistry saving odometer data on exit...")
         if self._saved:
             return
 

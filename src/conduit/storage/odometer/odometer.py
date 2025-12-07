@@ -1,6 +1,9 @@
 from datetime import datetime, timedelta
 from pydantic import BaseModel, Field
 from conduit.storage.odometer.token_event import TokenEvent
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Odometer(BaseModel):
@@ -39,6 +42,7 @@ class Odometer(BaseModel):
         """
         Add a TokenEvent to the odometer and update all aggregates.
         """
+        logger.debug(f"Recording TokenEvent: {token_event}")
         self.events.append(token_event)
 
         self.total_input_tokens += token_event.input_tokens

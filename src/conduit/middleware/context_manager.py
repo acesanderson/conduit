@@ -51,6 +51,7 @@ def middleware_context_manager(self: Instrumentable, request: Request):
 
     # 2. Post-execute logic occurs in finally block
     finally:
+        result = ctx.get("result")
         # Cache store logic
         if self.cache is not None:
             result = ctx.get("result")
@@ -60,7 +61,22 @@ def middleware_context_manager(self: Instrumentable, request: Request):
             else:
                 logger.info("Result not cacheable; skipping cache store.")
         # Telemetry logic
+        if isinstance(result, Response) and result.metadata.output_tokens > 0:
+            from conduit.storage.odometer.token_event import TokenEvent
+
+            # Grab registry
+            registry = self.odometer_registry
+            # Build TokenEvent
+            model: str = request.params.model
+            input_tokens = result.metadata.input_tokens
+            output_tokens = result.metadata.output_tokens
+            event = TokenEvent(
+                model=model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
+            registry.emit_token_event(event)
+
         logger.debug("Telemetry logic begins...")
         # Display finalization logic
         logger.debug("Display finalization logic begins...")
-        result = ctx.get("result")
