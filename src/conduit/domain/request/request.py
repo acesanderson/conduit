@@ -2,13 +2,15 @@
 Model and client interaction:
 - Model sends a Request, which is: conversation (list[Message]) + generation_params
 - Request sends Response, which is: the request (list[Message]) + generation_params + the assistant message
+
+Use MessageUnion (not Message) because it's a discriminated union.
 """
 
 from __future__ import annotations
 from pydantic import BaseModel
 from conduit.domain.request.generation_params import GenerationParams
 from conduit.domain.request.output_type import OutputType
-from conduit.domain.message.message import Message
+from conduit.domain.message.message import MessageUnion
 from conduit.utils.progress.verbosity import Verbosity
 import hashlib
 import json
@@ -28,10 +30,10 @@ class Request(BaseModel):
 
     output_type: OutputType = "text"  # Routes to different client logic
     params: GenerationParams
-    messages: list[Message]
+    messages: list[MessageUnion]
 
     # Request params
-    cache: bool | None = None  # Default = None because rare use case
+    use_cache: bool | None = True  # Technically: "if cache exists, use it"
     include_history: bool = True  # Whether to include conversation history
     verbosity: Verbosity = Verbosity.PROGRESS
 

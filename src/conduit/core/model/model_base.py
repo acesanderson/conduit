@@ -24,6 +24,9 @@ if TYPE_CHECKING:
     from conduit.domain.message.message import Message
     from conduit.domain.request.request import Request
     from conduit.domain.result.result import ConduitResult
+    from collections.abc import Callable
+    from contextlib import AbstractContextManager
+    from psycopg2.extensions import connection
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +44,7 @@ class ModelBase:
         model_name: str = settings.preferred_model,
         console: Console | None = settings.default_console,
         verbosity: Verbosity = settings.default_verbosity,
-        cache_engine: str | ConduitCache | None = None,
+        cache: str | ConduitCache | None = None,
     ):
         from conduit.core.model.models.modelstore import ModelStore
 
@@ -50,15 +53,21 @@ class ModelBase:
         self.console: Console | None = console
         self.client: Client = self.get_client(model_name=self.model_name)
 
-        if cache_engine is not None:
-            from conduit.storage.cache.protocol import ConduitCache
+        if cache is not None:
+            from conduit.storage.cache.postgres_cache import PostgresCache
+            from dbclients.clients.postgres import get_postgres_client
 
-            if isinstance(cache_engine, str):
+            if isinstance(cache, str):
                 # Convenience: Create cache from string name
-                logger.info(f"Initializing cache with name: '{cache_engine}'")
-                self.cache: str | ConduitCache | None = ConduitCache(name=cache_engine)
+                logger.info(f"Initializing cache with name: '{cache}'")
+                conn_factory: Callable[[], AbstractContextManager[connection]] = (
+                    get_postgres_client(client_type="context_db", dbname="conduit")
+                )
+                self.cache: ConduitCache = PostgresCache(
+                    name=cache, conn_factory=conn_factory
+                )
             else:  # It's already a ConduitCache instance
-                self.cache = cache_engine
+                self.cache = cache
         else:
             self.cache = None
 

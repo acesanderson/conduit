@@ -1,5 +1,4 @@
 from __future__ import annotations
-import json
 import time
 from contextlib import AbstractContextManager
 from collections.abc import Callable
@@ -80,22 +79,12 @@ class PostgresCache:
         self._hits += 1
         payload = row[0]
 
-        # payload should already be a JSON-like structure; normalize through json
-        if isinstance(payload, str):
-            data: dict[str, object] = json.loads(payload)
-        else:
-            data = payload
-
-        # Support pydantic v1/v2
-        return Response.model_validate(data)
+        return Response.model_validate(payload)
 
     def set(self, request: Request, response: Response) -> None:
         key = self._request_to_key(request)
 
-        # Support pydantic v1/v2
-        payload = response.model_dump()
-
-        payload_json = json.dumps(payload)
+        payload = response.model_dump_json()
 
         with self._conn_factory() as conn:
             cursor = conn.cursor()
@@ -108,7 +97,7 @@ class PostgresCache:
                     payload = EXCLUDED.payload,
                     updated_at = now()
                 """,
-                (self.name, key, payload_json),
+                (self.name, key, payload),
             )
             conn.commit()
             cursor.close()
