@@ -1,10 +1,9 @@
 """
 Base class for clients; openai, anthropic, etc. inherit from this class.
-ABC abstract methods are like pydantic validators for classes. They ensure that the child classes implement the methods defined in the parent class.
+Both sync and async methods are defined here.
 """
 
 from __future__ import annotations
-from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, override
 import logging
 
@@ -18,89 +17,40 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class Client(ABC):
-    @abstractmethod
+class Client:
     def __init__(self):
-        """
-        Typically we should see this here:
-        self._client = self._initialize_client()
-        """
-        pass
+        raise NotImplementedError("Should be implemented in subclass.")
 
-    @abstractmethod
     def _initialize_client(self) -> object:
-        """
-        This method should initialize the client object, this is idiosyncratic to each SDK.
-        """
-        pass
+        raise NotImplementedError("Should be implemented in subclass.")
 
-    @abstractmethod
     def _get_api_key(self) -> str:
-        """
-        API keys are accessed via dotenv.
-        This should be in an .env file in the root directory.
-        """
-        pass
+        raise NotImplementedError("Should be implemented in subclass.")
 
     def _convert_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
-        """
-        Helper: maps the list of internal Messages to a list of provider dicts.
-        Override this if the provider needs whole-list manipulation.
-        """
         return [self._convert_message(m) for m in messages]
 
-    @abstractmethod
     def _convert_message(self, message: Message) -> dict[str, Any]:
-        """
-        Converts a single internal Message DTO into the provider's specific message format.
-        Uses pattern matching on the message type.
-        """
-        pass
+        raise NotImplementedError("Should be implemented in subclass.")
 
-    @abstractmethod
     def _convert_request(self, request: Request) -> Payload:
-        """
-        Translates the internal generic Request DTO into the specific
-        dictionary parameters required by this provider's SDK.
+        raise NotImplementedError("Should be implemented in subclass.")
 
-        This handles:
-        - Message role mapping (e.g. OpenAI 'user' vs Google 'user')
-        - Parameter renaming (max_tokens vs max_output_tokens)
-        - Specific structural requirements (e.g. Anthropic system prompt extraction)
-        """
-        pass
-
-    @abstractmethod
     def query(self, request: Request) -> ConduitResult:
-        """
-        All client subclasses must have a query function that can take:
-        - a Request object, which contains all the parameters needed for the query
+        raise NotImplementedError("Should be implemented in subclass.")
 
-        And returns
-        - a ConduitResult object, which contains the response data in a standardized format.
-        """
-        pass
+    async def query_async(self, request: Request) -> ConduitResult:
+        raise NotImplementedError(
+            "Should be implemented in subclass if async is supported."
+        )
 
-    @abstractmethod
     def tokenize(self, model: str, payload: str | list[Message]) -> int:
-        """
-        Get the token count for a text or a message history.
+        raise NotImplementedError("Should be implemented in subclass.")
 
-        Args:
-            model: The specific model name (e.g. "gpt-4o", "claude-3-5-sonnet").
-            payload:
-                - str: Returns the raw token count of the text string (no message overhead).
-                - list[Message]: Returns the total token count for a conversation history,
-                  including message overhead (roles, start/end tokens, etc).
-        """
-        pass
-
-    def emit_token_event(self) -> None:
-        """
-        Emit a TokenEvent to the OdometerRegistry if it exists.
-        Shoot this off WHENEVER you create a Response object.
-        """
-        raise NotImplementedError("Rework this so it's shot off from Client")
+    async def tokenize_async(self, model: str, payload: str | list[Message]) -> int:
+        raise NotImplementedError(
+            "Should be implemented in subclass if async is supported."
+        )
 
     @override
     def __repr__(self):

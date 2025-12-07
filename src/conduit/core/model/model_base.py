@@ -1,8 +1,6 @@
 """
-MAJOR REFACTOR INCOMING:
-- Model is really a collection of factories and orchestrators around Clients.
-- It's a "Request" factory.
-- All query methods pass through _execute, which is wrapped with middleware for caching, progress, odometer, etc.
+TO IMPLEMENT:
+- params should cascade: Conduit defaults < Conversation overrides < Request final
 """
 
 from __future__ import annotations
@@ -46,6 +44,7 @@ class ModelBase:
         console: Console | None = settings.default_console,
         verbosity: Verbosity = settings.default_verbosity,
         cache: str | ConduitCache | None = None,
+        **kwargs,
     ):
         from conduit.core.model.models.modelstore import ModelStore
 
@@ -55,30 +54,29 @@ class ModelBase:
         self.client: Client = self.get_client(model_name=self.model_name)
 
         if cache is not None:
-            from conduit.storage.cache.postgres_cache import PostgresCache
-            from dbclients.clients.postgres import get_postgres_client
-
             if isinstance(cache, str):
-                # Convenience: Create cache from string name
-                logger.info(f"Initializing cache with name: '{cache}'")
-                conn_factory: Callable[[], AbstractContextManager[connection]] = (
-                    get_postgres_client(client_type="context_db", dbname="conduit")
-                )
-                self.cache: ConduitCache = PostgresCache(
-                    name=cache, conn_factory=conn_factory
-                )
+                self.enable_cache(name=cache)
             else:  # It's already a ConduitCache instance
                 self.cache = cache
         else:
             self.cache = None
 
-    # Optional config methods (post-init)
-    def enable_cache(self) -> None:
-        if self.cache is None:
-            from conduit.storage.cache.cache import ConduitCache
+        self.params = GenerationParams(model=self.model_name, **kwargs)
+        raise NotImplementedError("Make sure params works.")
 
-            logger.info("Enabling default cache.")
-            self.cache = ConduitCache()
+    # Optional config methods (post-init)
+    def enable_cache(self, name: str) -> None:
+        if self.cache is not None:
+            logger.info("Cache is already enabled; skipping re-initialization.")
+            return
+        logger.info(f"Initializing cache with name: '{cache}'")
+        from dbclients.clients.postgres import get_postgres_client
+        from conduit.storage.cache.postgres_cache import PostgresCache
+
+        conn_factory: Callable[[], AbstractContextManager[connection]] = (
+            get_postgres_client(client_type="context_db", dbname="conduit")
+        )
+        self.cache: ConduitCache = PostgresCache(name=name, conn_factory=conn_factory)
 
     def enable_console(self) -> None:
         if self.console is None:
@@ -120,7 +118,7 @@ class ModelBase:
 
     @middleware_async
     async def _execute_async(self, request: Request) -> ConduitResult:
-        return await self.query.query_async(request)
+        return await self.client.query_async(request)
 
     def _prepare_request(
         self, query_input: QueryInput | None = None, **kwargs: object
@@ -166,8 +164,18 @@ class ModelBase:
             "query must be implemented in subclasses (sync or async)."
         )
 
-    def tokenize(self, payload: str | list[BaseModel]) -> int:
+    async def query_async(
+        self, query_input: QueryInput, **kwargs: object
+    ) -> ConduitResult:
+        raise NotImplementedError(
+            "query_async must be implemented in subclasses (sync or async)."
+        )
+
+    def tokenize(self, payload: str | list[Message]) -> int:
         raise NotImplementedError("tokenize must be implemented in subclasses.")
+
+    async def tokenize_async(self, payload: str | list[Message]) -> int:
+        raise NotImplementedError("tokenize_async must be implemented in subclasses.")
 
     # Dunders
     @override

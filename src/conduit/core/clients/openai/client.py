@@ -552,7 +552,7 @@ class OpenAIClientAsync(OpenAIClient):
         return instructor.from_openai(openai_async_client)
 
     @override
-    async def query(
+    async def query_async(
         self,
         request: Request,
     ) -> ConduitResult:
