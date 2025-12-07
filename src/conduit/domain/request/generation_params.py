@@ -1,3 +1,8 @@
+"""
+TO IMPLEMENT:
+- params should cascade: Conduit defaults < Conversation overrides < Request final
+"""
+
 from __future__ import annotations
 from pydantic import BaseModel, Field, model_validator
 import logging
