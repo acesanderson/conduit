@@ -1,5 +1,5 @@
 from typing import Protocol, runtime_checkable
-from conduit.storage.cache.cache import ConduitCache
+from conduit.storage.cache.protocol import ConduitCache
 from conduit.storage.odometer.odometer_registry import OdometerRegistry
 from conduit.utils.progress.verbosity import Verbosity
 

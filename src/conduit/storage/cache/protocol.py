@@ -8,6 +8,16 @@ if TYPE_CHECKING:
 
 @runtime_checkable
 class ConduitCache(Protocol):
+    def __init__(self, name: str) -> None:
+        """
+        Initialize a ConduitCache instance.
+
+        Args:
+            name (str): The name of the cache backend to use.
+        """
+
+        ...
+
     def get(self, request: Request) -> Response | None:
         """
         Return a cached Response for this Request, or None if not present.
