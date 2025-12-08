@@ -3,7 +3,6 @@ from conduit.core.model.model_base import ModelBase
 from conduit.core.clients.client_base import Client
 from conduit.core.model.models.modelstore import ModelStore
 from conduit.domain.result.result import ConduitResult
-from conduit.domain.result.error import ConduitError
 from typing import override, TYPE_CHECKING
 import asyncio
 import logging
@@ -21,23 +20,9 @@ class ModelAsync(ModelBase):
 
     @override
     async def query_async(self, query_input=None, **kwargs) -> ConduitResult:
-        try:
-            request = self._prepare_request(query_input, **kwargs)
-            conduit_result = await self._execute_async(request, **kwargs)
-            return conduit_result
-        except Exception as e:
-            try:
-                request_request = request.model_dump()
-            except Exception:
-                request_request = {}
-            conduit_error = ConduitError.from_exception(
-                e,
-                code="query_error",
-                category="client",
-                request_request=request_request,
-            )
-            logger.error(f"Error during query: {conduit_error}")
-            return conduit_error
+        request = self._prepare_request(query_input, **kwargs)
+        conduit_result = await self._execute_async(request, **kwargs)
+        return conduit_result
 
     @override
     async def tokenize_async(self, payload: str | list[Message]) -> int:

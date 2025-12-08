@@ -6,7 +6,6 @@ from conduit.core.conduit.conduit_sync import ConduitSync
 from conduit.core.prompt.prompt import Prompt
 from conduit.core.model.model_async import ModelAsync
 from conduit.domain.result.response import Response
-from conduit.domain.result.error import ConduitError
 from conduit.core.parser.parser import Parser
 from conduit.utils.progress.verbosity import Verbosity
 from typing import TYPE_CHECKING
@@ -307,10 +306,6 @@ class ConduitAsync(ConduitSync):
         # Complete concurrent tracking
         if tracker:
             tracker.emit_concurrent_complete()
-
-        if isinstance(responses[0], ConduitError):
-            print(responses[0].info)
-            print(responses[0].detail)
 
         assert all([isinstance(r, Response) for r in responses]), (
             "All results should be Response objects"

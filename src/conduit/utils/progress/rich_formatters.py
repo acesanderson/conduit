@@ -1,7 +1,6 @@
 from __future__ import annotations
 import json
 from conduit.domain.result.response import Response
-from conduit.domain.result.error import ConduitError
 from conduit.utils.progress.verbosity import Verbosity
 from conduit.utils.progress.plain_formatters import _extract_user_prompt
 
@@ -126,34 +125,3 @@ def _response_debug_rich(response: Response) -> Panel:
         title="[bold red]DEBUG: Response Object[/bold red]",
         border_style="red",
     )
-
-
-# --- Rich Formatters: Errors ---
-
-
-def format_error_rich(
-    error: ConduitError, verbosity: Verbosity
-) -> RenderableType | None:
-    if verbosity == Verbosity.SUMMARY:
-        return _error_summary_rich(error)
-    elif verbosity >= Verbosity.DETAILED:
-        # Use debug view for detailed/complete/debug on errors
-        return _error_debug_rich(error)
-    return None
-
-
-def _error_summary_rich(error: ConduitError) -> Panel:
-    content = Text()
-    content.append(f"{error.info.message}", style="red")
-    return Panel(
-        content,
-        title=f"[bold red]Error: {error.info.code}[/bold red]",
-        border_style="red",
-    )
-
-
-def _error_debug_rich(error: ConduitError) -> Panel:
-    debug_data = error.model_dump(mode="json", exclude_none=True)
-    json_str = json.dumps(debug_data, indent=2)
-    syntax = Syntax(json_str, "json", theme="monokai", word_wrap=True)
-    return Panel(syntax, title="[bold red]Error Details[/bold red]", border_style="red")

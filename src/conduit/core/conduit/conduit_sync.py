@@ -1,7 +1,6 @@
 from conduit.core.conduit.conduit_base import ConduitBase
 from conduit.domain.result.result import ConduitResult
 from conduit.domain.result.response import Response
-from conduit.domain.result.error import ConduitError
 from conduit.core.parser.parser import Parser
 from conduit.utils.progress.verbosity import Verbosity
 from conduit.domain.message.message import Message, UserMessage
@@ -85,18 +84,13 @@ class ConduitSync(ConduitBase):
                 self.message_store.input_tokens += result.input_tokens
                 self.message_store.output_tokens += result.output_tokens
                 self.message_store.last_used_model_name = self.model.model
-            elif isinstance(result, ConduitError):
-                logger.error("ConduitError encountered, not saving to message store.")
-                self.message_store.query_failed()
         else:
             if not self.message_store:
                 logger.info("No message store associated with conduit, skipping save.")
             if not save:
                 logger.info("'save' is False, skipping save to message store.")
         if not isinstance(result, ConduitResult):
-            logger.warning(
-                "Result is not a Response or ConduitError: type {type(result)}."
-            )
+            logger.warning("Result is not a Response: type {type(result)}.")
         return result
 
     def _coerce_messages_and_prompt(
@@ -123,3 +117,13 @@ class ConduitSync(ConduitBase):
             raise ValueError(f"Unsupported query_input type: {type(query_input)}")
 
         return messages
+
+
+if __name__ == "__main__":
+    from conduit.core.model.model_sync import ModelSync
+    from conduit.core.prompt.prompt import Prompt
+
+    model = ModelSync("gpt3")
+    prompt = Prompt("What is the capital of France?")
+    conduit = ConduitSync(model=model, prompt=prompt)
+    result = conduit.run()
