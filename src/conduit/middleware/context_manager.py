@@ -86,9 +86,7 @@ def middleware_context_manager_sync(self: "Instrumentable", request: Request):
                 query_preview=preview,
                 error=str(e),
                 verbosity=request.verbosity,
-                error_obj=e
-                if hasattr(e, "info")
-                else None,  # Handle ConduitError vs generic
+                error_obj=e if hasattr(e, "info") else None,
             )
         raise e
 
@@ -198,9 +196,7 @@ def middleware_context_manager_async(self: "Instrumentable", request: Request):
                 query_preview=preview,
                 error=str(e),
                 verbosity=request.verbosity,
-                error_obj=e
-                if hasattr(e, "info")
-                else None,  # Handle ConduitError vs generic
+                error_obj=e if hasattr(e, "info") else None,
             )
         raise e
 
