@@ -7,13 +7,13 @@ from conduit.core.model.model_base import ModelBase
 from conduit.core.model.models.modelstore import ModelStore
 from conduit.core.clients.client_base import Client
 from conduit.domain.result.result import ConduitResult
-from conduit.domain.result.error import ConduitError
 from headwater_api.classes import StatusResponse
-from pydantic import ValidationError
-from typing import override
+from typing import override, TYPE_CHECKING
 from time import time
 import logging
 
+if TYPE_CHECKING:
+    from conduit.domain.message.message import Message
 
 logger = logging.getLogger(__name__)
 
@@ -33,49 +33,21 @@ class RemoteModel(ModelBase):
     def query(self, query_input=None, **kwargs) -> ConduitResult:
         if kwargs.get("stream", False):
             logger.warning("Server does not support streaming, ignoring stream=True")
-        try:
-            request = self._prepare_request(query_input, **kwargs)
+        request = self._prepare_request(query_input, **kwargs)
 
-            if kwargs.get("cache", False):
-                cached = self._check_cache(request)
-                if cached:
-                    return cached
+        if kwargs.get("cache", False):
+            cached = self._check_cache(request)
+            if cached:
+                return cached
 
-            logger.info("Sending query to Conduit server")
-            start_time = time()
-            response, _ = self.client.query(request)
-            stop_time = time()
-            logger.info(
-                f"Server query completed in {stop_time - start_time:.2f} seconds"
-            )
-
-            # 5. I/O: Cache Write (Blocking)
-            if kwargs.get("cache", False):
-                self._save_cache(request, response)
-
-            return response
-
-        except ValidationError as e:
-            conduit_error = ConduitError.from_exception(
-                e,
-                code="validation_error",
-                category="client",
-                request_request=request.model_dump() if request else {},
-            )
-            logger.error(f"Validation error: {conduit_error}")
-            return conduit_error
-        except Exception as e:
-            conduit_error = ConduitError.from_exception(
-                e,
-                code="query_error",
-                category="client",
-                request_request=request.model_dump() if request else {},
-            )
-            logger.error(f"Error during query: {conduit_error}")
-            return conduit_error
+        logger.info("Sending query to Conduit server")
+        start_time = time()
+        response = self.client.query(request)
+        stop_time = time()
+        logger.info(f"Server query completed in {stop_time - start_time:.2f} seconds")
 
     @override
-    def tokenize(self, text: str) -> int:
+    def tokenize(self, payload: str | list[Message]) -> int:
         raise NotImplementedError(
             "Tokenization is not supported for RemoteModel. Please use a local model for tokenization."
         )

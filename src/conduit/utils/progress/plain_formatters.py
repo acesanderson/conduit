@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING
 from datetime import datetime
 import json
 from conduit.domain.result.response import Response
-from conduit.domain.result.error import ConduitError
 from conduit.utils.progress.verbosity import Verbosity
 from conduit.domain.message.message import UserMessage
 
@@ -158,91 +157,6 @@ def _response_debug_plain(response: Response) -> str:
     except Exception:
         debug_data["assistant_response"] = str(content)
 
-    json_str = json.dumps(debug_data, indent=2, default=str)
-    lines.append(json_str)
-
-    return "\n".join(lines)
-
-
-# --- Plain Text Formatters: Errors ---
-
-
-def format_error_plain(error: ConduitError, verbosity: Verbosity) -> str:
-    """Entry point for formatting a ConduitError object into plain text."""
-    if verbosity == Verbosity.SUMMARY:
-        return _error_summary_plain(error)
-    elif verbosity == Verbosity.DETAILED:
-        return _error_detailed_plain(error)
-    elif verbosity == Verbosity.COMPLETE:
-        return _error_complete_plain(error)
-    elif verbosity == Verbosity.DEBUG:
-        return _error_debug_plain(error)
-    return ""
-
-
-def _error_summary_plain(error: ConduitError) -> str:
-    lines = []
-    timestamp = datetime.now().strftime("%H:%M:%S")
-    lines.append(f"[{timestamp}] ERROR")
-    lines.append(f"Error: {error.info.code}")
-    lines.append(f"Message: {error.info.message}")
-    return "\n".join(lines)
-
-
-def _error_detailed_plain(error: ConduitError) -> str:
-    lines = []
-    timestamp = datetime.now().strftime("%H:%M:%S")
-    lines.append(f"[{timestamp}] ERROR (Detailed)")
-
-    lines.append(f"Error Code: {error.info.code}")
-    lines.append(f"Message: {error.info.message}")
-    lines.append(f"Category: {error.info.category}")
-
-    if error.detail:
-        lines.append(f"Exception Type: {error.detail.exception_type}")
-        if error.detail.request_params:
-            lines.append(f"Request had {len(error.detail.request_params)} parameters")
-
-    return "\n".join(lines)
-
-
-def _error_complete_plain(error: ConduitError) -> str:
-    lines = []
-    timestamp = datetime.now().strftime("%H:%M:%S")
-    lines.append(f"[{timestamp}] ERROR (Complete)")
-
-    lines.append(f"Error Code: {error.info.code}")
-    lines.append(f"Message: {error.info.message}")
-    lines.append(f"Category: {error.info.category}")
-
-    if error.detail:
-        lines.append("\nException Details:")
-        lines.append(f"Type: {error.detail.exception_type}")
-        if error.detail.request_params:
-            lines.append(
-                f"Request Parameters: {len(error.detail.request_params)} items"
-            )
-        if error.detail.retry_count:
-            lines.append(f"Retry Count: {error.detail.retry_count}")
-
-        if error.detail.stack_trace:
-            lines.append("\nStack Trace (truncated):")
-            stack_lines = error.detail.stack_trace.split("\n")
-            if len(stack_lines) > 10:
-                shown = stack_lines[:3] + ["  ... (truncated) ..."] + stack_lines[-3:]
-                lines.extend(shown)
-            else:
-                lines.extend(stack_lines)
-
-    return "\n".join(lines)
-
-
-def _error_debug_plain(error: ConduitError) -> str:
-    lines = []
-    timestamp = datetime.now().strftime("%H:%M:%S")
-    lines.append(f"[{timestamp}] DEBUG ERROR")
-
-    debug_data = error
     json_str = json.dumps(debug_data, indent=2, default=str)
     lines.append(json_str)
 
