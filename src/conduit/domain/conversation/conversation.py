@@ -22,6 +22,24 @@ class ConversationState(Enum):
     EXECUTE = "execute"
     TERMINATE = "terminate"
     INCOMPLETE = "incomplete"
+    # --- Future: Context Engineering (Memory) ---
+    # SUMMARIZE = "summarize"  # Trigger: Context > limit. Action: Compress history -> GENERATE
+    # INJECT = "inject"        # Trigger: RAG/Search needed. Action: Retrieve & Insert Context -> GENERATE
+    # FORGET = "forget"        # Trigger: Topic shift. Action: Prune irrelevant history -> GENERATE
+
+    # --- Future: Agentic Workflow (Planning) ---
+    # CLASSIFY = "classify"    # Trigger: Start of Conv. Action: Route to specific Model/Skill -> GENERATE
+    # PLAN = "plan"            # Trigger: Complex task. Action: Generate Chain-of-Thought steps -> EXECUTE
+    # DECOMPOSE = "decompose"  # Trigger: Multi-part query. Action: Split into sub-conversations -> GENERATE
+
+    # --- Future: Quality Control (Reflection) ---
+    # VALIDATE = "validate"    # Trigger: Post-GENERATE. Action: Syntax check (JSON/Code) -> TERMINATE or REFINE
+    # REFINE = "refine"        # Trigger: Validation failed. Action: Self-correction prompt -> GENERATE
+    # CRITIQUE = "critique"    # Trigger: High-quality mode. Action: "Review your answer" -> REFINE
+
+    # --- Future: Safety & Human Interaction ---
+    # CONFIRM = "confirm"      # Trigger: Sensitive tool call. Action: Pause flow, wait for user signal -> EXECUTE
+    # AWAIT = "await"          # Trigger: Long-running async task. Action: Poll/Wait -> TERMINATE
 
 
 class ConversationError(Exception):
@@ -29,7 +47,7 @@ class ConversationError(Exception):
 
 
 class Conversation(BaseModel):
-    topic: str | None = None
+    topic: str = "Untitled"
     messages: list[Message] = []
 
     # Generated fields
