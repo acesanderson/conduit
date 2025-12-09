@@ -25,7 +25,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from contextlib import AbstractContextManager
     from psycopg2.extensions import connection
-    from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -43,40 +42,25 @@ class ModelBase:
         model_name: str = settings.preferred_model,
         console: Console | None = settings.default_console,
         verbosity: Verbosity = settings.default_verbosity,
-        cache: str | ConduitCache | None = None,
-        **kwargs,
+        cache: ConduitCache | None = None,
+        params: GenerationParams | None = None,
     ):
         from conduit.core.model.models.modelstore import ModelStore
 
+        # Initial attributes
         self.model_name: str = ModelStore.validate_model(model_name)
-        self.verbosity: Verbosity = verbosity
         self.console: Console | None = console
+        self.verbosity: Verbosity = settings.default_verbosity
+        self.cache: ConduitCache | None = cache
+        self.params: GenerationParams = params or GenerationParams(
+            model=self.model_name
+        )
+        # Initialize client
         self.client: Client = self.get_client(model_name=self.model_name)
-
-        if cache is not None:
-            if isinstance(cache, str):
-                self.enable_cache(name=cache)
-            else:  # It's already a ConduitCache instance
-                self.cache = cache
-        else:
-            self.cache = None
-
-        self.params = GenerationParams(model=self.model_name, **kwargs)
-        raise NotImplementedError("Make sure params works.")
 
     # Optional config methods (post-init)
     def enable_cache(self, name: str) -> None:
-        if self.cache is not None:
-            logger.info("Cache is already enabled; skipping re-initialization.")
-            return
-        logger.info(f"Initializing cache with name: '{cache}'")
-        from dbclients.clients.postgres import get_postgres_client
-        from conduit.storage.cache.postgres_cache import PostgresCache
-
-        conn_factory: Callable[[], AbstractContextManager[connection]] = (
-            get_postgres_client(client_type="context_db", dbname="conduit")
-        )
-        self.cache: ConduitCache = PostgresCache(name=name, conn_factory=conn_factory)
+        self.cache: ConduitCache = settings.default_cache(name)
 
     def enable_console(self) -> None:
         if self.console is None:
