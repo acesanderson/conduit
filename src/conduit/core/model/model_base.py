@@ -22,9 +22,7 @@ if TYPE_CHECKING:
     from conduit.domain.message.message import Message
     from conduit.domain.request.request import Request
     from conduit.domain.result.result import ConduitResult
-    from collections.abc import Callable
-    from contextlib import AbstractContextManager
-    from psycopg2.extensions import connection
+    from conduit.domain.config.conduit_options import ConduitOptions
 
 logger = logging.getLogger(__name__)
 
@@ -40,21 +38,21 @@ class ModelBase:
     def __init__(
         self,
         model_name: str = settings.preferred_model,
-        console: Console | None = settings.default_console,
-        verbosity: Verbosity = settings.default_verbosity,
-        cache: ConduitCache | None = None,
+        options: ConduitOptions | None = None,
         params: GenerationParams | None = None,
     ):
         from conduit.core.model.models.modelstore import ModelStore
 
         # Initial attributes
         self.model_name: str = ModelStore.validate_model(model_name)
-        self.console: Console | None = console
-        self.verbosity: Verbosity = settings.default_verbosity
-        self.cache: ConduitCache | None = cache
+        self.options: ConduitOptions = options or settings.default_options()
         self.params: GenerationParams = params or GenerationParams(
             model=self.model_name
         )
+        # Options
+        self.console: Console | None = self.options.console
+        self.verbosity: Verbosity = self.options.verbosity
+        self.cache: ConduitCache | None = self.options.cache
         # Initialize client
         self.client: Client = self.get_client(model_name=self.model_name)
 

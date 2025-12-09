@@ -5,6 +5,7 @@ from conduit.core.prompt.prompt import Prompt
 from conduit.core.parser.parser import Parser
 from conduit.domain.request.generation_params import GenerationParams
 from conduit.domain.conversation.conversation import Conversation
+from conduit.domain.config.conduit_options import ConduitOptions
 from typing import TYPE_CHECKING
 import logging
 
@@ -18,25 +19,26 @@ if TYPE_CHECKING:
     from conduit.storage.repository.protocol import (
         ConversationRepository,
     )
-    from conduit.storage.cache.protocol import ConduitCache
 
 
 class ConduitSync:
     def __init__(
         self,
         # Required
-        model: ModelSync,
-        # Optional
+        prompt: Prompt,
+        params: GenerationParams,
+        options: ConduitOptions,
+        # Components
         project_name: str = "conduit",
         repository: ConversationRepository | None = None,
-        prompt: Prompt | None = None,
-        parser: Parser | None = None,
+        parser: Parser | None = None,  # for structured responses
     ):
         # Initial attributes
-        self.model: ModelSync = model
+        self.prompt: Prompt = prompt
+        self.params: GenerationParams = params
+        self.options: ConduitOptions = options
         self.project_name: str = project_name
         self.repository: ConversationRepository | None = repository
-        self.prompt: Prompt | None = prompt
         self.parser: Parser | None = parser
         # Working attributes
         self.conversation: Conversation | None = None
@@ -44,21 +46,28 @@ class ConduitSync:
     @classmethod
     def create(
         cls,
-        project_name: str,
-        model: ModelSync | str,
+        model: str | ModelSync,
         prompt: Prompt | str,
+        params: dict[str, str | dict[str, str]] | None = None,
+        project_name: str = "conduit",
         parser: Parser | None = None,
         # Configurations
         persist: bool = False,
         cached: bool = False,
         verbosity: Verbosity = settings.default_verbosity,
-        params: dict[str, str | dict[str, str]] | None = None,
+        console: Console | None = None,
+        **kwargs,  # Additional kwargs for GenerationParams
     ) -> ConduitSync:
+        """
+        Factory method to create a ConduitSync instance with sensible defaults.
+        """
         # Model
-        if isinstance(model, str):
-            model_instance = ModelSync(model_name=model)
+        if isinstance(model, ModelSync):
+            model_name = model.model_name
+        elif isinstance(model, str):
+            model_name = model
         else:
-            model_instance = model
+            raise ValueError(f"Unsupported model type: {type(model)}")
         # Prompt
         if isinstance(prompt, str):
             prompt_instance = Prompt(prompt)
@@ -73,22 +82,27 @@ class ConduitSync:
         # Cache
         cache_instance = None
         if cached:
-            cache_instance: ConduitCache = settings.default_cache(name=project_name)
+            cache_instance: settings.default_cache(name=project_name)
         # Params
         params_instance = None
         if params:
+            if model_name not in params:
+                params[model_name] = {}
+            params[model_name].update(kwargs)
+            params_instance = GenerationParams.from_dict(params[model_name])
+        else:
             params_instance = GenerationParams(**params)
-
-        # Build the model first
-        model_instance.verbosity = verbosity
-        model_instance.cache = cache_instance
-        model_instance.params = params_instance
-
+        conduit_options = ConduitOptions(
+            verbosity=verbosity,
+            cache=cache_instance,
+            console=console,
+        )
         return cls(
-            model=model_instance,
+            prompt=prompt_instance,
+            params=params_instance,
+            options=conduit_options,
             project_name=project_name,
             repository=repository_instance,
-            prompt=prompt_instance,
             parser=parser,
         )
 
@@ -96,28 +110,15 @@ class ConduitSync:
         self,
         input_variables: dict[str, str] | None = None,
         stream: bool = False,
-        verbosity: Verbosity = settings.default_verbosity,
         # Progress tracking
         index: int = 0,
         total: int = 0,
-        # Possible exemptions
+        # Possible overrides
         cached: bool = True,
         persist: bool = True,
         include_history: bool = True,
-        save: bool = True,
+        verbosity: Verbosity | None = None,
     ) -> Response: ...
-
-    @property
-    def cache(self) -> ConduitCache | None:
-        return self.model.cache
-
-    @property
-    def params(self) -> GenerationParams:
-        return self.model.params
-
-    @property
-    def console(self) -> Console | None:
-        return self.model.console
 
     @property
     def topic(self) -> str:
@@ -141,7 +142,23 @@ class ConduitSync:
         """
         raise NotImplementedError("_execute_with_engine not yet implemented.")
 
+    async def _execute_with_engine_async(
+        self, conversation: Conversation
+    ) -> Conversation:
+        """
+        Given a conversation, execute it using an Engine.
+        If needed, can take decorators for telemetry, logging, progress, caching, etc.
+        """
+        raise NotImplementedError("_execute_with_engine not yet implemented.")
+
     def _update_topic(self) -> str:
+        """
+        Create a title for the current conversation based on the prompt.
+        Will leverage an external service.
+        """
+        raise NotImplementedError("_create_title not yet implemented.")
+
+    async def _update_topic_async(self) -> str:
         """
         Create a title for the current conversation based on the prompt.
         Will leverage an external service.
