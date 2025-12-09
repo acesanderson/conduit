@@ -27,6 +27,9 @@ class Engine:
         options: ConduitOptions,
         max_steps: int = 10,  # Safety limit for auto-looping
     ) -> Conversation:
+        """
+        This is pure CPU, so no async needed (though the handlers may need async).
+        """
         step_count = 0
 
         while step_count < max_steps:

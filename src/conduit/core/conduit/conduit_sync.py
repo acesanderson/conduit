@@ -1,3 +1,17 @@
+"""
+NOTE: Refactor incoming -- ConduitSync should LITERALLY just be ConduitAsync wrapped with asyncio.run
+
+from conduit.utils.concurrency.warn import _warn_if_loop_exists
+
+class ConduitSync:
+    def __init__(self):
+        self._impl = ConduitAsync()
+
+    def pipe(self, payload: list[dict]) -> bool:
+        _warn_if_loop_exists()
+        return asyncio.run(self._impl.pipe(payload))
+"""
+
 from __future__ import annotations
 from conduit.config import settings
 from conduit.domain.request.generation_params import GenerationParams
