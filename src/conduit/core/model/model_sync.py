@@ -1,3 +1,17 @@
+"""
+NOTE: Refactor incoming -- ModelSync should LITERALLY just be ModelAsync wrapped with asyncio.run
+
+from conduit.utils.concurrency.warn import _warn_if_loop_exists
+
+class ModelSync:
+    def __init__(self):
+        self._impl = ModelAsync()
+
+    def pipe(self, input_data: str) -> dict:
+        _warn_if_loop_exists()
+        return asyncio.run(self._impl.pipe(input_data))
+"""
+
 from __future__ import annotations
 from conduit.core.model.model_base import ModelBase
 from conduit.core.clients.client_base import Client
