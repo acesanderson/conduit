@@ -20,6 +20,16 @@ from xdg_base_dirs import (
     xdg_data_home,
 )
 import os
+from collections.abc import Callable
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from conduit.storage.cache.protocol import ConduitCache
+    from conduit.storage.repository.protocol import ConversationRepository
+    from contextlib import AbstractContextManager
+    from psycopg2 import connection
+
+
 
 # Directories
 CONFIG_DIR = Path(xdg_config_home()) / "conduit"
@@ -45,6 +55,9 @@ class Settings:
     server_models: list[str]
     paths: dict[str, Path]
     default_params: GenerationParams
+    # Lazy loaders
+    default_cache: Callable[[str], ConduitCache]
+    default_repository: Callable[[str], ConversationRepository]
 
 
 def load_settings() -> Settings:
@@ -109,6 +122,32 @@ def load_settings() -> Settings:
     default_params = GenerationParams(
         model=preferred_model,
     )
+    
+    @staticmethod
+    def default_cache(name: str) -> ConduitCache
+        """
+        Lazy loader for the default PostgresCache instance.
+        """
+        from dbclients.clients.postgres import get_postgres_client
+        from conduit.storage.cache.postgres_cache import PostgresCache
+
+        conn_factory: Callable[[], AbstractContextManager[connection]] = (
+            get_postgres_client(client_type="context_db", dbname="conduit")
+        )
+        return PostgresCache(name=name, conn_factory=conn_factory)
+
+    @staticmethod
+    def default_repository(name: str) -> ConversationRepository:
+        """
+        Lazy loader for the default PostgresConversationRepository instance.
+        """
+        from dbclients.clients.postgres import get_postgres_client
+        from conduit.storage.repository.postgres_repository import PostgresConversationRepository
+
+        conn_factory: Callable[[], AbstractContextManager[connection]] = (
+            get_postgres_client(client_type="context_db", dbname="conduit")
+        )
+        return PostgresConversationRepository(name = name, conn_factory=conn_factory)
 
     config.update(
         {
@@ -118,6 +157,9 @@ def load_settings() -> Settings:
             "server_models": server_models,
             "paths": paths,
             "default_params": default_params,
+            # Lazy loaders
+            "default_cache": default_cache,
+            "default_repository": default_repository,
         }
     )
 

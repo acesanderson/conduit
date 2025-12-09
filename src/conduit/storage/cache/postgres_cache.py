@@ -42,7 +42,7 @@ class PostgresCache:
                         name="conduit_llm_cache",
                         conn_factory=get_postgres_client(
                             "context_db",
-                            dbname="siphon",
+                            dbname="conduit",
                         ),
                     )
         """
