@@ -7,7 +7,7 @@ from __future__ import annotations
 from conduit.config import settings
 from conduit.domain.message.message import Message
 from conduit.domain.message.role import Role
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 import time
 import uuid
 from enum import Enum
@@ -29,12 +29,36 @@ class ConversationError(Exception):
 
 
 class Conversation(BaseModel):
+    topic: str | None = None
     messages: list[Message] = []
-    metadata: GenerationParams | None = None
 
     # Generated fields
     conversation_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: int = Field(default_factory=lambda: int(time.time() * 1000))
+
+    @model_validator(mode="before")
+    def validate_messages(cls, values):
+        """
+        Ensure messages is a list of Message objects, and system message rules.
+        """
+        # Validate messages
+        messages = values.get("messages", [])
+        if not isinstance(messages, list):
+            raise ConversationError("Messages must be a list of Message objects.")
+        for message in messages:
+            if not isinstance(message, Message):
+                raise ConversationError(
+                    "All items in messages must be instances of Message."
+                )
+        # If there is a system message, ensure that (1) it's first and (2) there's only one
+        system_messages = [m for m in messages if m.role == "system"]
+        if len(system_messages) > 1:
+            raise ConversationError(
+                "Multiple system messages found in the conversation."
+            )
+        elif len(system_messages) == 1:
+            self.ensure_system_message()
+        return values
 
     # Helper properties
     @property
@@ -72,15 +96,6 @@ class Conversation(BaseModel):
             "Token counting not yet implemented for Conversation."
         )
 
-    # Methods
-    def add_message(self, message: Message):
-        """
-        Add a message to the conversation after validating it.
-        """
-        if self.last and self.last.role == message.role:
-            raise ValueError("Cannot add two consecutive messages with the same role.")
-        self.messages.append(message)
-
     def ensure_system_message(self, system_content: str | None = None):
         """
         Ensure that a system message exists in the conversation.
@@ -96,6 +111,8 @@ class Conversation(BaseModel):
             if self.messages[0] != system_message:
                 self.messages.remove(system_message)
                 self.messages.insert(0, system_message)
+        elif system_content is None:
+            return
         else:
             content: str = system_content or settings.system_prompt
             from conduit.domain.message.message import SystemMessage

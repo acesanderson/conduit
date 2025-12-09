@@ -1,18 +1,3 @@
-"""
-### Conduit vs. Model: The Division of Labor
-
-The **Model** class is the **Execution Runtime**; it handles the *mechanics* of intelligence—I/O, token accounting, caching, and normalizing disparate API protocols into a unified Request/Response standard. The **Conduit** class is your **Workflow Orchestrator**; it handles the *context* of the application—templating prompts, managing conversation history (`MessageStore`), and governing the specific topology (linear, parallel, or recursive) of the execution flow.
-
-### The Conduit Family Taxonomy
-
-* **`BaseConduit` (Abstract Stem):** The foundational abstract class that defines the core protocol for all conduit topologies, managing prompt rendering, message coercion, and input validation.
-* **`SyncConduit` (Linear Blocking):** The standard, synchronous pipeline that binds a prompt to a model for a simple 1-in-1-out execution flow.
-* **`AsyncConduit` (Linear Non-Blocking):** Mirrors `SyncConduit` logic but returns awaitable coroutines, allowing it to yield control within an event loop for responsive applications.
-* **`BatchConduit` (Parallel):** Manages high-throughput concurrency, mapping a list of inputs to a list of outputs while handling aggregation and partial failures.
-* **`ToolConduit` (Cyclic):** Orchestrates a recursive execution loop (Model $\to$ Decision $\to$ Tool $\to$ Result) until a final answer is derived.
-* **`SkillsConduit` (Dynamic):** Implements progressive disclosure by analyzing context and mutating the system prompt to inject specific capabilities ("skills") at runtime.
-"""
-
 from __future__ import annotations
 from conduit.config import settings
 from typing import TYPE_CHECKING
