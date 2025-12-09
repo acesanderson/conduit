@@ -7,7 +7,7 @@ Model and client interaction:
 from __future__ import annotations
 from conduit.domain.message.message import AssistantMessage, Message
 from conduit.domain.message.role import Role
-from conduit.domain.request.request import Request
+from conduit.domain.request.request import GenerationRequest
 from conduit.domain.result.response_metadata import ResponseMetadata
 from pydantic import BaseModel
 from typing import TYPE_CHECKING, override
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class Response(BaseModel):
+class GenerationResponse(BaseModel):
     """
     Our class for a successful Result.
     Message + Request + ResponseMetadata
@@ -27,7 +27,7 @@ class Response(BaseModel):
 
     # Core attributes
     message: AssistantMessage
-    request: Request
+    request: GenerationRequest
     metadata: ResponseMetadata
 
     @property

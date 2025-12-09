@@ -5,6 +5,7 @@ TO IMPLEMENT:
 
 from __future__ import annotations
 from pydantic import BaseModel, Field, model_validator
+from conduit.domain.request.output_type import OutputType
 import logging
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,7 @@ class GenerationParams(BaseModel):
     stop: list[str] | None = None
     stream: bool = False
     client_params: dict | None = None
+    output_type: OutputType = "text"  # Routes to different client logic
 
     # For structured responses; excluded from serialization, trust me
     response_model: type[BaseModel] | None = Field(default=None, exclude=True)
