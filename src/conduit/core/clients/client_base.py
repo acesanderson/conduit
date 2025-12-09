@@ -9,8 +9,8 @@ import logging
 
 if TYPE_CHECKING:
     from conduit.core.clients.payload_base import Payload
-    from conduit.domain.request.request import Request
-    from conduit.domain.result.result import ConduitResult
+    from conduit.domain.request.request import GenerationRequest
+    from conduit.domain.result.result import GenerationResult
     from conduit.domain.message.message import Message
 
 
@@ -18,9 +18,6 @@ logger = logging.getLogger(__name__)
 
 
 class Client:
-    def __init__(self):
-        raise NotImplementedError("Should be implemented in subclass.")
-
     def _initialize_client(self) -> object:
         raise NotImplementedError("Should be implemented in subclass.")
 
@@ -33,24 +30,14 @@ class Client:
     def _convert_message(self, message: Message) -> dict[str, Any]:
         raise NotImplementedError("Should be implemented in subclass.")
 
-    def _convert_request(self, request: Request) -> Payload:
+    def _convert_request(self, request: GenerationRequest) -> Payload:
         raise NotImplementedError("Should be implemented in subclass.")
 
-    def query(self, request: Request) -> ConduitResult:
+    async def query(self, request: GenerationRequest) -> GenerationResult:
         raise NotImplementedError("Should be implemented in subclass.")
 
-    async def query_async(self, request: Request) -> ConduitResult:
-        raise NotImplementedError(
-            "Should be implemented in subclass if async is supported."
-        )
-
-    def tokenize(self, model: str, payload: str | list[Message]) -> int:
+    async def tokenize(self, model: str, payload: str | list[Message]) -> int:
         raise NotImplementedError("Should be implemented in subclass.")
-
-    async def tokenize_async(self, model: str, payload: str | list[Message]) -> int:
-        raise NotImplementedError(
-            "Should be implemented in subclass if async is supported."
-        )
 
     @override
     def __repr__(self):

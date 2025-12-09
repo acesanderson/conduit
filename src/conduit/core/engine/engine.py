@@ -11,6 +11,9 @@ from conduit.domain.conversation.conversation import (
     ConversationState,
 )
 from typing import TYPE_CHECKING
+import logging
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from conduit.domain.request.generation_params import GenerationParams
@@ -18,18 +21,13 @@ if TYPE_CHECKING:
 
 
 class Engine:
-    # Main entry point
-
     @staticmethod
-    def run(
+    async def run(
         conversation: Conversation,
         params: GenerationParams,
         options: ConduitOptions,
         max_steps: int = 10,  # Safety limit for auto-looping
     ) -> Conversation:
-        """
-        This is pure CPU, so no async needed (though the handlers may need async).
-        """
         step_count = 0
 
         while step_count < max_steps:
@@ -39,15 +37,15 @@ class Engine:
             match conversation.state:
                 # 1. LLM Generation
                 case ConversationState.GENERATE:
-                    conversation = Engine._generate(conversation, params, options)
+                    conversation = await Engine._generate(conversation, params, options)
 
                 # 2. Tool Execution (The Loop back)
                 case ConversationState.EXECUTE:
-                    conversation = Engine._execute(conversation, params, options)
+                    conversation = await Engine._execute(conversation, params, options)
 
                 # 3. Stop Conditions
                 case ConversationState.TERMINATE:
-                    return Engine._terminate(conversation, params, options)
+                    return await Engine._terminate(conversation, params, options)
 
                 case ConversationState.INCOMPLETE:
                     raise ConversationError("Conversation is incomplete.")
@@ -60,31 +58,31 @@ class Engine:
 
     # Handlers
     @staticmethod
-    def _generate(
+    async def _generate(
         conversation: Conversation,
         params: GenerationParams,
         options: ConduitOptions,
     ) -> Conversation:
         from conduit.core.engine.generate import generate
 
-        return generate(conversation, params, options)
+        return await generate(conversation, params, options)
 
     @staticmethod
-    def _execute(
+    async def _execute(
         conversation: Conversation,
         params: GenerationParams,
         options: ConduitOptions,
     ) -> Conversation:
         from conduit.core.engine.execute import execute
 
-        return execute(conversation, params, options)
+        return await xecute(conversation, params, options)
 
     @staticmethod
-    def _terminate(
+    async def _terminate(
         conversation: Conversation,
         params: GenerationParams,
         options: ConduitOptions,
     ) -> Conversation:
         from conduit.core.engine.terminate import terminate
 
-        return terminate(conversation, params, options)
+        return await terminate(conversation, params, options)

@@ -22,3 +22,7 @@ class ConduitOptions:
     cache: ConduitCache | None
     repository: ConversationRepository | None
     console: Console | None
+
+    # Overrides for request behavior
+    use_cache: bool | None = True  # Technically: "if cache exists, use it"
+    include_history: bool = True  # Whether to include conversation history
