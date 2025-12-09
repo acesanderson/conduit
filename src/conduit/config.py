@@ -24,11 +24,11 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from conduit.domain.config.conduit_options import ConduitOptions
     from conduit.storage.cache.protocol import ConduitCache
     from conduit.storage.repository.protocol import ConversationRepository
     from contextlib import AbstractContextManager
     from psycopg2 import connection
-
 
 
 # Directories
@@ -58,6 +58,7 @@ class Settings:
     # Lazy loaders
     default_cache: Callable[[str], ConduitCache]
     default_repository: Callable[[str], ConversationRepository]
+    default_conduit_options: Callable[[str], ConduitOptions]
 
 
 def load_settings() -> Settings:
@@ -122,9 +123,8 @@ def load_settings() -> Settings:
     default_params = GenerationParams(
         model=preferred_model,
     )
-    
-    @staticmethod
-    def default_cache(name: str) -> ConduitCache
+
+    def default_cache(name: str) -> ConduitCache:
         """
         Lazy loader for the default PostgresCache instance.
         """
@@ -136,18 +136,29 @@ def load_settings() -> Settings:
         )
         return PostgresCache(name=name, conn_factory=conn_factory)
 
-    @staticmethod
     def default_repository(name: str) -> ConversationRepository:
         """
         Lazy loader for the default PostgresConversationRepository instance.
         """
         from dbclients.clients.postgres import get_postgres_client
-        from conduit.storage.repository.postgres_repository import PostgresConversationRepository
+        from conduit.storage.repository.postgres_repository import (
+            PostgresConversationRepository,
+        )
 
         conn_factory: Callable[[], AbstractContextManager[connection]] = (
             get_postgres_client(client_type="context_db", dbname="conduit")
         )
-        return PostgresConversationRepository(name = name, conn_factory=conn_factory)
+        return PostgresConversationRepository(name=name, conn_factory=conn_factory)
+
+    def default_conduit_options(name: str) -> ConduitOptions:
+        """
+        Assemble default ConduitOptions from settings.
+        """
+        return ConduitOptions(
+            verbosity=verbosity,
+            cache=default_cache(name),
+            console=config["default_console"],
+        )
 
     config.update(
         {
@@ -160,6 +171,7 @@ def load_settings() -> Settings:
             # Lazy loaders
             "default_cache": default_cache,
             "default_repository": default_repository,
+            "default_conduit_options": default_conduit_options,
         }
     )
 
