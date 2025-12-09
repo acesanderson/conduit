@@ -1,11 +1,9 @@
 from __future__ import annotations
 from conduit.config import settings
-from conduit.core.model.model_sync import ModelSync
-from conduit.core.prompt.prompt import Prompt
-from conduit.core.parser.parser import Parser
 from conduit.domain.request.generation_params import GenerationParams
 from conduit.domain.conversation.conversation import Conversation
 from conduit.domain.config.conduit_options import ConduitOptions
+from conduit.domain.message.message import UserMessage
 from typing import TYPE_CHECKING
 import logging
 
@@ -13,8 +11,9 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from rich.console import Console
+    from conduit.core.model.model_sync import ModelSync
+    from conduit.core.prompt.prompt import Prompt
     from conduit.utils.progress.verbosity import Verbosity
-    from conduit.domain.result.response import Response
     from conduit.core.engine.engine import Engine
     from conduit.storage.repository.protocol import (
         ConversationRepository,
@@ -22,26 +21,23 @@ if TYPE_CHECKING:
 
 
 class ConduitSync:
+    """
+    A Configured Pipe.
+    State regarding 'How to process' is held in self (Prompt, Params).
+    State regarding 'What to process' is passed to run().
+    """
+
     def __init__(
         self,
         # Required
         prompt: Prompt,
         params: GenerationParams,
         options: ConduitOptions,
-        # Components
-        project_name: str = "conduit",
-        repository: ConversationRepository | None = None,
-        parser: Parser | None = None,  # for structured responses
     ):
         # Initial attributes
         self.prompt: Prompt = prompt
         self.params: GenerationParams = params
         self.options: ConduitOptions = options
-        self.project_name: str = project_name
-        self.repository: ConversationRepository | None = repository
-        self.parser: Parser | None = parser
-        # Working attributes
-        self.conversation: Conversation | None = None
 
     @classmethod
     def create(
@@ -49,9 +45,9 @@ class ConduitSync:
         model: str | ModelSync,
         prompt: Prompt | str,
         params: dict[str, str | dict[str, str]] | None = None,
-        project_name: str = "conduit",
-        parser: Parser | None = None,
         # Configurations
+        response_model: type | None = None,
+        project_name: str = settings.default_project_name,
         persist: bool = False,
         cached: bool = False,
         verbosity: Verbosity = settings.default_verbosity,
@@ -101,10 +97,50 @@ class ConduitSync:
             prompt=prompt_instance,
             params=params_instance,
             options=conduit_options,
-            project_name=project_name,
             repository=repository_instance,
             parser=parser,
         )
+
+    # Conversation management
+    def _execute_with_engine(
+        self,
+        conversation: Conversation,
+        params: GenerationParams,
+        options: ConduitOptions,
+    ) -> Conversation:
+        """
+        Given a conversation, execute it using an Engine.
+        If needed, can take decorators for telemetry, logging, progress, caching, etc.
+        """
+        new_conversation = Engine.run(conversation, params, options)
+        return new_conversation
+
+    async def _execute_with_engine_async(
+        self,
+        conversation: Conversation,
+        params: GenerationParams,
+        options: ConduitOptions,
+    ) -> Conversation:
+        """
+        Given a conversation, execute it using an Engine.
+        If needed, can take decorators for telemetry, logging, progress, caching, etc.
+        """
+        new_conversation = await Engine.run_async(conversation, params, options)
+        return new_conversation
+
+    def _update_topic(self, conversation: Conversation) -> Conversation:
+        """
+        Create a title for the current conversation based on the prompt.
+        Will leverage an external service.
+        """
+        raise NotImplementedError("_create_title not yet implemented.")
+
+    async def _update_topic_async(self, conversation: Conversation) -> Conversation:
+        """
+        Create a title for the current conversation based on the prompt.
+        Will leverage an external service.
+        """
+        raise NotImplementedError("_create_title not yet implemented.")
 
     def run(
         self,
@@ -118,141 +154,47 @@ class ConduitSync:
         persist: bool = True,
         include_history: bool = True,
         verbosity: Verbosity | None = None,
-    ) -> Response: ...
-
-    @property
-    def topic(self) -> str:
-        if self.conversation and self.conversation.topic:
-            return self.conversation.topic
-        else:
-            return "Untitled"
-
-    @topic.setter
-    def topic(self, value: str) -> None:
-        if self.conversation:
-            self.conversation.topic = value
-        else:
-            logger.warning("No conversation exists to set the name on. Name not set.")
-
-    # Conversation management
-    def _execute_with_engine(self, conversation: Conversation) -> Conversation:
-        """
-        Given a conversation, execute it using an Engine.
-        If needed, can take decorators for telemetry, logging, progress, caching, etc.
-        """
-        raise NotImplementedError("_execute_with_engine not yet implemented.")
-
-    async def _execute_with_engine_async(
-        self, conversation: Conversation
     ) -> Conversation:
-        """
-        Given a conversation, execute it using an Engine.
-        If needed, can take decorators for telemetry, logging, progress, caching, etc.
-        """
-        raise NotImplementedError("_execute_with_engine not yet implemented.")
-
-    def _update_topic(self) -> str:
-        """
-        Create a title for the current conversation based on the prompt.
-        Will leverage an external service.
-        """
-        raise NotImplementedError("_create_title not yet implemented.")
-
-    async def _update_topic_async(self) -> str:
-        """
-        Create a title for the current conversation based on the prompt.
-        Will leverage an external service.
-        """
-        raise NotImplementedError("_create_title not yet implemented.")
-
-
-#         if input_variables and self.prompt:
-#             self.prompt.validate_input_variables(input_variables)
-#             logger.info("Rendering prompt with input variables: %s", input_variables)
-#             prompt = self.prompt.render(input_variables=input_variables)
-#         elif self.prompt:
-#             logger.info("Using prompt without input variables.")
-#             prompt = self.prompt.prompt_string
-#         else:
-#             logger.info("No prompt provided, using None.")
-#             prompt = None
-#         # Resolve messages: messagestore or user-provided messages. Are we including history?
-#         if self.message_store and include_history:
-#             if messages is not None:
-#                 raise ValueError(
-#                     "Both messages and message store are provided, please use only one."
-#                 )
-#             logger.info("Using message store for messages.")
-#             messages = self.message_store.messages
-#         else:
-#             if messages is None:
-#                 logger.info("No message store or messages provided, starting fresh.")
-#                 messages = []
-#             else:
-#                 logger.info("Using user-provided messages.")
-#         # Coerce messages and query_input into a list of Message objects
-#         logger.info("Coercing messages and prompt into a list of Message objects.")
-#         messages = self._coerce_messages_and_prompt(prompt=prompt, messages=messages)
-#         assert len(messages) > 0, "No messages provided, cannot run conduit."
-#         # Route input; if string, if message
-#         logger.info("Querying model.")
-#         # Save this for later
-#         result = self.model.query(
-#             query_input=messages,
-#             response_model=self.parser.pydantic_model if self.parser else None,
-#             verbose=verbose,
-#             cache=cache,
-#             index=index,
-#             total=total,
-#             stream=stream,
-#         )
-#         logger.info(f"ModelSync query completed, return type: {type(result)}.")
-#         # Save to messagestore if we have one and if we have a response.
-#         if self.message_store and save:
-#             if isinstance(result, Response):
-#                 logger.info("Saving response to message store.")
-#                 if not include_history:
-#                     # For a one-off query, the user message that initiated it was not
-#                     # in the message store. We must add it now to maintain history integrity.
-#                     user_message = messages[
-#                         -1
-#                     ]  # The user message is the last in the list sent to the model
-#                     self.message_store.append(user_message)
-#                 self.message_store.append(result.message)
-#                 # Context window information
-#                 self.message_store.input_tokens += result.input_tokens
-#                 self.message_store.output_tokens += result.output_tokens
-#                 self.message_store.last_used_model_name = self.model.model
-#         else:
-#             if not self.message_store:
-#                 logger.info("No message store associated with conduit, skipping save.")
-#             if not save:
-#                 logger.info("'save' is False, skipping save to message store.")
-#         if not isinstance(result, ConduitResult):
-#             logger.warning("Result is not a Response: type {type(result)}.")
-#         return result
-#
-#     def _coerce_messages_and_prompt(
-#         self,
-#         prompt: str | Message | None,
-#         messages: list[Message] | None,
-#     ) -> list[Message]:
-#         """
-#         We want a list of messages to submit to ModelSync.query.
-#         If we have a prompt, we want to convert it into a user message and append it to messages.
-#         """
-#         if not messages:
-#             messages = []
-#         if isinstance(prompt, Message):
-#             # If we have a message, just append it
-#             messages.append(prompt)
-#         elif isinstance(prompt, str):
-#             # If we have a string, convert it to a TextMessage
-#             messages.append(UserMessage(content=prompt))
-#         elif prompt is None:
-#             # If we have no prompt, do nothing
-#             pass
-#         else:
-#             raise ValueError(f"Unsupported query_input type: {type(query_input)}")
-#
-#         return messages
+        # Validate and render prompt
+        if input_variables and self.prompt:
+            try:
+                rendered = self.prompt.render(input_variables=input_variables)
+            except Exception as e:
+                logger.error(
+                    "Error rendering prompt with input variables %s: %s",
+                    input_variables,
+                    e,
+                )
+                raise
+            self.prompt.validate_input_variables(input_variables)
+            logger.info("Rendering prompt with input variables: %s", input_variables)
+            rendered_prompt = self.prompt.render(input_variables=input_variables)
+        elif self.prompt:
+            logger.info("Using prompt without input variables.")
+            rendered_prompt = self.prompt.prompt_string
+        # Load conversation or create new one
+        if persist and self.options.repository and self.options.repository.last:
+            logger.info("Loading or creating conversation from repository.")
+            conversation = self.options.repository.last
+        else:
+            logger.info("Creating new conversation.")
+            conversation = Conversation()
+        # Append rendered prompt to conversation as UserMessage
+        logger.info("Appending rendered prompt to conversation.")
+        conversation.messages.append(UserMessage(content=rendered_prompt))
+        # Execute conversation with engine
+        logger.info("Executing conversation with engine.")
+        updated_conversation = self._execute_with_engine(
+            conversation=conversation,
+            params=self.params,
+            options=self.options,
+        )
+        # Update topic if needed
+        if not updated_conversation.topic or updated_conversation.topic == "Untitled":
+            logger.info("Updating conversation topic.")
+            updated_conversation.topic = self._update_topic()
+        # Save conversation if needed
+        if persist and self.options.repository:
+            logger.info("Saving conversation to repository.")
+            self.options.repository.save(updated_conversation)
+        return updated_conversation
