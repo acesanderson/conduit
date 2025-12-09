@@ -19,3 +19,8 @@ class ConversationRepository(Protocol):
     def save(self, conversation: Conversation, name: str | None = None) -> None:
         """Upserts Conversation metadata and message links."""
         ...
+
+    @property
+    def last(self) -> Conversation | None:
+        """Returns the most recently used Conversation, if any."""
+        ...

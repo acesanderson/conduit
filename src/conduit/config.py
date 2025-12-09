@@ -55,6 +55,7 @@ class Settings:
     server_models: list[str]
     paths: dict[str, Path]
     default_params: GenerationParams
+    default_project_name: str
     # Lazy loaders
     default_cache: Callable[[str], ConduitCache]
     default_repository: Callable[[str], ConversationRepository]
@@ -71,16 +72,20 @@ def load_settings() -> Settings:
         "server_models": [],
         "paths": {},
         "default_params": GenerationParams(model="gpt3"),
+        "default_project_name": "conduit",
     }
 
     # Config files (medium priority)
-    assert SYSTEM_PROMPT_PATH.exists(), f"Missing config file: {system_prompt_path}"
+    assert SYSTEM_PROMPT_PATH.exists(), f"Missing config file: {SYSTEM_PROMPT_PATH}"
     system_prompt = SYSTEM_PROMPT_PATH.read_text()
     assert SETTINGS_TOML_PATH.exists(), f"Missing config file: {SETTINGS_TOML_PATH}"
     with SETTINGS_TOML_PATH.open("rb") as f:
         toml_config = tomllib.load(f)
     toml_dict = toml_config.get("settings")
     preferred_model = toml_dict.get("preferred_model", config["preferred_model"])
+    default_project_name = toml_dict.get(
+        "default_project_name", config["default_project_name"]
+    )
     verbosity_str = toml_dict.get("verbosity", config["default_verbosity"].name)
     verbosity = Verbosity[verbosity_str.upper()]
     assert SERVER_MODELS_PATH.exists(), (
@@ -101,7 +106,7 @@ def load_settings() -> Settings:
         if os.getenv("CONDUIT_PREFERRED_MODEL")
         else preferred_model
     )
-    verbosity = (
+    default_verbosity = (
         Verbosity[os.getenv("CONDUIT_VERBOSITY").upper()]
         if os.getenv("CONDUIT_VERBOSITY")
         else verbosity
@@ -154,9 +159,13 @@ def load_settings() -> Settings:
         """
         Assemble default ConduitOptions from settings.
         """
+        from conduit.domain.config.conduit_options import ConduitOptions
+
         return ConduitOptions(
             verbosity=verbosity,
+            project_name=default_project_name,
             cache=default_cache(name),
+            repository=default_repository(name),
             console=config["default_console"],
         )
 

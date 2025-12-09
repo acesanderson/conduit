@@ -5,60 +5,83 @@ LLMs produce the next token; Conduit produces the next Message.
 """
 
 from __future__ import annotations
-from conduit.config import settings
 from conduit.domain.conversation.conversation import (
     Conversation,
     ConversationError,
     ConversationState,
 )
-from conduit.domain.request.request import Request
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from conduit.domain.request.generation_params import GenerationParams
+    from conduit.domain.config.conduit_options import ConduitOptions
 
 
 class Engine:
-    def __init__(self, params: GenerationParams = settings.default_params) -> None:
-        self.params: GenerationParams = params
-
     # Main entry point
-    def run(self, conversation: Conversation) -> Conversation:
-        if not conversation.last:
-            raise ConversationError("Conversation is empty.")
 
-        match conversation.state:
-            case ConversationState.GENERATE:
-                return self._generate(conversation)
-            case ConversationState.EXECUTE:
-                return self._execute(conversation)
-            case ConversationState.TERMINATE:
-                return self._terminate(conversation)
-            case ConversationState.INCOMPLETE:
-                raise ConversationError("Conversation is incomplete.")
+    @staticmethod
+    def run(
+        conversation: Conversation,
+        params: GenerationParams,
+        options: ConduitOptions,
+        max_steps: int = 10,  # Safety limit for auto-looping
+    ) -> Conversation:
+        step_count = 0
+
+        while step_count < max_steps:
+            if not conversation.last:
+                raise ConversationError("Conversation is empty.")
+
+            match conversation.state:
+                # 1. LLM Generation
+                case ConversationState.GENERATE:
+                    conversation = Engine._generate(conversation, params, options)
+
+                # 2. Tool Execution (The Loop back)
+                case ConversationState.EXECUTE:
+                    conversation = Engine._execute(conversation, params, options)
+
+                # 3. Stop Conditions
+                case ConversationState.TERMINATE:
+                    return Engine._terminate(conversation, params, options)
+
+                case ConversationState.INCOMPLETE:
+                    raise ConversationError("Conversation is incomplete.")
+
+            step_count += 1
+
+        # If we exit the loop, we hit the limit
+        logger.warning(f"Engine hit max_steps ({max_steps}). returning current state.")
+        return conversation
 
     # Handlers
-    def _generate(self, conversation: Conversation) -> Conversation:
+    @staticmethod
+    def _generate(
+        conversation: Conversation,
+        params: GenerationParams,
+        options: ConduitOptions,
+    ) -> Conversation:
         from conduit.core.engine.generate import generate
 
-        return generate(conversation, params=conversation.metadata or self.params)
+        return generate(conversation, params, options)
 
-    def _execute(self, conversation: Conversation) -> Conversation:
+    @staticmethod
+    def _execute(
+        conversation: Conversation,
+        params: GenerationParams,
+        options: ConduitOptions,
+    ) -> Conversation:
         from conduit.core.engine.execute import execute
 
-        return execute(conversation)
+        return execute(conversation, params, options)
 
-    def _terminate(self, conversation: Conversation) -> Conversation:
+    @staticmethod
+    def _terminate(
+        conversation: Conversation,
+        params: GenerationParams,
+        options: ConduitOptions,
+    ) -> Conversation:
         from conduit.core.engine.terminate import terminate
 
-        return terminate(conversation)
-
-    # Utility Methods
-    def _assemble_request(self, conversation: Conversation) -> Request:
-        """
-        Assemble a Request object from the Conversation and GenerationParams.
-        """
-        params = conversation.metadata or self.params  # Cascade params
-        params_dict = params.model_dump()
-        request = Request(messages=conversation.messages, **params_dict)
-        return request
+        return terminate(conversation, params, options)
