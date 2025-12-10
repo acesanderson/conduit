@@ -8,7 +8,12 @@ from conduit.core.clients.openai.image_params import OpenAIImageParams
 from conduit.core.clients.openai.transcription_params import OpenAITranscriptionParams
 from conduit.domain.result.response import GenerationResponse
 from conduit.domain.result.response_metadata import ResponseMetadata, StopReason
-from conduit.domain.message.message import AssistantMessage, ImageOutput
+from conduit.domain.message.message import (
+    AssistantMessage,
+    ImageOutput,
+    ToolCall,
+    Message,
+)
 from openai import AsyncOpenAI
 from openai import AsyncStream
 from abc import ABC
@@ -16,15 +21,15 @@ import instructor
 from instructor import Instructor
 import logging
 import os
+import json
 import time
 import base64
 from typing import TYPE_CHECKING, override, Any
 
 if TYPE_CHECKING:
     from conduit.domain.result.result import GenerationResult
-    from conduit.core.parser.stream.protocol import AsyncStream
     from conduit.domain.request.request import GenerationRequest
-    from conduit.domain.message.message import Message
+    from conduit.core.parser.stream.protocol import AsyncStream
 
 logger = logging.getLogger(__name__)
 
@@ -88,17 +93,84 @@ class OpenAIClient(Client, ABC):
         """
         Return the token count for a string or a message list.
         For list[Message], it calculates the overhead per OpenAI ChatML format.
+
+        Estimations:
+        - Images: 85 tokens (low detail) or 765 tokens (high/auto detail estimate).
+        - Tool Calls: Counts function name + serialized JSON arguments.
         """
         encoding = self._get_encoding(model)
 
+        # CASE 1: Raw String
         if isinstance(payload, str):
             return len(encoding.encode(payload))
 
+        # CASE 2: Message History (ChatML)
         elif isinstance(payload, list):
-            # Lazy import to avoid circular dependency
-            raise NotImplementedError(
-                "Tokenization for list[Message] is not implemented yet."
-            )
+            num_tokens = 0
+
+            # Constants for ChatML (gpt-3.5-turbo-0613 / gpt-4)
+            # <|start|>{role/name}\n{content}<|end|>\n
+            tokens_per_message = 3
+            tokens_per_name = 1
+            tokens_reply_primer = 3
+
+            for message in payload:
+                num_tokens += tokens_per_message
+
+                # 1. Role
+                # Handle Enum or string role
+                role_str = (
+                    message.role.value
+                    if hasattr(message.role, "value")
+                    else str(message.role)
+                )
+                num_tokens += len(encoding.encode(role_str))
+
+                # 2. Content (Text or Multimodal)
+                if message.content:
+                    if isinstance(message.content, str):
+                        num_tokens += len(encoding.encode(message.content))
+                    elif isinstance(message.content, list):
+                        for block in message.content:
+                            # We use hasattr/getattr to support both Pydantic objects and dicts
+                            block_type = getattr(block, "type", None)
+
+                            # Text Block
+                            if block_type == "text":
+                                text = getattr(block, "text", "")
+                                num_tokens += len(encoding.encode(text))
+
+                            # Image Block (Estimation)
+                            elif block_type == "image_url":
+                                # Standard OpenAI Pricing:
+                                # Low detail: 85 tokens
+                                # High detail: 85 (base) + 170 per 512x512 tile.
+                                # Without dimensions, we estimate a standard 1024x1024 (4 tiles) for High/Auto.
+                                detail = getattr(block, "detail", "auto")
+                                if detail == "low":
+                                    num_tokens += 85
+                                else:
+                                    num_tokens += 765  # 85 + (4 * 170)
+
+                # 3. Tool Calls (Assistant)
+                if hasattr(message, "tool_calls") and message.tool_calls:
+                    for call in message.tool_calls:
+                        # Function name
+                        num_tokens += len(encoding.encode(call.function_name))
+                        # Arguments (JSON string)
+                        # We dump the dict to a string to estimate tokens
+                        args_str = json.dumps(call.arguments)
+                        num_tokens += len(encoding.encode(args_str))
+
+                # 4. Name (Optional override)
+                if hasattr(message, "name") and message.name:
+                    num_tokens += tokens_per_name
+                    num_tokens += len(encoding.encode(message.name))
+
+            # Add reply primer: <|start|>assistant<|message|>
+            num_tokens += tokens_reply_primer
+            return num_tokens
+
         raise ValueError("Payload must be string or list[Message]")
 
     def _get_encoding(self, model: str):
@@ -133,10 +205,12 @@ class OpenAIClient(Client, ABC):
                 return await self._generate_audio(request)
             case "transcription":
                 return await self._transcribe_audio(request)
-            case "structured":
+            case "structured_response":
                 return await self._generate_structured_response(request)
             case _:
-                raise ValueError(f"Unsupported output type: {request.output_type}")
+                raise ValueError(
+                    f"Unsupported output type: {request.params.output_type}"
+                )
 
     async def _generate_text(self, request: GenerationRequest) -> GenerationResult:
         """
@@ -425,25 +499,23 @@ class OpenAIClient(Client, ABC):
         start_time = time.time()
 
         # Make the API call with function calling
-        result = await self._client.chat.completions.create(
+        (
+            user_obj,
+            completion,
+        ) = await self._client.chat.completions.create_with_completion(
             response_model=request.params.response_model, **payload_dict
         )
 
-        # Handle streaming response
-        if isinstance(result, AsyncStream):
-            # For streaming, return the AsyncStream object directly (it's part of ConduitResult)
-            return result
-
         # Assemble response metadata
         duration = (time.time() - start_time) * 1000  # Convert to milliseconds
-        model_stem = result.model
-        input_tokens = result.usage.prompt_tokens
-        output_tokens = result.usage.completion_tokens
+        model_stem = completion.model
+        input_tokens = completion.usage.prompt_tokens
+        output_tokens = completion.usage.completion_tokens
 
         # Determine stop reason
         stop_reason = StopReason.STOP
-        if hasattr(result.choices[0], "finish_reason"):
-            finish_reason = result.choices[0].finish_reason
+        if hasattr(completion.choices[0], "finish_reason"):
+            finish_reason = completion.choices[0].finish_reason
             if finish_reason == "length":
                 stop_reason = StopReason.LENGTH
             elif finish_reason == "tool_calls":
@@ -451,14 +523,21 @@ class OpenAIClient(Client, ABC):
             elif finish_reason == "content_filter":
                 stop_reason = StopReason.CONTENT_FILTER
 
-        # Extract structured response from the function call
-        function_call = result.choices[0].message.function_call
-        structured_response = function_call.arguments if function_call else None
+        # Construct the ToolCall object
+        type = "function"  # Structured response must use function calling
+        function_name = completion.choices[0].message.tool_calls[0].function.name
+        arguments = completion.choices[0].message.tool_calls[0].function.arguments
+        arguments_dict = json.loads(arguments)
+
+        tool_call = ToolCall(
+            type=type, function_name=function_name, arguments=arguments_dict
+        )
 
         # Create AssistantMessage with parsed structured data
         assistant_message = AssistantMessage(
-            content=None,  # No text content for structured responses
-            parsed=structured_response,
+            content=completion.choices[0].message.content,
+            tool_calls=[tool_call],
+            parsed=user_obj,
         )
 
         # Create ResponseMetadata
@@ -476,22 +555,3 @@ class OpenAIClient(Client, ABC):
             request=request,
             metadata=metadata,
         )
-
-
-if __name__ == "__main__":
-    client = OpenAIClient()
-    # Generate text
-    import asyncio
-    from conduit.domain.request.request import GenerationRequest
-    from conduit.domain.request.generation_params import GenerationParams
-    from conduit.domain.message.message import UserMessage
-
-    async def test_text_generation():
-        request = GenerationRequest(
-            messages=[UserMessage(content="Hello, how are you?")],
-            params=GenerationParams(model="gpt-4o", temperature=0.7, max_tokens=100),
-        )
-        response = await client.query(request)
-        print("Text Generation Response:", response)
-
-    asyncio.run(test_text_generation())
