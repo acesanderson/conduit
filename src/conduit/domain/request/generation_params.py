@@ -17,6 +17,7 @@ class GenerationParams(BaseModel):
     Shared by Conduit (defaults), Conversation (overrides), and Request (final payload).
     """
 
+    output_type: OutputType = "text"
     model: str
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     top_p: float | None = Field(default=None, ge=0.0, le=1.0)
@@ -24,7 +25,7 @@ class GenerationParams(BaseModel):
     stop: list[str] | None = None
     stream: bool = False
     client_params: dict | None = None
-    output_type: OutputType = "text"  # Routes to different client logic
+    system: str | None = None
 
     # For structured responses; excluded from serialization, trust me
     response_model: type[BaseModel] | None = Field(default=None, exclude=True)
