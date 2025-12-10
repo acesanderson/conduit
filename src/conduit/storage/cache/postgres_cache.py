@@ -270,3 +270,32 @@ class PostgresCache:
         (model, prompt, params, etc.) are fully represented here.
         """
         return request.generate_cache_key()
+
+    def save_to_csv(self) -> None:
+        """
+        Generate csv with two columns: key, response.content
+        """
+        import csv
+
+        with self._conn_factory() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT cache_key, payload
+                FROM conduit_cache_entries
+                WHERE cache_name = %s
+                """,
+                (self.name,),
+            )
+            rows = cursor.fetchall()
+            cursor.close()
+        with open(f"{self.name}_cache_export.csv", mode="w", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow(["key", "response_content"])
+            for row in rows:
+                cache_key = row[0]
+                payload = row[1]
+                response = GenerationResponse.model_validate(payload)
+                writer.writerow([cache_key, response.content])
+
+        print(f"Cache exported to {self.name}_cache_export.csv")
