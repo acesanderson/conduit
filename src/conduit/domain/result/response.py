@@ -60,14 +60,14 @@ class GenerationResponse(BaseModel):
         return self.metadata.input_tokens + self.metadata.output_tokens
 
     @property
-    def content(self) -> str | list[str]:
+    def content(self) -> str | object:
         """
         This is the last assistant message content.
         """
         if not self.message:
             raise ValueError("No message in the response to extract content from.")
         if not self.message.content:
-            raise ValueError("The message in the response has no content.")
+            return ""
         return self.message.content
 
     @property
