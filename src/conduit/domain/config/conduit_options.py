@@ -1,13 +1,11 @@
 from typing import TYPE_CHECKING
 from dataclasses import dataclass
-
-if TYPE_CHECKING:
-    from conduit.utils.progress.verbosity import Verbosity
-    from conduit.storage.cache.protocol import ConduitCache
-    from conduit.storage.repository.protocol import (
-        ConversationRepository,
-    )
-    from rich.console import Console
+from conduit.utils.progress.verbosity import Verbosity
+from conduit.storage.cache.protocol import ConduitCache
+from conduit.storage.repository.protocol import (
+    ConversationRepository,
+)
+from rich.console import Console
 
 
 @dataclass

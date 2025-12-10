@@ -2,25 +2,25 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from conduit.domain.request.request import Request
+    from conduit.domain.request.request import GenerationRequest
     from conduit.domain.message.message import Message
 
 
 def extract_query_preview(
-    input_data: Request | list[Message] | str, max_length: int = 100
+    input_data: GenerationRequest | list[Message] | str, max_length: int = 100
 ) -> str:
     """
     Extracts a representative string from various input types for display purposes.
 
     Handles:
-    - Request objects (finds last user message)
+    - GenerationRequest objects (finds last user message)
     - List of Messages (finds last user message)
     - Multimodal content (Text + [Image])
     - Simple strings
     """
     content = ""
 
-    # Case 1: It's a Request object
+    # Case 1: It's a GenerationRequest object
     if hasattr(input_data, "messages"):
         content = _extract_from_messages(input_data.messages)
 

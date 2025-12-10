@@ -1,55 +1,104 @@
-"""
-NOTE: Refactor incoming -- ModelSync should LITERALLY just be ModelAsync wrapped with asyncio.run
+from __future__ import annotations
+import asyncio
+import logging
+from typing import Any, TYPE_CHECKING
 
+from conduit.core.model.model_async import ModelAsync
+from conduit.domain.request.generation_params import GenerationParams
 from conduit.utils.concurrency.warn import _warn_if_loop_exists
 
-class ModelSync:
-    def __init__(self):
-        self._impl = ModelAsync()
-
-    def pipe(self, input_data: str) -> dict:
-        _warn_if_loop_exists()
-        return asyncio.run(self._impl.pipe(input_data))
-"""
-
-from __future__ import annotations
-from conduit.core.model.model_base import ModelBase
-from conduit.core.clients.client_base import Client
-from conduit.domain.result.result import ConduitResult
-from typing import override, TYPE_CHECKING
-import logging
-
 if TYPE_CHECKING:
+    from conduit.domain.config.conduit_options import ConduitOptions
+    from conduit.domain.request.query_input import QueryInput
+    from conduit.domain.result.result import GenerationResult
     from conduit.domain.message.message import Message
 
 logger = logging.getLogger(__name__)
 
 
-class ModelSync(ModelBase):
-    @override
-    def get_client(self, model_name: str) -> Client:
-        from conduit.core.model.models.modelstore import ModelStore
+class ModelSync:
+    """
+    Synchronous wrapper for ModelAsync.
+    Designed for scripts and REPL usage where managing an event loop is unnecessary overhead.
+    """
 
-        return ModelStore.get_client(model_name, "sync")
+    def __init__(
+        self,
+        model: str | None = None,
+        options: ConduitOptions | None = None,
+        params: GenerationParams | None = None,
+        **kwargs: Any,
+    ):
+        """
+        Initialize the synchronous model wrapper.
 
-    @override
-    def query(self, query_input=None, **kwargs) -> ConduitResult:
-        request = self._prepare_request(query_input, **kwargs)
-        conduit_result = self._execute(request)
-        return conduit_result
+        Args:
+            model: Easy-access string alias (e.g., "gpt-4o"). Overrides params.model if provided.
+            options: Runtime configuration (logging, caching).
+            params: LLM parameters.
+            **kwargs: Additional parameters merged into GenerationParams (e.g., temperature=0.7).
+        """
+        # 1. UX Improvement: Allow string initialization
+        if model:
+            if params is None:
+                # Create minimal params if none exist
+                params = GenerationParams(model=model)
+            else:
+                # Override model in existing params
+                params.model = model
 
-    @override
+        # 2. Merge kwargs into params for convenience
+        if kwargs and params:
+            # Update pydantic model with kwargs
+            updated_data = params.model_dump()
+            updated_data.update(kwargs)
+            params = GenerationParams(**updated_data)
+        elif kwargs and params is None:
+            raise ValueError("Must provide 'model' or 'params' to initialize Model.")
+
+        # 3. Instantiate the heavy lifter
+        self._impl = ModelAsync(options=options, params=params)
+
+    def query(
+        self, query_input: QueryInput | None = None, **kwargs: Any
+    ) -> GenerationResult:
+        """
+        Synchronous entry point for generation.
+        Wraps asyncio.run() around the async implementation.
+        """
+        return self._run_sync(self._impl.query(query_input, **kwargs))
+
     def tokenize(self, payload: str | list[Message]) -> int:
         """
-        Get the token length for the given model.
-        Implementation at the client level.
+        Synchronous entry point for tokenization.
         """
-        return self.client.tokenize(model=self.model_name, payload=payload)
+        return self._run_sync(self._impl.tokenize(payload))
+
+    def _run_sync(self, coroutine: Any) -> Any:
+        """
+        Helper to run async methods synchronously.
+        """
+        _warn_if_loop_exists()
+        try:
+            return asyncio.run(coroutine)
+        except KeyboardInterrupt:
+            # Handle Ctrl+C gracefully during blocking calls
+            logger.warning("Operation cancelled by user.")
+            raise
+
+    def __getattr__(self, name: str) -> Any:
+        """
+        Proxy attribute access to the underlying ModelAsync instance.
+        Allows access to properties like self.model_name, self.client, etc.
+        """
+        return getattr(self._impl, name)
+
+    def __repr__(self) -> str:
+        return f"ModelSync(wrapping={self._impl!r})"
 
 
 if __name__ == "__main__":
-    model = ModelSync(model_name="gpt3", cache="testing")
+    model = ModelSync("gpt3", temperature=1.0)
+    model.enable_cache("test")
     result = model.query("Hello, world!")
     print(result)
-    ts = model.tokenize("i am the very model of a modern major general")
-    print(ts)

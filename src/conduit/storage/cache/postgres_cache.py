@@ -3,8 +3,8 @@ import time
 from contextlib import AbstractContextManager
 from collections.abc import Callable
 from typing import TYPE_CHECKING
-from conduit.domain.result.response import Response
-from conduit.domain.request.request import Request
+from conduit.domain.result.response import GenerationResponse
+from conduit.domain.request.request import GenerationRequest
 
 if TYPE_CHECKING:
     from psycopg2.extensions import connection
@@ -56,7 +56,7 @@ class PostgresCache:
         self._ensure_schema()
 
     # API per ConduitCache interface
-    def get(self, request: Request) -> Response | None:
+    def get(self, request: GenerationRequest) -> GenerationResponse | None:
         key = self._request_to_key(request)
 
         with self._conn_factory() as conn:
@@ -79,9 +79,9 @@ class PostgresCache:
         self._hits += 1
         payload = row[0]
 
-        return Response.model_validate(payload)
+        return GenerationResponse.model_validate(payload)
 
-    def set(self, request: Request, response: Response) -> None:
+    def set(self, request: GenerationRequest, response: GenerationResponse) -> None:
         key = self._request_to_key(request)
 
         payload = response.model_dump_json()
@@ -262,11 +262,11 @@ class PostgresCache:
         port = params.get("port", "")
         return f"{dbname}@{host}:{port}"
 
-    def _request_to_key(self, request: Request) -> str:
+    def _request_to_key(self, request: GenerationRequest) -> str:
         """
-        Stable, deterministic key for a given Request.
+        Stable, deterministic key for a given GenerationRequest.
 
-        You should ensure that Request's fields used for LLM behavior
+        You should ensure that GenerationRequest's fields used for LLM behavior
         (model, prompt, params, etc.) are fully represented here.
         """
         return request.generate_cache_key()

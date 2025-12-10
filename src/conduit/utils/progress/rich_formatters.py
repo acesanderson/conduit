@@ -1,6 +1,6 @@
 from __future__ import annotations
 import json
-from conduit.domain.result.response import Response
+from conduit.domain.result.response import GenerationResponse
 from conduit.utils.progress.verbosity import Verbosity
 from conduit.utils.progress.plain_formatters import _extract_user_prompt
 
@@ -12,11 +12,11 @@ from rich.syntax import Syntax
 from rich import box
 
 
-# --- Rich Formatters: Response ---
+# --- Rich Formatters: GenerationResponse ---
 def format_response_rich(
-    response: Response, verbosity: Verbosity
+    response: GenerationResponse, verbosity: Verbosity
 ) -> RenderableType | None:
-    """Entry point for formatting a Response object into a Rich Renderable."""
+    """Entry point for formatting a GenerationResponse object into a Rich Renderable."""
     if verbosity == Verbosity.SUMMARY:
         return _response_summary_rich(response)
     elif verbosity == Verbosity.DETAILED:
@@ -28,7 +28,7 @@ def format_response_rich(
     return None
 
 
-def _response_summary_rich(response: Response) -> Panel:
+def _response_summary_rich(response: GenerationResponse) -> Panel:
     content = Text()
 
     # Truncate content
@@ -44,14 +44,14 @@ def _response_summary_rich(response: Response) -> Panel:
 
     return Panel(
         content,
-        title="[bold blue]Response Summary[/bold blue]",
+        title="[bold blue]GenerationResponse Summary[/bold blue]",
         border_style="blue",
         expand=False,
     )
 
 
-def _response_detailed_rich(response: Response) -> Panel:
-    """Detailed view: User prompt + Response content (truncated) + Metadata."""
+def _response_detailed_rich(response: GenerationResponse) -> Panel:
+    """Detailed view: User prompt + GenerationResponse content (truncated) + Metadata."""
     grid = Table.grid(padding=(0, 1))
     grid.add_column("Label", style="bold yellow", justify="right")
     grid.add_column("Content")
@@ -86,7 +86,7 @@ def _response_detailed_rich(response: Response) -> Panel:
     )
 
 
-def _response_complete_rich(response: Response) -> Panel:
+def _response_complete_rich(response: GenerationResponse) -> Panel:
     """Complete view: Full messages, no truncation."""
     grid = Table.grid(padding=(0, 1))
     grid.add_column("Role", style="bold", width=10)
@@ -100,7 +100,7 @@ def _response_complete_rich(response: Response) -> Panel:
             )
             grid.add_row("", "")  # Spacer
 
-    # Response
+    # GenerationResponse
     grid.add_row("[blue]ASSISTANT[/blue]", str(response.content))
 
     return Panel(
@@ -111,7 +111,7 @@ def _response_complete_rich(response: Response) -> Panel:
     )
 
 
-def _response_debug_rich(response: Response) -> Panel:
+def _response_debug_rich(response: GenerationResponse) -> Panel:
     """Debug view: Full JSON syntax highlighting."""
     debug_data = response.model_dump(mode="json", exclude_none=True)
     if response.request:
@@ -122,6 +122,6 @@ def _response_debug_rich(response: Response) -> Panel:
 
     return Panel(
         syntax,
-        title="[bold red]DEBUG: Response Object[/bold red]",
+        title="[bold red]DEBUG: GenerationResponse Object[/bold red]",
         border_style="red",
     )

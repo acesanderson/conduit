@@ -129,7 +129,7 @@ def load_settings() -> Settings:
         model=preferred_model,
     )
 
-    def default_cache(name: str) -> ConduitCache:
+    def default_cache(name: str = default_project_name) -> ConduitCache:
         """
         Lazy loader for the default PostgresCache instance.
         """
@@ -141,7 +141,7 @@ def load_settings() -> Settings:
         )
         return PostgresCache(name=name, conn_factory=conn_factory)
 
-    def default_repository(name: str) -> ConversationRepository:
+    def default_repository(name: str = default_project_name) -> ConversationRepository:
         """
         Lazy loader for the default PostgresConversationRepository instance.
         """
@@ -155,7 +155,7 @@ def load_settings() -> Settings:
         )
         return PostgresConversationRepository(name=name, conn_factory=conn_factory)
 
-    def default_conduit_options(name: str) -> ConduitOptions:
+    def default_conduit_options() -> ConduitOptions:
         """
         Assemble default ConduitOptions from settings.
         """
@@ -164,8 +164,8 @@ def load_settings() -> Settings:
         return ConduitOptions(
             verbosity=verbosity,
             project_name=default_project_name,
-            cache=default_cache(name),
-            repository=default_repository(name),
+            cache=default_cache(),
+            repository=default_repository(),
             console=config["default_console"],
         )
 

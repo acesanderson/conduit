@@ -38,17 +38,3 @@ class DisplayHandler(Protocol):
         Display cache hit state (e.g., Lightning Bolt or 'Cached').
         """
         ...
-
-    def show_failed(
-        self,
-        model_name: str,
-        query_preview: str,
-        error: str,
-        verbosity: Verbosity,
-        error_obj: Any | None = None,
-    ) -> None:
-        """
-        Display failure state (e.g., Red X or 'Failed').
-        Should also handle detailed error printing if verbosity allows.
-        """
-        ...
