@@ -2,28 +2,28 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from datetime import datetime
 import json
-from conduit.domain.result.response import Response
+from conduit.domain.result.response import GenerationResponse
 from conduit.utils.progress.verbosity import Verbosity
 from conduit.domain.message.message import UserMessage
 
 if TYPE_CHECKING:
-    from conduit.domain.request.request import Request
+    from conduit.domain.request.request import GenerationRequest
 
 # --- Helpers ---
 
 
-def _extract_user_prompt(request: Request) -> str:
+def _extract_user_prompt(request: GenerationRequest) -> str:
     """Extract a preview of the user prompt from the request."""
     user_message = request.messages[-1].content
     assert isinstance(user_message, UserMessage)
     return str(user_message)
 
 
-# --- Plain Text Formatters: Response ---
+# --- Plain Text Formatters: GenerationResponse ---
 
 
-def format_response_plain(response: Response, verbosity: Verbosity) -> str:
-    """Entry point for formatting a Response object into plain text."""
+def format_response_plain(response: GenerationResponse, verbosity: Verbosity) -> str:
+    """Entry point for formatting a GenerationResponse object into plain text."""
     if verbosity == Verbosity.SUMMARY:
         return _response_summary_plain(response)
     elif verbosity == Verbosity.DETAILED:
@@ -35,7 +35,7 @@ def format_response_plain(response: Response, verbosity: Verbosity) -> str:
     return ""
 
 
-def _response_summary_plain(response: Response) -> str:
+def _response_summary_plain(response: GenerationResponse) -> str:
     lines = []
     timestamp = datetime.now().strftime("%H:%M:%S")
     duration = getattr(response.metadata, "duration", 0)
@@ -52,7 +52,7 @@ def _response_summary_plain(response: Response) -> str:
     return "\n".join(lines)
 
 
-def _response_detailed_plain(response: Response) -> str:
+def _response_detailed_plain(response: GenerationResponse) -> str:
     lines = []
     timestamp = datetime.now().strftime("%H:%M:%S")
     duration = getattr(response.metadata, "duration", 0)
@@ -87,7 +87,7 @@ def _response_detailed_plain(response: Response) -> str:
     return "\n".join(lines)
 
 
-def _response_complete_plain(response: Response) -> str:
+def _response_complete_plain(response: GenerationResponse) -> str:
     lines = []
     timestamp = datetime.now().strftime("%H:%M:%S")
     duration = getattr(response.metadata, "duration", 0)
@@ -113,7 +113,7 @@ def _response_complete_plain(response: Response) -> str:
             meta.append(f"Temp: {response.request.params.temperature}")
 
         # Check for parser
-        # Note: Response model logic usually lives in params, tricky to extract name dynamically
+        # Note: GenerationResponse model logic usually lives in params, tricky to extract name dynamically
         # if the class is hidden, but we try:
         if response.request.params.response_model:
             parser_name = str(response.request.params.response_model)
@@ -130,7 +130,7 @@ def _response_complete_plain(response: Response) -> str:
     return "\n".join(lines)
 
 
-def _response_debug_plain(response: Response) -> str:
+def _response_debug_plain(response: GenerationResponse) -> str:
     timestamp = datetime.now().strftime("%H:%M:%S")
     duration = getattr(response.metadata, "duration", 0)
 
