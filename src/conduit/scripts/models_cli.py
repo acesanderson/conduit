@@ -1,3 +1,4 @@
+import sys
 import argparse
 from collections import namedtuple
 from conduit.model.models.modelstore import ModelStore
@@ -32,6 +33,9 @@ def main():
     parser.add_argument(
         "-p", "--provider", type=str, help="Provider of the model to filter by."
     )
+    parser.add_argument(
+        "-a", "--aliases", action="store_true", help="Show model aliases."
+    )
     args = parser.parse_args()
     # Validate arguments
     if args.type:
@@ -51,6 +55,13 @@ def main():
                 f"Model {args.model} not found. Available models: {', '.join(models)}."
             )
     # Run commands
+    if args.aliases:
+        from rich.console import Console
+
+        console = Console()
+        aliases = ModelStore.aliases()
+        console.print(aliases)
+        sys.exit()
     if args.model:
         try:
             modelspec = ModelStore.get_model(args.model)

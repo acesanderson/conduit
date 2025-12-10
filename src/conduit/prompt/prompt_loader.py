@@ -14,7 +14,12 @@ Development use case (scaffolding the directory + files):
     prompt = loader['example_prompt']  # Loads example_prompt.jinja2 lazily, creating the file if it doesn't exist
 """
 
+from __future__ import annotations
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from conduit.prompt.prompt import Prompt
 
 
 class PromptLoader:
@@ -47,9 +52,11 @@ class PromptLoader:
 
         self._cache = {}
 
-    @property
     def keys(self):
         return list(self.file_map.keys())
+
+    def items(self) -> list[tuple[str, Prompt]]:
+        return [(key, self[key]) for key in self.keys()]
 
     def __getitem__(self, key):
         if key not in self._cache:
@@ -72,3 +79,6 @@ class PromptLoader:
 
     def __str__(self):
         return f"PromptLoader(base_dir={self.base_dir}, keys={self.keys})"
+
+    def __len__(self) -> int:
+        return len(self.file_map)
