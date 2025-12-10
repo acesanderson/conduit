@@ -1,12 +1,10 @@
 from typing import Any, override
 from rich.console import Console
 from rich.status import Status
-
 from conduit.utils.progress.protocol import DisplayHandler
 from conduit.utils.progress.verbosity import Verbosity
 from conduit.utils.progress.rich_formatters import (
     format_response_rich,
-    format_error_rich,
 )
 
 
@@ -84,27 +82,3 @@ class RichProgressHandler(DisplayHandler):
             self.console.print(
                 f"⚡ [bold cyan]{model_name}[/bold cyan] | {query_preview} | [cyan]Cached[/cyan] [dim]({duration:.3f}s)[/dim]"
             )
-
-    @override
-    def show_failed(
-        self,
-        model_name: str,
-        query_preview: str,
-        error: str,
-        verbosity: Verbosity,
-        error_obj: Any | None = None,
-    ) -> None:
-        self._stop_spinner()
-
-        if verbosity == Verbosity.SILENT:
-            return
-
-        if verbosity >= Verbosity.PROGRESS:
-            self.console.print(
-                f"[red]✗[/red] [bold white]{model_name}[/bold white] | {query_preview} | [red]Failed: {error}[/red]"
-            )
-
-            if error_obj and verbosity >= Verbosity.SUMMARY:
-                panel = format_error_rich(error_obj, verbosity)
-                if panel:
-                    self.console.print(panel)

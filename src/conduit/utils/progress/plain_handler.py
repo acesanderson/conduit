@@ -5,7 +5,6 @@ from conduit.utils.progress.protocol import DisplayHandler
 from conduit.utils.progress.verbosity import Verbosity
 from conduit.utils.progress.plain_formatters import (
     format_response_plain,
-    format_error_plain,
 )
 
 
@@ -64,21 +63,3 @@ class PlainProgressHandler(DisplayHandler):
                 file=sys.stderr,
                 flush=True,
             )
-
-    @override
-    def show_failed(
-        self,
-        model_name: str,
-        query_preview: str,
-        error: str,
-        verbosity: Verbosity,
-        error_obj: Any | None = None,
-    ) -> None:
-        if verbosity >= Verbosity.PROGRESS:
-            ts = self._get_timestamp()
-            print(f"{ts} [{model_name}] Failed: {error}", file=sys.stderr, flush=True)
-
-        if error_obj and verbosity >= Verbosity.SUMMARY:
-            text = format_error_plain(error_obj, verbosity)
-            if text:
-                print(text, file=sys.stderr, flush=True)
