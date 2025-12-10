@@ -1,231 +1,238 @@
 from __future__ import annotations
+
 import asyncio
 import logging
-from typing import Any, TYPE_CHECKING, override
-from dataclasses import fields, replace
-from conduit.core.model.model_async import ModelAsync
+from dataclasses import replace
+from typing import Any, TYPE_CHECKING
+
+from conduit.config import settings
+from conduit.core.engine.engine import Engine
+from conduit.domain.conversation.conversation import Conversation
+from conduit.domain.message.message import UserMessage
 from conduit.domain.request.generation_params import GenerationParams
+from conduit.domain.config.conduit_options import ConduitOptions
 from conduit.core.prompt.prompt import Prompt
 from conduit.utils.concurrency.warn import _warn_if_loop_exists
 
 if TYPE_CHECKING:
-    from conduit.domain.config.conduit_options import ConduitOptions
-    from conduit.domain.request.query_input import QueryInput
-    from conduit.domain.result.result import GenerationResult
-    from conduit.domain.message.message import Message
+    from rich.console import Console
+    from conduit.utils.progress.verbosity import Verbosity
 
 logger = logging.getLogger(__name__)
 
 
-class ModelSync:
+class ConduitSync:
     """
-    Synchronous wrapper for ModelAsync.
-    A Configured Pipe -- the UX sineater of the Conduit framework.
-    Designed for scripts and REPL usage where managing an event loop is unnecessary overhead.
-    State regarding 'How to process' is held in self (Prompt, Params, Options).
-    State regarding 'What to process' is passed to run().
+    Synchronous, UX-focused façade over the Engine.
+
+    - Holds *how* to process: Prompt, GenerationParams, ConduitOptions.
+    - Takes *what* to process at call-time via input variables.
     """
 
     def __init__(
         self,
-        # Required
         prompt: Prompt,
-        # Optional -- a "stash" of default configurations
         params: GenerationParams | None = None,
         options: ConduitOptions | None = None,
     ):
+        self.prompt = prompt
+        self.params = params or settings.default_params
+        self.options = options or settings.default_conduit_options()
+
+    # -------------------------------------------------------------------------
+    # Sugar: payload-only
+    # -------------------------------------------------------------------------
+    def __call__(self, **input_variables: Any) -> Conversation:
         """
-        Initialize the synchronous model wrapper.
+        Syntactic sugar for `run(input_variables=...)`.
+
+        IMPORTANT: this is *payload-only*. No params/options knobs here;
+        those live on `run()`.
+        """
+        return self.run(input_variables=input_variables)
+
+    # -------------------------------------------------------------------------
+    # Main entry point
+    # -------------------------------------------------------------------------
+    def run(
+        self,
+        input_variables: dict[str, Any] | None = None,
+        *,
+        cached: bool | None = None,
+        persist: bool | None = None,
+        verbosity: "Verbosity | None" = None,
+        param_overrides: dict[str, Any] | None = None,
+    ) -> Conversation:
+        """
+        Execute the configured Conduit synchronously.
 
         Args:
-            model: Easy-access string alias (e.g., "gpt-4o"). Overrides params.model if provided.
-            options: Runtime configuration (logging, caching).
-            params: LLM parameters.
-            **kwargs: Additional parameters merged into GenerationParams (e.g., temperature=0.7).
-        """
-        self.prompt: Prompt = prompt
-        self.params: GenerationParams | None = params
-        self.options: ConduitOptions | None = options
+            input_variables:
+                Template variables for the prompt string.
+            cached:
+                Per-call override for caching:
+                - None: keep instance-level option
+                - False: disable cache
+                - True: enable cache (using a default cache if none configured)
+            persist:
+                Per-call override for persistence:
+                - None: keep instance-level option
+                - False: disable repository
+                - True: enable repository (using a default repo if none configured)
+            verbosity:
+                Per-call override for progress / logging verbosity.
+            param_overrides:
+                Dict of fields to merge into GenerationParams
+                (e.g. {"temperature": 0.9}).
 
-        # 3. Instantiate the heavy lifter
-        self._impl = ModelAsync(options=options, params=params)
+        Returns:
+            Conversation: the final conversation after Engine.run.
+        """
+        # 1) Render prompt
+        if input_variables:
+            rendered = self.prompt.render(input_variables=input_variables)
+        else:
+            rendered = self.prompt.prompt_string
 
-    def query(
-        self, query_input: QueryInput | None = None, **kwargs: Any
-    ) -> GenerationResult:
-        """
-        Synchronous entry point for generation.
-        Wraps asyncio.run() around the async implementation.
-        """
-        return self._run_sync(self._impl.query(query_input, **kwargs))
+        # 2) Build a fresh conversation (you can later add repo/history logic)
+        conversation = Conversation()
+        conversation.messages.append(UserMessage(content=rendered))
 
-    def tokenize(self, payload: str | list[Message]) -> int:
-        """
-        Synchronous entry point for tokenization.
-        """
-        return self._run_sync(self._impl.tokenize(payload))
+        # 3) Cascade params/options
+        effective_params = self._build_params(param_overrides)
+        effective_options = self._build_options(
+            cached=cached,
+            persist=persist,
+            verbosity=verbosity,
+        )
 
+        # 4) Drive the Engine asynchronously, wrap in sync
+        return self._run_sync(
+            Engine.run(
+                conversation=conversation,
+                params=effective_params,
+                options=effective_options,
+            )
+        )
+
+    # -------------------------------------------------------------------------
+    # Factory
+    # -------------------------------------------------------------------------
+    @classmethod
+    def create(
+        cls,
+        model: str,
+        prompt: Prompt | str,
+        *,
+        project_name: str = settings.default_project_name,
+        persist: bool | str = False,
+        cached: bool | str = False,
+        verbosity: "Verbosity" = settings.default_verbosity,
+        console: "Console | None" = None,
+        system: str | None = None,  # placeholder for future system-message wiring
+        **param_kwargs: Any,
+    ) -> "ConduitSync":
+        """
+        Factory with sensible defaults.
+
+        - `model`: required model name/alias (used for GenerationParams.model).
+        - `prompt`: str or Prompt.
+        - `param_kwargs`: go directly into GenerationParams(...).
+        - `cached` / `persist` / `verbosity` / `console`:
+            baked into ConduitOptions as baseline behavior.
+        """
+        # Prompt coercion
+        if isinstance(prompt, str):
+            prompt_obj = Prompt(prompt)
+        elif isinstance(prompt, Prompt):
+            prompt_obj = prompt
+        else:
+            raise TypeError(f"Unsupported prompt type: {type(prompt)}")
+
+        # Params: seed with model + any extra params
+        params = GenerationParams(model=model, **param_kwargs)
+
+        # Options: start from global defaults
+        options = settings.default_conduit_options()
+        options = replace(options, verbosity=verbosity)
+
+        if console is not None:
+            options = replace(options, console=console)
+
+        # Cache wiring
+        if cached:
+            cache_name = cached if isinstance(cached, str) else project_name
+            cache = settings.default_cache(name=cache_name)
+            options = replace(options, cache=cache)
+
+        # Persistence wiring
+        if persist:
+            repo_name = persist if isinstance(persist, str) else project_name
+            repository = settings.default_repository(name=repo_name)
+            options = replace(options, repository=repository)
+
+        # System prompt: not yet threaded; warn so you don't forget.
+        if system:
+            logger.warning(
+                "ConduitSync.create(system=...) is not wired into conversations yet. "
+                "For now, bake system instructions into the Prompt or into your Conversation builder."
+            )
+
+        return cls(prompt=prompt_obj, params=params, options=options)
+
+    # -------------------------------------------------------------------------
+    # Helpers
+    # -------------------------------------------------------------------------
+    def _build_params(self, param_overrides: dict[str, Any] | None) -> GenerationParams:
+        base = self.params or settings.default_params
+        if not param_overrides:
+            return base
+        return base.model_copy(update=param_overrides)
+
+    def _build_options(
+        self,
+        *,
+        cached: bool | None,
+        persist: bool | None,
+        verbosity: "Verbosity | None",
+    ) -> ConduitOptions:
+        base = self.options or settings.default_conduit_options()
+        # Copy so we don't mutate instance defaults
+        opts = replace(base)
+
+        if verbosity is not None:
+            opts.verbosity = verbosity
+
+        # Simple enable/disable knobs; names are handled in `create`
+        if cached is not None:
+            if not cached:
+                opts.cache = None
+            elif opts.cache is None:
+                opts.cache = settings.default_cache(name=settings.default_project_name)
+
+        if persist is not None:
+            if not persist:
+                opts.repository = None
+            elif opts.repository is None:
+                opts.repository = settings.default_repository(
+                    name=settings.default_project_name
+                )
+
+        return opts
+
+    # -------------------------------------------------------------------------
+    # Async plumbing
+    # -------------------------------------------------------------------------
     def _run_sync(self, coroutine: Any) -> Any:
-        """
-        Helper to run async methods synchronously.
-        """
         _warn_if_loop_exists()
         try:
             return asyncio.run(coroutine)
         except KeyboardInterrupt:
-            # Handle Ctrl+C gracefully during blocking calls
             logger.warning("Operation cancelled by user.")
             raise
 
-    @override
-    def __getattr__(self, name: str) -> Any:
-        """
-        Proxy attribute access to the underlying ModelAsync instance.
-        Allows access to properties like self.model_name, self.client, etc.
-        """
-        return getattr(self._impl, name)
-
-    @override
     def __repr__(self) -> str:
-        return f"ModelSync(wrapping={self._impl!r})"
-
-    @classmethod
-    def create(
-        cls,
-        model: str | ModelSync,
-        prompt: Prompt | str,
-        # Configurations
-        response_model: type[BaseModel] | None = None,
-        project_name: str = settings.default_project_name,
-        persist: bool | str = False,
-        cached: bool | str = False,
-        verbosity: Verbosity = settings.default_verbosity,
-        console: Console | None = None,
-        system: str | None = None,
-        **kwargs,  # Additional kwargs for GenerationParams
-    ) -> ConduitSync:
-        """
-        Factory method to create a ConduitSync instance with sensible defaults.
-        """
-        # Coerce Model and Prompt
-        ## Model
-        if isinstance(model, ModelSync):
-            model_name = model.model_name
-        elif isinstance(model, str):
-            model_name = model
-        else:
-            raise ValueError(f"Unsupported model type: {type(model)}")
-        ## Prompt
-        if isinstance(prompt, str):
-            prompt_instance = Prompt(prompt)
-        elif isinstance(prompt, Prompt):
-            prompt_instance = prompt
-
-        # Construct params and options from kwargs
-        params_from_kwargs, options_from_kwargs = self._from_kwargs(kwargs)
-        params = GenerationParams(**params_from_kwargs)
-        options = ConduitOptions(**options_from_kwargs)
-
-        # Repository
-        repository_instance = None
-        if persist:
-            repository_instance: ConversationRepository = settings.default_repository(
-                name=project_name
-            )
-        # Cache
-        cache_instance = None
-        if cached:
-            cache_instance: settings.default_cache(name=project_name)
-        # Params
-        params_instance = None
-        if params:
-            if model_name not in params:
-                params[model_name] = {}
-            params[model_name].update(kwargs)
-            params_instance = GenerationParams.from_dict(params[model_name])
-        else:
-            params_instance = GenerationParams(**params)
-        conduit_options = ConduitOptions(
-            verbosity=verbosity,
-            cache=cache_instance,
-            console=console,
+        return (
+            f"ConduitSync(prompt={self.prompt!r}, "
+            f"params={self.params!r}, options={self.options!r})"
         )
-        return cls(
-            prompt=prompt_instance,
-            params=params_instance,
-            options=conduit_options,
-            repository=repository_instance,
-            parser=parser,
-        )
-
-    # def run(..., **kwargs):
-    #     param_overrides, option_overrides = self._from_kwargs(kwargs)
-    #
-    #     # Base params/options: instance-level defaults or global defaults
-    #     base_params = self.params or GenerationParams()
-    #     base_options = self.options or settings.default_conduit_options()
-    #
-    #     # Apply overrides on top (kwargs win)
-    #     local_params = base_params.model_copy(update=param_overrides)
-    #     local_options = replace(base_options, **option_overrides)
-    #
-    #     return self.engine.run(
-    #         messages=self._make_conversation(),
-    #         params=local_params,
-    #         options=local_options,
-    #     )
-    #
-
-    def _from_kwargs(self, kwargs: dict) -> tuple[dict, dict]:
-        """
-        Separate kwargs into those for GenerationParams and those for ConduitOptions.
-        """
-        # GenerationParams fields -- it's a BaseModel, so .schema()["properties"] works
-        gen_param_fields = GenerationParams.model_fields.keys()
-        params_dict = {k: v for k, v in kwargs.items() if k in gen_param_fields}
-        # ConduitOptions is a @dataclass -- use its fields
-
-        option_fields = {f.name for f in fields(ConduitOptions)}
-        options_dict = {k: v for k, v in kwargs.items() if k in option_fields}
-        # Check for unknown kwargs
-        known = gen_param_fields | option_fields
-        unknown = set(kwargs.keys()) - known
-        if unknown:
-            raise TypeError(f"Unknown kwargs: {sorted(unknown)}")
-        return params_dict, options_dict
-
-
-if __name__ == "__main__":
-    from pydantic import BaseModel
-
-    Conduit = ConduitSync
-
-    class Frog(BaseModel):
-        color: str
-        legs: int
-        most_embarrasing_moment: str
-        year_he_received_his_helicopter_pilot_license: int
-        reason_he_lost_his_helicopter_pilot_license: str
-        favorite_helicopter_model: str
-        no_of_ex_wives: int
-        no_of_life_regrets: int
-        number_of_consecutive_life_sentences: int
-        favorite_netflix_show: str
-
-    model = ModelSync("gpt4")
-    prompt = Prompt("Tell me a joke about {topic}. Then design a Frog.")
-    system = "You are a helpful assistant."
-    conduit = Conduit(
-        model=model,
-        prompt=prompt,
-        system=system,
-        # Conduit params
-        verbosity=Verbosity.COMPLETE,
-        cache="test",
-        persist=True,
-        # Generation Params (kwargs) -- note, special handling for "model"
-        response_model=Frog,
-    )
-
-    input_variables = {"topic": "helicopters"}
-    response = conduit.run(input_variables=input_variables)
