@@ -3,6 +3,8 @@ from conduit.core.model.model_base import ModelBase
 from conduit.core.clients.client_base import Client
 from conduit.domain.result.result import GenerationResult
 from conduit.domain.request.query_input import QueryInput
+from conduit.domain.request.generation_params import GenerationParams
+from conduit.domain.config.conduit_options import ConduitOptions
 from typing import override, TYPE_CHECKING
 import logging
 
@@ -13,6 +15,11 @@ logger = logging.getLogger(__name__)
 
 
 class ModelAsync(ModelBase):
+    """
+    Async implementation of Model - a stateless "dumb pipe".
+    Execution context (params/options) passed explicitly to methods.
+    """
+
     @override
     def get_client(self, model_name: str) -> Client:
         from conduit.core.model.models.modelstore import ModelStore
@@ -21,11 +28,25 @@ class ModelAsync(ModelBase):
 
     @override
     async def query(
-        self, query_input: QueryInput | None = None, **kwargs
+        self,
+        query_input: QueryInput,
+        params: GenerationParams,
+        options: ConduitOptions,
     ) -> GenerationResult:
-        request = self._prepare_request(query_input, **kwargs)
-        conduit_result = await self.pipe(request)
-        return conduit_result
+        """
+        Execute a query with explicit execution context.
+
+        Args:
+            query_input: The input messages or string
+            params: Generation parameters (model, temperature, etc.)
+            options: Conduit options (cache, console, etc.)
+
+        Returns:
+            GenerationResult from the LLM
+        """
+        request = self._prepare_request(query_input, params)
+        result = await self.pipe(request, options)
+        return result
 
     @override
     async def tokenize(self, payload: str | list[Message]) -> int:
@@ -37,13 +58,17 @@ class ModelAsync(ModelBase):
 
 
 if __name__ == "__main__":
-    from conduit.domain.request.generation_params import GenerationParams
+    from conduit.config import settings
     import asyncio
 
     async def main():
-        model = ModelAsync(params=GenerationParams(model="gpt3"))
-        result = await model.query("Hello, world!")
+        model = ModelAsync("gpt3")
+        params = GenerationParams(model="gpt3")
+        options = settings.default_conduit_options()
+
+        result = await model.query("Hello, world!", params, options)
         print(result)
+
         ts = await model.tokenize("i am the very model of a modern major general")
         print(ts)
 

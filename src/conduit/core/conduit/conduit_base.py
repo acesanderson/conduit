@@ -4,32 +4,33 @@ from conduit.domain.request.generation_params import GenerationParams
 from conduit.domain.conversation.conversation import Conversation
 from conduit.domain.config.conduit_options import ConduitOptions
 from conduit.domain.message.message import UserMessage
-from typing import TYPE_CHECKING
+from conduit.core.prompt.prompt import Prompt
+from typing import TYPE_CHECKING, Any
 import logging
 
-logger = logging.getLogger(__name__)
-
 if TYPE_CHECKING:
-    from conduit.core.prompt.prompt import Prompt
     from conduit.utils.progress.verbosity import Verbosity
-    from conduit.core.engine.engine import Engine
-    from conduit.domain.message.message import Message
+    from rich.console import Console
+
+logger = logging.getLogger(__name__)
 
 
 class ConduitBase:
     """
-    A dumb pipe.
+    Stem class for Conduit implementations; not to be used directly.
+    Holds shared logic for conversation orchestration via Engine.
     """
 
-    def __init__(
-        self,
-        # Required
-        prompt: Prompt,
-    ):
-        # Initial attributes
+    def __init__(self, prompt: Prompt):
+        """
+        Initialize the Conduit base with only its identity.
+
+        Args:
+            prompt: The template/prompt configuration (the unique identity of this Conduit)
+        """
         self.prompt: Prompt = prompt
 
-    # Our "pipe" to Engine
+    # Core delegation (the "dumb pipe")
     async def pipe(
         self,
         conversation: Conversation,
@@ -37,81 +38,65 @@ class ConduitBase:
         options: ConduitOptions,
     ) -> Conversation:
         """
-        Given a conversation, execute it using an Engine.
-        If needed, can take decorators for telemetry, logging, progress, caching, etc.
+        Given a conversation, execute it using Engine.
+        This is the core delegation point - analogous to Model.pipe().
         """
-        new_conversation = await Engine.run(conversation, params, options)
-        return new_conversation
+        from conduit.core.engine.engine import Engine
 
-    def _update_topic(self, conversation: Conversation) -> Conversation:
-        """
-        Create a title for the current conversation based on the prompt.
-        Will leverage an external service.
-        """
-        raise NotImplementedError("_create_title not yet implemented.")
+        return await Engine.run(conversation, params, options)
 
-    async def _update_topic_async(self, conversation: Conversation) -> Conversation:
+    # Pure CPU helper methods
+    def _render_prompt(self, input_variables: dict[str, Any] | None) -> str:
         """
-        Create a title for the current conversation based on the prompt.
-        Will leverage an external service.
+        PURE CPU: Render the prompt template with input variables.
         """
-        raise NotImplementedError("_create_title not yet implemented.")
-
-    async def run(
-        self,
-        input_variables: dict[str, str] | None = None,
-        messages: list[Message] | None = None,
-        params: GenerationParams | None = None,
-        options: ConduitOptions | None = None,
-        # Progress tracking
-        index: int = 0,
-        total: int = 0,
-        # Possible overrides
-        cached: bool = True,
-        persist: bool = True,
-        include_history: bool = True,
-        verbosity: Verbosity | None = None,
-    ) -> Conversation:
-        # Validate and render prompt
-        if input_variables and self.prompt:
-            try:
-                rendered = self.prompt.render(input_variables=input_variables)
-            except Exception as e:
-                logger.error(
-                    "Error rendering prompt with input variables %s: %s",
-                    input_variables,
-                    e,
-                )
-                raise
+        if input_variables:
             self.prompt.validate_input_variables(input_variables)
-            logger.info("Rendering prompt with input variables: %s", input_variables)
-            rendered_prompt = self.prompt.render(input_variables=input_variables)
-        elif self.prompt:
-            logger.info("Using prompt without input variables.")
-            rendered_prompt = self.prompt.prompt_string
-        # Load conversation or create new one
-        if persist and self.options.repository and self.options.repository.last:
-            logger.info("Loading or creating conversation from repository.")
-            conversation = self.options.repository.last
+            return self.prompt.render(input_variables=input_variables)
+        return self.prompt.prompt_string
+
+    def _prepare_conversation(
+        self, rendered_prompt: str, options: ConduitOptions
+    ) -> Conversation:
+        """
+        PURE CPU: Build initial conversation object.
+        Load from repository if enabled and last conversation exists.
+        """
+        # Load from repository if persistence is enabled
+        if options.repository and options.repository.last:
+            logger.info("Loading last conversation from repository.")
+            conversation = options.repository.last
         else:
             logger.info("Creating new conversation.")
             conversation = Conversation()
-        # Append rendered prompt to conversation as UserMessage
-        logger.info("Appending rendered prompt to conversation.")
+
+        # Append rendered prompt as UserMessage
         conversation.messages.append(UserMessage(content=rendered_prompt))
-        # Execute conversation with engine
-        logger.info("Executing conversation with engine.")
-        updated_conversation = self._execute_with_engine(
-            conversation=conversation,
-            params=self.params,
-            options=self.options,
+        return conversation
+
+    # Abstract methods (must be implemented by subclasses)
+    async def run(
+        self,
+        input_variables: dict[str, Any] | None,
+        params: GenerationParams,
+        options: ConduitOptions,
+    ) -> Conversation:
+        """
+        Main entry point for executing the Conduit.
+        Must be implemented by subclasses (sync or async).
+
+        Args:
+            input_variables: Template variables for the prompt
+            params: Generation parameters (model, temperature, etc.)
+            options: Conduit options (cache, repository, console, etc.)
+
+        Returns:
+            Conversation: The completed conversation after execution
+        """
+        raise NotImplementedError(
+            "run must be implemented in subclasses (sync or async)."
         )
-        # Update topic if needed
-        if not updated_conversation.topic or updated_conversation.topic == "Untitled":
-            logger.info("Updating conversation topic.")
-            updated_conversation.topic = self._update_topic()
-        # Save conversation if needed
-        if persist and self.options.repository:
-            logger.info("Saving conversation to repository.")
-            self.options.repository.save(updated_conversation)
-        return updated_conversation
+
+    # Dunders
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(prompt={self.prompt!r})"

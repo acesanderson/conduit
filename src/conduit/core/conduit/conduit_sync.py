@@ -6,9 +6,8 @@ from dataclasses import replace
 from typing import Any, TYPE_CHECKING
 
 from conduit.config import settings
-from conduit.core.engine.engine import Engine
+from conduit.core.conduit.conduit_async import ConduitAsync
 from conduit.domain.conversation.conversation import Conversation
-from conduit.domain.message.message import UserMessage
 from conduit.domain.request.generation_params import GenerationParams
 from conduit.domain.config.conduit_options import ConduitOptions
 from conduit.core.prompt.prompt import Prompt
@@ -23,10 +22,12 @@ logger = logging.getLogger(__name__)
 
 class ConduitSync:
     """
-    Synchronous, UX-focused façade over the Engine.
+    Synchronous, UX-focused wrapper for ConduitAsync.
 
     - Holds *how* to process: Prompt, GenerationParams, ConduitOptions.
     - Takes *what* to process at call-time via input variables.
+    - Designed for scripts and REPL usage where managing state and event loops
+      is unnecessary overhead.
     """
 
     def __init__(
@@ -35,7 +36,10 @@ class ConduitSync:
         params: GenerationParams | None = None,
         options: ConduitOptions | None = None,
     ):
-        self.prompt = prompt
+        # 1. Instantiate the async implementation (dumb pipe - only needs prompt)
+        self._impl = ConduitAsync(prompt)
+
+        # 2. Store execution context for UX
         self.params = params or settings.default_params
         self.options = options or settings.default_conduit_options()
 
@@ -84,17 +88,7 @@ class ConduitSync:
         Returns:
             Conversation: the final conversation after Engine.run.
         """
-        # 1) Render prompt
-        if input_variables:
-            rendered = self.prompt.render(input_variables=input_variables)
-        else:
-            rendered = self.prompt.prompt_string
-
-        # 2) Build a fresh conversation (you can later add repo/history logic)
-        conversation = Conversation()
-        conversation.messages.append(UserMessage(content=rendered))
-
-        # 3) Cascade params/options
+        # 1) Build effective params/options from stored state + overrides
         effective_params = self._build_params(param_overrides)
         effective_options = self._build_options(
             cached=cached,
@@ -102,10 +96,10 @@ class ConduitSync:
             verbosity=verbosity,
         )
 
-        # 4) Drive the Engine asynchronously, wrap in sync
+        # 2) Delegate to async implementation, wrap in sync
         return self._run_sync(
-            Engine.run(
-                conversation=conversation,
+            self._impl.run(
+                input_variables=input_variables,
                 params=effective_params,
                 options=effective_options,
             )
@@ -212,6 +206,43 @@ class ConduitSync:
 
         return opts
 
+    # Config methods - mutate stored options
+    def enable_cache(self, name: str = settings.default_project_name) -> None:
+        """Enable caching with specified name."""
+        self.options.cache = settings.default_cache(name)
+        logger.info(f"Enabled cache: {name}")
+
+    def enable_repository(self, name: str = settings.default_project_name) -> None:
+        """Enable persistence with specified name."""
+        self.options.repository = settings.default_repository(name)
+        logger.info(f"Enabled repository: {name}")
+
+    def enable_console(self) -> None:
+        """Enable rich console output."""
+        if self.options.console is None:
+            from rich.console import Console
+
+            logger.info("Enabling console.")
+            self.options.console = Console()
+
+    def disable_cache(self) -> None:
+        """Disable caching."""
+        if self.options.cache is not None:
+            logger.info("Disabling cache.")
+            self.options.cache = None
+
+    def disable_repository(self) -> None:
+        """Disable persistence."""
+        if self.options.repository is not None:
+            logger.info("Disabling repository.")
+            self.options.repository = None
+
+    def disable_console(self) -> None:
+        """Disable console output."""
+        if self.options.console is not None:
+            logger.info("Disabling console.")
+            self.options.console = None
+
     # Async plumbing
     def _run_sync(self, coroutine: Any) -> Any:
         _warn_if_loop_exists()
@@ -221,8 +252,15 @@ class ConduitSync:
             logger.warning("Operation cancelled by user.")
             raise
 
+    def __getattr__(self, name: str) -> Any:
+        """
+        Proxy attribute access to the underlying ConduitAsync instance.
+        Allows access to properties like self.prompt, etc.
+        """
+        return getattr(self._impl, name)
+
     def __repr__(self) -> str:
         return (
-            f"ConduitSync(prompt={self.prompt!r}, "
+            f"ConduitSync(prompt={self._impl.prompt!r}, "
             f"params={self.params!r}, options={self.options!r})"
         )
