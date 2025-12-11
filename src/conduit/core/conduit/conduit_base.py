@@ -10,50 +10,27 @@ import logging
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from rich.console import Console
-    from conduit.core.model.model_sync import ModelSync
     from conduit.core.prompt.prompt import Prompt
     from conduit.utils.progress.verbosity import Verbosity
     from conduit.core.engine.engine import Engine
-    from conduit.storage.repository.protocol import (
-        ConversationRepository,
-    )
+    from conduit.domain.message.message import Message
 
 
 class ConduitBase:
     """
-    A Configured Pipe.
-    State regarding 'How to process' is held in self (Prompt, Params).
-    State regarding 'What to process' is passed to run().
+    A dumb pipe.
     """
 
     def __init__(
         self,
         # Required
         prompt: Prompt,
-        params: GenerationParams,
-        options: ConduitOptions,
     ):
         # Initial attributes
         self.prompt: Prompt = prompt
-        self.params: GenerationParams = params
-        self.options: ConduitOptions = options
 
-    # Conversation management
-    def _execute_with_engine(
-        self,
-        conversation: Conversation,
-        params: GenerationParams,
-        options: ConduitOptions,
-    ) -> Conversation:
-        """
-        Given a conversation, execute it using an Engine.
-        If needed, can take decorators for telemetry, logging, progress, caching, etc.
-        """
-        new_conversation = Engine.run(conversation, params, options)
-        return new_conversation
-
-    async def _execute_with_engine(
+    # Our "pipe" to Engine
+    async def pipe(
         self,
         conversation: Conversation,
         params: GenerationParams,
@@ -80,10 +57,12 @@ class ConduitBase:
         """
         raise NotImplementedError("_create_title not yet implemented.")
 
-    def run(
+    async def run(
         self,
         input_variables: dict[str, str] | None = None,
-        stream: bool = False,
+        messages: list[Message] | None = None,
+        params: GenerationParams | None = None,
+        options: ConduitOptions | None = None,
         # Progress tracking
         index: int = 0,
         total: int = 0,

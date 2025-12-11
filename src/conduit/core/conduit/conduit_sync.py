@@ -39,9 +39,7 @@ class ConduitSync:
         self.params = params or settings.default_params
         self.options = options or settings.default_conduit_options()
 
-    # -------------------------------------------------------------------------
     # Sugar: payload-only
-    # -------------------------------------------------------------------------
     def __call__(self, **input_variables: Any) -> Conversation:
         """
         Syntactic sugar for `run(input_variables=...)`.
@@ -51,9 +49,7 @@ class ConduitSync:
         """
         return self.run(input_variables=input_variables)
 
-    # -------------------------------------------------------------------------
     # Main entry point
-    # -------------------------------------------------------------------------
     def run(
         self,
         input_variables: dict[str, Any] | None = None,
@@ -115,9 +111,7 @@ class ConduitSync:
             )
         )
 
-    # -------------------------------------------------------------------------
     # Factory
-    # -------------------------------------------------------------------------
     @classmethod
     def create(
         cls,
@@ -180,9 +174,7 @@ class ConduitSync:
 
         return cls(prompt=prompt_obj, params=params, options=options)
 
-    # -------------------------------------------------------------------------
     # Helpers
-    # -------------------------------------------------------------------------
     def _build_params(self, param_overrides: dict[str, Any] | None) -> GenerationParams:
         base = self.params or settings.default_params
         if not param_overrides:
@@ -220,9 +212,7 @@ class ConduitSync:
 
         return opts
 
-    # -------------------------------------------------------------------------
     # Async plumbing
-    # -------------------------------------------------------------------------
     def _run_sync(self, coroutine: Any) -> Any:
         _warn_if_loop_exists()
         try:
