@@ -39,7 +39,7 @@ class ConduitSync:
         self._impl = ConduitAsync(prompt)
 
         # 2. Store execution context for UX
-        self.params = params or settings.default_params
+        self.params = params or settings.default_params()
         self.options = options or settings.default_conduit_options()
 
     # Sugar: payload-only
@@ -137,7 +137,7 @@ class ConduitSync:
             raise TypeError(f"Unsupported prompt type: {type(prompt)}")
 
         # Params: seed with model + any extra params
-        params = GenerationParams(model=model, **param_kwargs)
+        params = GenerationParams(model=model, **param_kwargs, system=system)
 
         # Options: start from global defaults
         options = settings.default_conduit_options()
@@ -157,10 +157,6 @@ class ConduitSync:
         if persist:
             repo_name = persist if isinstance(persist, str) else project_name
             opt_updates["repository"] = settings.default_repository(name=repo_name)
-
-        # System prompt: not yet threaded; warn so you don't forget.
-        if system:
-            opt_updates["system"] = system
 
         # Apply updates (Pydantic v2)
         options = options.model_copy(update=opt_updates)
@@ -272,7 +268,7 @@ if __name__ == "__main__":
         persist=True,
         cached=True,
         temperature=0.7,
-        system="You will always response like a pirate.",
+        system="You will always response like an effete aristocrat.",
     )
 
     conversation = conduit(name="Alice")

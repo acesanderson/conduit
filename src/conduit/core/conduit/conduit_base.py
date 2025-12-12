@@ -51,7 +51,7 @@ class ConduitBase:
         return self.prompt.prompt_string
 
     def _prepare_conversation(
-        self, rendered_prompt: str, options: ConduitOptions
+        self, rendered_prompt: str, params: GenerationParams, options: ConduitOptions
     ) -> Conversation:
         """
         PURE CPU: Build initial conversation object.
@@ -68,8 +68,8 @@ class ConduitBase:
         # Append rendered prompt as UserMessage
         conversation.messages.append(UserMessage(content=rendered_prompt))
         # Attach system message if exists in options
-        if options.system:
-            conversation.ensure_system_message(options.system)
+        if params.system:
+            conversation.ensure_system_message(params.system)
         return conversation
 
     # Abstract methods (must be implemented by subclasses)

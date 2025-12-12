@@ -40,7 +40,7 @@ class ConduitAsync(ConduitBase):
         rendered = self._render_prompt(input_variables)
 
         # 2. Prepare conversation (may load from repository)
-        conversation = self._prepare_conversation(rendered, options)
+        conversation = self._prepare_conversation(rendered, params, options)
 
         # 3. Execute via Engine
         updated_conversation = await self.pipe(conversation, params, options)
