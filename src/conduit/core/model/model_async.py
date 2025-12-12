@@ -29,7 +29,7 @@ class ModelAsync(ModelBase):
     @override
     async def query(
         self,
-        query_input: QueryInput,
+        query_input: QueryInput | str | list[Message],
         params: GenerationParams,
         options: ConduitOptions,
     ) -> GenerationResult:
@@ -44,8 +44,8 @@ class ModelAsync(ModelBase):
         Returns:
             GenerationResult from the LLM
         """
-        request = self._prepare_request(query_input, params)
-        result = await self.pipe(request, options)
+        request = self._prepare_request(query_input, params, options)
+        result = await self.pipe(request)
         return result
 
     @override

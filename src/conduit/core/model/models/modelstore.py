@@ -128,13 +128,14 @@ class ModelStore:
         # Assign models based on aliases
         if model in cls.aliases().keys():
             model = aliases[model]
+            return model
         elif cls.is_supported(model):
             model = model
+            return model
         else:
-            ValueError(
+            raise ValueError(
                 f"WARNING: Model not found locally: {model}. This may cause errors."
             )
-        return model
 
     @classmethod
     def get_num_ctx(cls, ollama_model: str) -> int:
