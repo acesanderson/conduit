@@ -60,9 +60,7 @@ class ModelBase:
 
     # Our pipe method
     @middleware
-    async def pipe(
-        self, request: GenerationRequest, options: ConduitOptions
-    ) -> GenerationResult:
+    async def pipe(self, request: GenerationRequest) -> GenerationResult:
         """
         Core delegation point - passes request to client.
         Options used by middleware for caching, console, etc.
@@ -71,7 +69,7 @@ class ModelBase:
 
     # Helper methods
     def _prepare_request(
-        self, query_input: QueryInput, params: GenerationParams
+        self, query_input: QueryInput, params: GenerationParams, options: ConduitOptions
     ) -> GenerationRequest:
         """
         PURE CPU: Constructs and validates the GenerationRequest object.
@@ -86,6 +84,7 @@ class ModelBase:
         request = GenerationRequest(
             messages=query_input_list,
             params=params,
+            options=options,
         )
         return request
 

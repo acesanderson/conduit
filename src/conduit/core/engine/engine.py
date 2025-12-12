@@ -45,7 +45,7 @@ class Engine:
 
                 # 3. Stop Conditions
                 case ConversationState.TERMINATE:
-                    return await Engine._terminate(conversation, params, options)
+                    return conversation
 
                 case ConversationState.INCOMPLETE:
                     raise ConversationError("Conversation is incomplete.")
@@ -75,14 +75,4 @@ class Engine:
     ) -> Conversation:
         from conduit.core.engine.execute import execute
 
-        return await xecute(conversation, params, options)
-
-    @staticmethod
-    async def _terminate(
-        conversation: Conversation,
-        params: GenerationParams,
-        options: ConduitOptions,
-    ) -> Conversation:
-        from conduit.core.engine.terminate import terminate
-
-        return await terminate(conversation, params, options)
+        return await execute(conversation, params, options)

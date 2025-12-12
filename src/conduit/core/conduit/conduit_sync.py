@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import replace
-from typing import Any, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING, override
 
 from conduit.config import settings
 from conduit.core.conduit.conduit_async import ConduitAsync
@@ -142,22 +141,25 @@ class ConduitSync:
 
         # Options: start from global defaults
         options = settings.default_conduit_options()
-        options = replace(options, verbosity=verbosity)
+
+        # Collect overrides
+        opt_updates = {"verbosity": verbosity}
 
         if console is not None:
-            options = replace(options, console=console)
+            opt_updates["console"] = console
 
         # Cache wiring
         if cached:
             cache_name = cached if isinstance(cached, str) else project_name
-            cache = settings.default_cache(name=cache_name)
-            options = replace(options, cache=cache)
+            opt_updates["cache"] = settings.default_cache(name=cache_name)
 
         # Persistence wiring
         if persist:
             repo_name = persist if isinstance(persist, str) else project_name
-            repository = settings.default_repository(name=repo_name)
-            options = replace(options, repository=repository)
+            opt_updates["repository"] = settings.default_repository(name=repo_name)
+
+        # Apply updates (Pydantic v2)
+        options = options.model_copy(update=opt_updates)
 
         # System prompt: not yet threaded; warn so you don't forget.
         if system:
@@ -182,9 +184,7 @@ class ConduitSync:
         persist: bool | None,
         verbosity: "Verbosity | None",
     ) -> ConduitOptions:
-        base = self.options or settings.default_conduit_options()
-        # Copy so we don't mutate instance defaults
-        opts = replace(base)
+        opts = self.options or settings.default_conduit_options()
 
         if verbosity is not None:
             opts.verbosity = verbosity
@@ -252,15 +252,30 @@ class ConduitSync:
             logger.warning("Operation cancelled by user.")
             raise
 
-    def __getattr__(self, name: str) -> Any:
+    def __getattr__(self, name: str) -> object:
         """
         Proxy attribute access to the underlying ConduitAsync instance.
         Allows access to properties like self.prompt, etc.
         """
         return getattr(self._impl, name)
 
+    @override
     def __repr__(self) -> str:
         return (
             f"ConduitSync(prompt={self._impl.prompt!r}, "
             f"params={self.params!r}, options={self.options!r})"
         )
+
+
+if __name__ == "__main__":
+    # Simple usage example
+    conduit = ConduitSync.create(
+        model="gpt3",
+        prompt="Hello, {{name}}! How can I assist you today?",
+        persist=True,
+        cached=True,
+        temperature=0.7,
+    )
+
+    conversation = conduit(name="Alice")
+    print(conversation.last.content)

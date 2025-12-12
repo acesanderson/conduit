@@ -9,6 +9,7 @@ Use MessageUnion (not Message) because it's a discriminated union.
 from __future__ import annotations
 from pydantic import BaseModel
 from conduit.domain.request.generation_params import GenerationParams
+from conduit.domain.config.conduit_options import ConduitOptions
 from conduit.domain.message.message import Message
 from conduit.utils.progress.verbosity import Verbosity
 import hashlib
@@ -18,7 +19,6 @@ from typing import TYPE_CHECKING, override
 
 if TYPE_CHECKING:
     from conduit.domain.conversation.conversation import Conversation
-    from conduit.domain.config.conduit_options import ConduitOptions
 
 logger = logging.getLogger(__name__)
 
@@ -30,31 +30,12 @@ class GenerationRequest(BaseModel):
 
     messages: list[Message]
     params: GenerationParams
+    options: ConduitOptions
 
     # Request params
     use_cache: bool | None = True  # Technically: "if cache exists, use it"
     include_history: bool = True  # Whether to include conversation history
     verbosity: Verbosity = Verbosity.PROGRESS
-
-    @classmethod
-    def from_conversation(
-        cls,
-        conversation: Conversation,
-        params: GenerationParams,
-        options: ConduitOptions,
-    ) -> GenerationRequest:
-        """
-        Create a Request from a Conversation, GenerationParams, and ConduitOptions.
-        1:1 mapping of fields from Conversation to Request.
-        ConduitOptions contains some unserializable fields (i.e. repository), so we only extract relevant options.
-        """
-        return cls(
-            messages=conversation.messages,
-            params=params,
-            use_cache=options.use_cache,
-            include_history=options.include_history,
-            verbosity=options.verbosity,
-        )
 
     def generate_cache_key(self) -> str:
         """
@@ -80,6 +61,22 @@ class GenerationRequest(BaseModel):
         # sort_keys=True is the secret sauce for deterministic JSON
         json_str = json.dumps(data, sort_keys=True, default=str)
         return hashlib.sha256(json_str.encode("utf-8")).hexdigest()
+
+    @classmethod
+    def from_conversation(
+        cls,
+        conversation: Conversation,
+        params: GenerationParams,
+        options: ConduitOptions,
+    ) -> GenerationRequest:
+        """
+        Create a GenerationRequest from a Conversation, GenerationParams, and ConduitOptions.
+        """
+        return cls(
+            messages=conversation.messages,
+            params=params,
+            options=options,
+        )
 
     @property
     def conversation(self) -> Conversation:

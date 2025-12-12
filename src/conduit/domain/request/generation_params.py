@@ -4,7 +4,7 @@ TO IMPLEMENT:
 """
 
 from __future__ import annotations
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator, field_validator
 from conduit.domain.request.output_type import OutputType
 import logging
 
@@ -31,6 +31,15 @@ class GenerationParams(BaseModel):
     response_model: type[BaseModel] | None = Field(default=None, exclude=True)
     # Generated field
     response_model_schema: dict[str, str] | None = None
+
+    @field_validator("model")
+    def _validate_model(cls, v: str) -> str:
+        """
+        Validate that the model is recognized.
+        """
+        from conduit.core.model.models.modelstore import ModelStore
+
+        return ModelStore.validate_model(v)
 
     @model_validator(mode="after")
     def _populate_schema(self) -> GenerationParams:
