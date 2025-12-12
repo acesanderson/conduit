@@ -117,6 +117,7 @@ class ConduitSync:
         verbosity: "Verbosity" = settings.default_verbosity,
         console: "Console | None" = None,
         system: str | None = None,  # placeholder for future system-message wiring
+        debug_payload: bool = False,
         **param_kwargs: Any,
     ) -> "ConduitSync":
         """
@@ -157,6 +158,10 @@ class ConduitSync:
         if persist:
             repo_name = persist if isinstance(persist, str) else project_name
             opt_updates["repository"] = settings.default_repository(name=repo_name)
+
+        # Debug
+        if debug_payload:
+            opt_updates["debug_payload"] = True
 
         # Apply updates (Pydantic v2)
         options = options.model_copy(update=opt_updates)
@@ -269,6 +274,7 @@ if __name__ == "__main__":
         cached=True,
         temperature=0.7,
         system="You will always response like an effete aristocrat.",
+        debug_payload=True,
     )
 
     conversation = conduit(name="Alice")
