@@ -14,12 +14,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _get_progress_handler(self: Instrumentable):
+def _get_progress_handler(request: GenerationRequest):
     """Factory to get the correct handler based on instance configuration."""
-    if getattr(self, "console", None):
+    if request.options.console is not None:
         from conduit.utils.progress.rich_handler import RichProgressHandler
 
-        return RichProgressHandler(self.console)
+        return RichProgressHandler(request.options.console)
     else:
         from conduit.utils.progress.plain_handler import PlainProgressHandler
 
@@ -41,7 +41,7 @@ def middleware_context_manager(self: Instrumentable, request: GenerationRequest)
     """
 
     # --- 1. SETUP ---
-    handler = _get_progress_handler(self)
+    handler = _get_progress_handler(request)
     model_name = request.params.model
     # Extract prompt string from the request messages for the UI
     preview = extract_query_preview(request.messages)
@@ -62,8 +62,8 @@ def middleware_context_manager(self: Instrumentable, request: GenerationRequest)
 
     # --- 3. CACHE READ ---
     # We check this *before* yielding to avoid unnecessary API calls
-    if self.options.cache is not None and request.use_cache:
-        cached_result = self.options.cache.get(request)
+    if request.options.cache is not None and request.options.use_cache:
+        cached_result = request.options.cache.get(request)
         if isinstance(cached_result, GenerationResponse):
             ctx["cache_hit"] = True
             ctx["result"] = cached_result
@@ -100,9 +100,9 @@ def middleware_context_manager(self: Instrumentable, request: GenerationRequest)
     # Only perform expensive IO if we actually generated a new GenerationResponse
     if isinstance(result, GenerationResponse):
         # Cache Write (if this was a new generation)
-        if not ctx["cache_hit"] and self.options.cache is not None:
+        if not ctx["cache_hit"] and request.options.cache is not None:
             logger.debug("Persisting result to cache.")
-            self.options.cache.set(request, result)
+            request.options.cache.set(request, result)
 
         # Telemetry / Odometer (always record usage, even if cached?)
         # Usually we only record 'spend' on non-cached hits, but we might want

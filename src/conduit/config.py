@@ -54,9 +54,9 @@ class Settings:
     default_console: Console
     server_models: list[str]
     paths: dict[str, Path]
-    default_params: GenerationParams
     default_project_name: str
     # Lazy loaders
+    default_params: Callable[[], GenerationParams]
     default_cache: Callable[[str], ConduitCache]
     default_repository: Callable[[str], ConversationRepository]
     default_conduit_options: Callable[[str], ConduitOptions]
@@ -71,7 +71,6 @@ def load_settings() -> Settings:
         "default_console": Console(stderr=True),
         "server_models": [],
         "paths": {},
-        "default_params": GenerationParams(model="gpt3"),
         "default_project_name": "conduit",
     }
 
@@ -125,9 +124,11 @@ def load_settings() -> Settings:
     }
 
     # Default params
-    default_params = GenerationParams(
-        model=preferred_model,
-    )
+    def default_params() -> GenerationParams:
+        default_params = GenerationParams(
+            model=preferred_model,
+        )
+        return default_params
 
     def default_cache(name: str = default_project_name) -> ConduitCache:
         """
@@ -176,8 +177,8 @@ def load_settings() -> Settings:
             "default_verbosity": verbosity,
             "server_models": server_models,
             "paths": paths,
-            "default_params": default_params,
             # Lazy loaders
+            "default_params": default_params,
             "default_cache": default_cache,
             "default_repository": default_repository,
             "default_conduit_options": default_conduit_options,
