@@ -43,7 +43,7 @@ class ConduitBatch:
             options: Runtime configuration (caching, console, etc.)
         """
         self.prompt = prompt
-        self.params = params or settings.default_params
+        self.params = params or settings.default_params()
         self.options = options or settings.default_conduit_options()
         logger.debug(
             f"ConduitBatch initialized with prompt={self.prompt}, params={self.params}, options={self.options}"
