@@ -57,6 +57,18 @@ def middleware_context_manager(request: GenerationRequest):
             verbosity=request.verbosity,
         )
 
+    # --- Intermezzo: debug ---
+    if request.options.debug_payload:
+        # Pretty print params and options
+        from rich.console import Console
+
+        console = Console()
+        console.rule("[bold yellow]Debug: Generation Parameters")
+        console.print(request.params.model_dump_json(indent=2))
+        console.rule("[bold yellow]Debug: Conduit Options")
+        console.print(request.options.model_dump_json(indent=2))
+        console.rule()
+
     # --- 3. CACHE READ ---
     # We check this *before* yielding to avoid unnecessary API calls
     if request.options.cache is not None and request.options.use_cache:

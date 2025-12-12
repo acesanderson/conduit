@@ -36,3 +36,6 @@ class ConduitOptions(BaseModel):
     # Overrides for request behavior
     use_cache: bool | None = True  # Technically: "if cache exists, use it"
     include_history: bool = True  # Whether to include conversation history
+
+    # Dev options
+    debug_payload: bool = False  # Log full request/response payloads for debugging
