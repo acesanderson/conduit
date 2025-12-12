@@ -1,10 +1,4 @@
 from __future__ import annotations
-
-import asyncio
-import logging
-from dataclasses import replace
-from typing import Any, TYPE_CHECKING
-
 from conduit.config import settings
 from conduit.core.conduit.conduit_async import ConduitAsync
 from conduit.core.prompt.prompt import Prompt
@@ -12,6 +6,9 @@ from conduit.domain.conversation.conversation import Conversation
 from conduit.domain.request.generation_params import GenerationParams
 from conduit.domain.config.conduit_options import ConduitOptions
 from conduit.utils.concurrency.warn import _warn_if_loop_exists
+import asyncio
+import logging
+from typing import Any, TYPE_CHECKING, override
 
 if TYPE_CHECKING:
     from rich.console import Console
@@ -48,6 +45,9 @@ class ConduitBatch:
         self.prompt = prompt
         self.params = params or settings.default_params
         self.options = options or settings.default_conduit_options()
+        logger.debug(
+            f"ConduitBatch initialized with prompt={self.prompt}, params={self.params}, options={self.options}"
+        )
 
     def run(
         self,
@@ -92,6 +92,8 @@ class ConduitBatch:
             ValueError: If neither or both input modes are provided.
             ValueError: If input_variables_list is provided without a Prompt.
         """
+        logger.info("Starting batch run.")
+        logger.debug(f"Input variables list: {input_variables_list}")
         # 1. Validate input mode
         if input_variables_list and prompt_strings_list:
             raise ValueError(
@@ -136,6 +138,8 @@ class ConduitBatch:
         """
         Internal async implementation for batch execution.
         """
+        logger.info("Running batch asynchronously.")
+        logger.debug(f"Params: {params}, Options: {options}")
         # Create semaphore if max_concurrent is specified
         semaphore = asyncio.Semaphore(max_concurrent) if max_concurrent else None
 
@@ -231,22 +235,25 @@ class ConduitBatch:
 
         # Options: start from global defaults
         options = settings.default_conduit_options()
-        options = replace(options, verbosity=verbosity)
+
+        # Collect overrides
+        opt_updates = {"verbosity": verbosity}
 
         if console is not None:
-            options = replace(options, console=console)
+            opt_updates["console"] = console
 
         # Cache wiring
         if cached:
             cache_name = cached if isinstance(cached, str) else project_name
-            cache = settings.default_cache(name=cache_name)
-            options = replace(options, cache=cache)
+            opt_updates["cache"] = settings.default_cache(name=cache_name)
 
         # Persistence wiring
         if persist:
             repo_name = persist if isinstance(persist, str) else project_name
-            repository = settings.default_repository(name=repo_name)
-            options = replace(options, repository=repository)
+            opt_updates["repository"] = settings.default_repository(name=repo_name)
+
+        # Apply updates (Pydantic v2)
+        options = options.model_copy(update=opt_updates)
 
         return cls(prompt=prompt_obj, params=params, options=options)
 
@@ -268,30 +275,24 @@ class ConduitBatch:
         verbosity: Verbosity | None,
     ) -> ConduitOptions:
         """Build effective options by merging stored options with overrides."""
-        base = self.options or settings.default_conduit_options()
-        # Copy so we don't mutate instance defaults
-        opts = replace(base)
+        # Options: start from global defaults
+        options = settings.default_conduit_options()
 
-        if verbosity is not None:
-            opts = replace(opts, verbosity=verbosity)
+        # Collect overrides
+        opt_updates = {"verbosity": verbosity}
 
-        # Cache override
-        if cached is not None:
-            if not cached:
-                opts = replace(opts, cache=None)
-            elif opts.cache is None:
-                cache = settings.default_cache(name=settings.default_project_name)
-                opts = replace(opts, cache=cache)
+        # Cache wiring
+        if cached:
+            cache_name = cached if isinstance(cached, str) else project_name
+            opt_updates["cache"] = settings.default_cache(name=cache_name)
 
-        # Persistence override
-        if persist is not None:
-            if not persist:
-                opts = replace(opts, repository=None)
-            elif opts.repository is None:
-                repository = settings.default_repository(
-                    name=settings.default_project_name
-                )
-                opts = replace(opts, repository=repository)
+        # Persistence wiring
+        if persist:
+            repo_name = persist if isinstance(persist, str) else project_name
+            opt_updates["repository"] = settings.default_repository(name=repo_name)
+
+        # Apply updates (Pydantic v2)
+        opts = options.model_copy(update=opt_updates)
 
         return opts
 
@@ -342,6 +343,7 @@ class ConduitBatch:
             logger.warning("Batch operation cancelled by user.")
             raise
 
+    @override
     def __repr__(self) -> str:
         return (
             f"ConduitBatch(prompt={self.prompt!r}, "

@@ -22,6 +22,7 @@ class ModelAsync(ModelBase):
 
     @override
     def get_client(self, model_name: str) -> Client:
+        logger.info(f"Retrieving client for model: {model_name}")
         from conduit.core.model.models.modelstore import ModelStore
 
         return ModelStore.get_client(model_name, "sdk")
@@ -44,6 +45,7 @@ class ModelAsync(ModelBase):
         Returns:
             GenerationResult from the LLM
         """
+        logger.info("ModelAsync.query called with model: %s", self.model_name)
         request = self._prepare_request(query_input, params, options)
         result = await self.pipe(request)
         return result
@@ -54,6 +56,7 @@ class ModelAsync(ModelBase):
         Get the token length for the given model.
         Implementation at the client level.
         """
+        logger.info("ModelAsync.tokenize called with model: %s", self.model_name)
         return await self.client.tokenize(model=self.model_name, payload=payload)
 
 
