@@ -1,16 +1,11 @@
 from __future__ import annotations
-from conduit.config import settings
 from conduit.domain.request.generation_params import GenerationParams
 from conduit.domain.conversation.conversation import Conversation
 from conduit.domain.config.conduit_options import ConduitOptions
 from conduit.domain.message.message import UserMessage
 from conduit.core.prompt.prompt import Prompt
-from typing import TYPE_CHECKING, Any
+from typing import Any, override
 import logging
-
-if TYPE_CHECKING:
-    from conduit.utils.progress.verbosity import Verbosity
-    from rich.console import Console
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +67,9 @@ class ConduitBase:
 
         # Append rendered prompt as UserMessage
         conversation.messages.append(UserMessage(content=rendered_prompt))
+        # Attach system message if exists in options
+        if options.system:
+            conversation.ensure_system_message(options.system)
         return conversation
 
     # Abstract methods (must be implemented by subclasses)
@@ -98,5 +96,6 @@ class ConduitBase:
         )
 
     # Dunders
+    @override
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(prompt={self.prompt!r})"
