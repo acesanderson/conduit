@@ -14,8 +14,9 @@ class OdometerRegistry:
     """
     Central entry point for tracking token usage in-memory and flushing to persistence.
 
-    This is intended to be attached as a singleton on the Model class
-    (e.g. Model._odometer_registry).
+    This is global, singleton, and attached to config.settings.
+
+    ==Persists usage to Postgres on interpreter exit (SIGINT/SIGTERM/atexit). Not request- or user-scoped.==
     """
 
     def __init__(self):

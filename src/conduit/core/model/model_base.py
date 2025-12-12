@@ -3,7 +3,6 @@ from conduit.domain.request.request import GenerationRequest
 from conduit.domain.request.generation_params import GenerationParams
 from conduit.domain.request.query_input import QueryInput, constrain_query_input
 from conduit.core.clients.client_base import Client
-from conduit.storage.odometer.odometer_registry import OdometerRegistry
 from conduit.middleware.middleware import middleware
 from typing import TYPE_CHECKING, override
 import logging
@@ -23,9 +22,6 @@ class ModelBase:
     Holds only model identity (model_name + client).
     Execution context (params/options) passed to methods, not stored.
     """
-
-    # Class singleton
-    odometer_registry: OdometerRegistry = OdometerRegistry()
 
     def __init__(self, model: str):
         """
@@ -50,13 +46,6 @@ class ModelBase:
         from conduit.core.model.models.modelstore import ModelStore
 
         return ModelStore.models()
-
-    @classmethod
-    def stats(cls):
-        """
-        Pretty prints session statistics (from OdometerRegistry.session_odometer).
-        """
-        cls.odometer_registry.session_odometer.stats()
 
     # Our pipe method
     @middleware
