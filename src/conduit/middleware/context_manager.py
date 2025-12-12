@@ -8,9 +8,6 @@ from conduit.domain.request.request import GenerationRequest
 from conduit.utils.progress.verbosity import Verbosity
 from conduit.utils.progress.utils import extract_query_preview
 
-if TYPE_CHECKING:
-    from conduit.middleware.protocol import Instrumentable
-
 logger = logging.getLogger(__name__)
 
 
@@ -27,7 +24,7 @@ def _get_progress_handler(request: GenerationRequest):
 
 
 @contextmanager
-def middleware_context_manager(self: Instrumentable, request: GenerationRequest):
+def middleware_context_manager(request: GenerationRequest):
     """
     The Central Conductor for Request execution.
 
@@ -107,13 +104,16 @@ def middleware_context_manager(self: Instrumentable, request: GenerationRequest)
         # Telemetry / Odometer (always record usage, even if cached?)
         # Usually we only record 'spend' on non-cached hits, but we might want
         # to track 'savings' on cached hits. For now, track actual API usage.
-        if not ctx["cache_hit"] and result.metadata.output_tokens > 0:
-            if getattr(self, "odometer_registry", None):
-                from conduit.storage.odometer.token_event import TokenEvent
 
-                event = TokenEvent(
-                    model=model_name,
-                    input_tokens=result.metadata.input_tokens,
-                    output_tokens=result.metadata.output_tokens,
-                )
-                self.odometer_registry.emit_token_event(event)
+        if not ctx["cache_hit"] and result.metadata.output_tokens > 0:
+            from conduit.config import settings
+            from conduit.storage.odometer.token_event import TokenEvent
+
+            telemetry = settings.odometer_registry()
+
+            event = TokenEvent(
+                model=model_name,
+                input_tokens=result.metadata.input_tokens,
+                output_tokens=result.metadata.output_tokens,
+            )
+            telemetry.emit_token_event(event)

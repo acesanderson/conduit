@@ -158,15 +158,12 @@ class ConduitSync:
             repo_name = persist if isinstance(persist, str) else project_name
             opt_updates["repository"] = settings.default_repository(name=repo_name)
 
-        # Apply updates (Pydantic v2)
-        options = options.model_copy(update=opt_updates)
-
         # System prompt: not yet threaded; warn so you don't forget.
         if system:
-            logger.warning(
-                "ConduitSync.create(system=...) is not wired into conversations yet. "
-                "For now, bake system instructions into the Prompt or into your Conversation builder."
-            )
+            opt_updates["system"] = system
+
+        # Apply updates (Pydantic v2)
+        options = options.model_copy(update=opt_updates)
 
         return cls(prompt=prompt_obj, params=params, options=options)
 
@@ -275,6 +272,7 @@ if __name__ == "__main__":
         persist=True,
         cached=True,
         temperature=0.7,
+        system="You will always response like a pirate.",
     )
 
     conversation = conduit(name="Alice")

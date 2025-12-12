@@ -12,7 +12,6 @@ import tomllib
 import json
 from dataclasses import dataclass
 from conduit.utils.progress.verbosity import Verbosity
-from conduit.domain.request.generation_params import GenerationParams
 from rich.console import Console
 from xdg_base_dirs import (
     xdg_config_home,
@@ -24,12 +23,16 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from conduit.storage.odometer.odometer_registry import OdometerRegistry
+    from conduit.domain.request.generation_params import GenerationParams
     from conduit.domain.config.conduit_options import ConduitOptions
     from conduit.storage.cache.protocol import ConduitCache
     from conduit.storage.repository.protocol import ConversationRepository
     from contextlib import AbstractContextManager
     from psycopg2 import connection
 
+# Global odometer instance
+_odometer_registry: OdometerRegistry | None = None
 
 # Directories
 CONFIG_DIR = Path(xdg_config_home()) / "conduit"
@@ -56,6 +59,7 @@ class Settings:
     paths: dict[str, Path]
     default_project_name: str
     # Lazy loaders
+    odometer_registry: Callable[[], OdometerRegistry]
     default_params: Callable[[], GenerationParams]
     default_cache: Callable[[str], ConduitCache]
     default_repository: Callable[[str], ConversationRepository]
@@ -125,6 +129,8 @@ def load_settings() -> Settings:
 
     # Default params
     def default_params() -> GenerationParams:
+        from conduit.domain.request.generation_params import GenerationParams
+
         default_params = GenerationParams(
             model=preferred_model,
         )
@@ -156,7 +162,7 @@ def load_settings() -> Settings:
         )
         return PostgresConversationRepository(name=name, conn_factory=conn_factory)
 
-    def default_conduit_options() -> ConduitOptions:
+    def default_conduit_options(name: str = default_project_name) -> ConduitOptions:
         """
         Assemble default ConduitOptions from settings.
         """
@@ -164,11 +170,19 @@ def load_settings() -> Settings:
 
         return ConduitOptions(
             verbosity=verbosity,
-            project_name=default_project_name,
-            cache=default_cache(),
-            repository=default_repository(),
+            project_name=name,
+            cache=default_cache(name),
+            repository=default_repository(name),
             console=config["default_console"],
         )
+
+    def get_odometer_registry() -> OdometerRegistry:
+        from conduit.storage.odometer.odometer_registry import OdometerRegistry
+
+        global _odometer_registry
+        if _odometer_registry is None:
+            _odometer_registry = OdometerRegistry()
+        return _odometer_registry
 
     config.update(
         {
@@ -178,6 +192,7 @@ def load_settings() -> Settings:
             "server_models": server_models,
             "paths": paths,
             # Lazy loaders
+            "odometer_registry": get_odometer_registry,
             "default_params": default_params,
             "default_cache": default_cache,
             "default_repository": default_repository,
