@@ -5,6 +5,9 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 from conduit.domain.result.response import GenerationResponse
 from conduit.domain.request.request import GenerationRequest
+import logging
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from psycopg2.extensions import connection

@@ -15,6 +15,14 @@ class GenerationParams(BaseModel):
     """
     Standard tunable parameters for LLM inference.
     Shared by Conduit (defaults), Conversation (overrides), and Request (final payload).
+
+    WARNING (cache determinism):
+    GenerationParams participates in request cache keys. Any new field added here MUST be:
+    - deterministic across runs when serialized (no timestamps, UUIDs, random/default_factory, env-derived values),
+    - JSON-serializable via Pydantic (or explicitly normalized/excluded in GenerationRequest._normalize_params_for_cache),
+    - and intentionally considered as affecting (or not affecting) cache identity.
+
+    If a new field should NOT affect caching, exclude it explicitly in _normalize_params_for_cache.
     """
 
     output_type: OutputType = "text"

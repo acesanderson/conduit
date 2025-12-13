@@ -2,10 +2,13 @@ from __future__ import annotations
 from typing import runtime_checkable, TYPE_CHECKING, Protocol
 from collections.abc import Callable
 from contextlib import AbstractContextManager
+import logging
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from conduit.domain.request.request import Request
-    from conduit.domain.result.response import Response
+    from conduit.domain.request.request import GenerationRequest
+    from conduit.domain.result.response import GenerationResponse
     from psycopg2.extensions import connection
 
 
@@ -23,14 +26,14 @@ class ConduitCache(Protocol):
 
         ...
 
-    def get(self, request: Request) -> Response | None:
+    def get(self, request: GenerationRequest) -> GenerationResponse | None:
         """
         Return a cached Response for this Request, or None if not present.
         """
 
         ...
 
-    def set(self, request: Request, response: Response) -> None:
+    def set(self, request: GenerationRequest, response: GenerationResponse) -> None:
         """
         Store or update the cached Response for this Request.
         """
