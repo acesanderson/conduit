@@ -1,18 +1,19 @@
 """
+MAJOR REFACTOR INCOMING:
+- should this use Model or Conduit?
+- handle persistence?
 Our default query function -- passed into ConduitCLI as a dependency.
 Define your own for customization.
 """
 
-from conduit.sync import Prompt, Model, Conduit, Response, Verbosity
-from conduit.core.model.models.modelstore import ModelStore
+from conduit.core.prompt.prompt import Prompt
+from conduit.domain.result.response import GenerationResponse
+from conduit.utils.progress.verbosity import Verbosity
 from pydantic import BaseModel, Field
 from typing import Protocol, runtime_checkable
-from rich.console import Console
 import logging
 
 logger = logging.getLogger(__name__)
-console = Console()  # For pretty progress
-Conduit.console = console
 
 
 # Our input schema for the query function
@@ -63,13 +64,13 @@ class CLIQueryFunctionProtocol(Protocol):
     def __call__(
         self,
         inputs: CLIQueryFunctionInputs,
-    ) -> Response: ...
+    ) -> GenerationResponse: ...
 
 
 # Now, our default implementation -- the beauty of LLMs with POSIX philosophy
 def default_query_function(
     inputs: CLIQueryFunctionInputs,
-) -> Response:
+) -> GenerationResponse:
     """
     Default query function.
     """
@@ -81,43 +82,34 @@ def default_query_function(
     append: str | None = inputs.append
     local: bool | None = inputs.local
     preferred_model: str = inputs.preferred_model
-    verbose: int = inputs.verbose
+    verbose: Verbosity = inputs.verbose
     include_history: bool = inputs.include_history
-    verbose = inputs.verbose
     cache = inputs.cache
+    system = inputs.system_message
 
     # ConduitCLI's default POSIX philosophy: embrace pipes and redirection
     combined_query = "\n\n".join([query_input, context, append])
 
-    # Inject system message if provided and message store exists
-    if Conduit.message_store:
-        system_message = inputs.system_message
-        if system_message:
-            Conduit.message_store.ensure_system_message(system_message)
-
     # Our chain
     if local:
-        from conduit.core.model.model_remote import RemoteModel
-
-        logger.info("Using local model.")
-        if preferred_model not in ModelStore().local_models():
-            preferred_model = "gpt-oss:latest"
-        logger.info(f"Using model: {preferred_model}")
-        if cache:
-            model = RemoteModel(preferred_model, cache=name)
-        else:
-            model = RemoteModel(preferred_model)
-        prompt_str = combined_query
-        response = model.query(query_input=prompt_str, verbose=verbose)
+        raise NotImplementedError("Local model querying is not implemented yet.")
     else:
         logger.info("Using cloud model.")
-        if cache:
-            model = Model(preferred_model, cache=name)
-        else:
-            model = Model(preferred_model)
-        logger.info(f"Using model: {preferred_model}")
+        from conduit.core.conduit.conduit_sync import ConduitSync
+
         prompt = Prompt(combined_query)
-        conduit = Conduit(prompt=prompt, model=model)
-        response = conduit.run(verbose=verbose, include_history=include_history)
-    assert isinstance(response, Response), "Response is not of type Response"
+        if cache:
+            cache_string: str | None = name
+        else:
+            cache_string = None
+        conduit = ConduitSync.create(
+            model=preferred_model,
+            prompt=prompt,
+            system_message=system,
+            cache=cache_string,
+            include_history=include_history,
+            verbose=verbose,
+        )
+        logger.info(f"Using model: {preferred_model}")
+        response = conduit()
     return response
