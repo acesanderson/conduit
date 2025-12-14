@@ -1,11 +1,13 @@
-from conduit.sync import Conduit, Model
+from conduit.sync import Conduit, Verbosity
 
-m = Model("gpt3")
+m = Conduit.create(
+    "gpt3",
+    # "name the most dangerous animals",
+    "tell me more about that saltwater one",
+    persist="test",
+    # system="speak like Shakespeare",
+    verbosity=Verbosity.DEBUG,
+)
 # m.options.cache.wipe()
-r = m.query("Hello, world!")
+r = m.run()
 print(r)
-
-"""
-f7d93e57498960c17c7cf2edcda41bbc5779235228b8bc522a73903c1c0b90e4
-4c796781437d753832261c658852be20ac062ed1b73bb2f3e2bc0739c84dc9df
-"""

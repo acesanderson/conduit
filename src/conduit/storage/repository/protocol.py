@@ -1,6 +1,11 @@
+from __future__ import annotations
 from typing import Protocol, runtime_checkable
-from conduit.domain.conversation.conversation import Conversation
 from uuid import UUID
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from conduit.domain.message.message import SystemMessage
+    from conduit.domain.conversation.conversation import Conversation
 
 
 @runtime_checkable
@@ -10,10 +15,22 @@ class ConversationRepository(Protocol):
     Saves and Loads Conversations as sequences of Message IDs.
     """
 
-    def load(
-        self, conversation_id: str | UUID, name: str | None = None
+    def load_by_conversation_id(
+        self, conversation_id: str | UUID
     ) -> Conversation | None:
         """Rehydrates a Conversation object from the DB."""
+        ...
+
+    def load_by_name(self, name: str) -> Conversation | None:
+        """Loads a Conversation by its given name, if any."""
+        ...
+
+    def list_conversations(self, limit: int = 10) -> list[dict[str, str]]:
+        """Lists Conversations with metadata only."""
+        ...
+
+    def load_all(self) -> list[Conversation]:
+        """Loads all Conversations in the repository."""
         ...
 
     def save(self, conversation: Conversation, name: str | None = None) -> None:

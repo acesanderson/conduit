@@ -79,6 +79,24 @@ class Conversation(BaseModel):
         return values
 
     # Helper properties
+    def add(self, message: Message) -> None:
+        """
+        Append a new message to the conversation.
+        Use this INSTEAD of manipulating messages directly, since there are validation rules.
+        """
+        if len(self.messages) > 0:
+            if message.role == Role.SYSTEM:
+                raise ConversationError(
+                    "System messages can only be the first message."
+                )
+            if message.role != Role.TOOL and message.role == self.messages[-1].role:
+                # Exempt Tool messages from this rule, since there can be multiple tool calls in a row
+                raise ConversationError(
+                    f"Cannot add two consecutive messages with the same role: {message.role.value}."
+                )
+
+        self.messages.append(message)
+
     @property
     def last(self) -> Message | None:
         if self.messages:
@@ -87,10 +105,45 @@ class Conversation(BaseModel):
 
     @property
     def system(self) -> Message | None:
+        system_messages = [m for m in self.messages if m.role == Role.SYSTEM]
+        if len(system_messages) == 1:
+            return system_messages[0]
+        elif len(system_messages) > 1:
+            # Remove all system messages but the first
+            self.messages = [m for m in self.messages if m.role != Role.SYSTEM]
+            self.messages.insert(0, system_messages[0])
+            return system_messages[0]
+        elif len(system_messages) == 0:
+            return None
+
+    @system.setter
+    def system(self, message: Message):
+        if message.role != Role.SYSTEM:
+            raise ConversationError("Only system messages can be assigned to system.")
+        existing_system = self.system
+        if existing_system:
+            # Replace existing system message
+            index = self.messages.index(existing_system)
+            self.messages[index] = message
+        else:
+            # Insert new system message at the start
+            self.messages.insert(0, message)
+
+    @property
+    def content(self) -> str:
+        """
+        Content from last message; to get results from generation response, or capture user prompt.
+        """
+        if self.last:
+            return str(self.last.content)
+        return ""
+
+    @property
+    def roles(self) -> str:
+        roles_string = ""
         for message in self.messages:
-            if message.role == "system":
-                return message
-        return None
+            roles_string += message.role.value[0].upper()
+        return roles_string
 
     @property
     def state(self) -> ConversationState:
@@ -109,31 +162,31 @@ class Conversation(BaseModel):
             case Role.SYSTEM:
                 return ConversationState.INCOMPLETE
 
+    def wipe(self) -> None:
+        """
+        Clear all messages.
+        """
+        self.messages = []
+
+    def prune(self, keep: int = 10) -> None:
+        """
+        Keep only the last `keep` messages.
+        """
+        if len(self.messages) > keep:
+            self.messages = self.messages[-keep:]
+
     def tokens(self, model_name: str) -> int:
         raise NotImplementedError(
             "Token counting not yet implemented for Conversation."
         )
 
-    def ensure_system_message(self, system_content: str | None = None):
+    def ensure_system_message(
+        self, system_content: str = settings.system_prompt
+    ) -> None:
         """
-        Ensure that a system message exists in the conversation.
-        Ensure that only one system message exists.
-        Ensure that the system message is the first message.
-        If it doesn't exist, create one with the provided content or a default (settings.SYSTEM_PROMPT).
+        Convenience method: converts string to SystemMessage and ensures it's first.
         """
-        system_messages = [m for m in self.messages if m.role == "system"]
-        if len(system_messages) > 1:
-            raise ValueError("Multiple system messages found in the conversation.")
-        elif len(system_messages) == 1:
-            system_message = system_messages[0]
-            if self.messages[0] != system_message:
-                self.messages.remove(system_message)
-                self.messages.insert(0, system_message)
-        elif system_content is None:
-            return
-        else:
-            content: str = system_content or settings.system_prompt
-            from conduit.domain.message.message import SystemMessage
+        from conduit.domain.message.message import SystemMessage
 
-            system_message = SystemMessage(content=content)
-            self.messages.insert(0, system_message)
+        system_message = SystemMessage(content=system_content)
+        self.system = system_message

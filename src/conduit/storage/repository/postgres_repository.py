@@ -85,6 +85,122 @@ class PostgresConversationRepository:
         json_str = json.dumps(data, sort_keys=True)
         return hashlib.sha256(json_str.encode("utf-8")).hexdigest()
 
+    def load_by_conversation_id(
+        self,
+        conversation_id: str | UUID,
+    ) -> Conversation | None:
+        """
+        Need to add name logic.
+        """
+        with self._conn_factory() as conn, conn.cursor() as cursor:
+            # ... (check conversation existence logic) ...
+
+            # Fetch messages
+            cursor.execute(
+                """
+                    SELECT m.payload
+                    FROM conduit_playlist p
+                    JOIN conduit_messages m ON p.message_id = m.id
+                    WHERE p.conversation_id = %s
+                    ORDER BY p.seq_index ASC
+                """,
+                (str(conversation_id),),
+            )
+
+            rows = cursor.fetchall()
+
+        # Rehydrate using the adapter
+        # validate_python takes a dict (which psycopg2 returns for JSONB columns)
+        messages = [adapter.validate_python(row[0]) for row in rows]
+
+        return Conversation(conversation_id=str(conversation_id), messages=messages)
+
+    def load_by_name(self, name: str) -> Conversation | None:
+        """Load conversation by name within the current project."""
+        with self._conn_factory() as conn, conn.cursor() as cursor:
+            cursor.execute(
+                """
+                    SELECT id
+                    FROM conduit_conversations
+                    WHERE project_name = %s AND name = %s
+                    LIMIT 1
+                """,
+                (self.project_name, name),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            conv_id = row[0]
+        return self.load_by_conversation_id(conv_id)
+
+    def list_conversations(self, limit: int = 10) -> list[dict[str, str]]:
+        """List conversations ONLY for the current project."""
+        with self._conn_factory() as conn, conn.cursor() as cursor:
+            cursor.execute(
+                """
+                    SELECT id, name, last_updated, 
+                           (SELECT COUNT(*) FROM conduit_playlist WHERE conversation_id = c.id) as msg_count
+                    FROM conduit_conversations c
+                    WHERE project_name = %s
+                    ORDER BY last_updated DESC 
+                    LIMIT %s
+                """,
+                (self.project_name, limit),
+            )
+            # Rehydrate rows
+            rows = cursor.fetchall()
+        conversations = [
+            {
+                "conversation_id": row[0],
+                "name": row[1],
+                "last_updated": row[2],
+                "message_count": row[3],
+            }
+            for row in rows
+        ]
+        return conversations
+
+    def load_all(self) -> list[Conversation]:
+        """Load all conversations for the current project."""
+        with self._conn_factory() as conn, conn.cursor() as cursor:
+            cursor.execute(
+                """
+                    SELECT id
+                    FROM conduit_conversations
+                    WHERE project_name = %s
+                """,
+                (self.project_name,),
+            )
+            rows = cursor.fetchall()
+            conv_ids = [row[0] for row in rows]
+
+        conversations = []
+        for conv_id in conv_ids:
+            conv = self.load_by_conversation_id(conv_id)
+            if conv:
+                conversations.append(conv)
+        return conversations
+
+    @property
+    def last(self) -> Conversation | None:
+        """Returns the most recently updated conversation for the project."""
+        with self._conn_factory() as conn, conn.cursor() as cursor:
+            cursor.execute(
+                """
+                    SELECT id
+                    FROM conduit_conversations
+                    WHERE project_name = %s
+                    ORDER BY last_updated DESC
+                    LIMIT 1
+                """,
+                (self.project_name,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            conv_id = row[0]
+        return self.load_by_conversation_id(conv_id)
+
     def save(self, conversation: Conversation, name: str | None = None) -> None:
         """
         Saves conversation and performs Message Deduplication.
@@ -149,78 +265,59 @@ class PostgresConversationRepository:
 
             conn.commit()
 
-    def load(
-        self, conversation_id: str | UUID, name: str | None = None
-    ) -> Conversation | None:
-        """
-        Need to add name logic.
-        """
+    def wipe(self) -> None:
+        """Wipes all conversations and messages for the current project."""
         with self._conn_factory() as conn, conn.cursor() as cursor:
-            # ... (check conversation existence logic) ...
-
-            # Fetch messages
+            # Delete conversations for the project
             cursor.execute(
                 """
-                    SELECT m.payload
-                    FROM conduit_playlist p
-                    JOIN conduit_messages m ON p.message_id = m.id
-                    WHERE p.conversation_id = %s
-                    ORDER BY p.seq_index ASC
-                """,
-                (str(conversation_id),),
-            )
-
-            rows = cursor.fetchall()
-
-        # Rehydrate using the adapter
-        # validate_python takes a dict (which psycopg2 returns for JSONB columns)
-        messages = [adapter.validate_python(row[0]) for row in rows]
-
-        return Conversation(conversation_id=str(conversation_id), messages=messages)
-
-    def list_conversations(self, limit: int = 10) -> list[dict[str, str]]:
-        """List conversations ONLY for the current project."""
-        with self._conn_factory() as conn, conn.cursor() as cursor:
-            cursor.execute(
-                """
-                    SELECT id, name, last_updated, 
-                           (SELECT COUNT(*) FROM conduit_playlist WHERE conversation_id = c.id) as msg_count
-                    FROM conduit_conversations c
+                    DELETE FROM conduit_conversations
                     WHERE project_name = %s
-                    ORDER BY last_updated DESC 
-                    LIMIT %s
                 """,
-                (self.project_name, limit),
+                (self.project_name,),
             )
-            # Rehydrate rows
-            rows = cursor.fetchall()
-        conversations = [
-            {
-                "conversation_id": row[0],
-                "name": row[1],
-                "last_updated": row[2],
-                "message_count": row[3],
-            }
-            for row in rows
-        ]
-        return conversations
+            conn.commit()
 
-    @property
-    def last(self) -> Conversation | None:
-        """Returns the most recently updated conversation for the project."""
+    def prune(self, keep: int = 5) -> None:
+        """
+        Prunes old conversations, keeping only the most recent 'keep' conversations.
+        """
         with self._conn_factory() as conn, conn.cursor() as cursor:
+            # Find conversations to delete
             cursor.execute(
                 """
                     SELECT id
                     FROM conduit_conversations
                     WHERE project_name = %s
                     ORDER BY last_updated DESC
-                    LIMIT 1
+                    OFFSET %s
                 """,
-                (self.project_name,),
+                (self.project_name, keep),
             )
-            row = cursor.fetchone()
-            if not row:
-                return None
-            conv_id = row[0]
-        return self.load(conv_id)
+            rows = cursor.fetchall()
+            conv_ids_to_delete = [row[0] for row in rows]
+
+            if conv_ids_to_delete:
+                cursor.execute(
+                    """
+                        DELETE FROM conduit_conversations
+                        WHERE id = ANY(%s)
+                    """,
+                    (conv_ids_to_delete,),
+                )
+                conn.commit()
+
+    def delete_orphaned_messages(self) -> None:
+        """
+        Deletes messages that are not referenced by any conversation.
+        """
+        with self._conn_factory() as conn, conn.cursor() as cursor:
+            cursor.execute(
+                """
+                    DELETE FROM conduit_messages
+                    WHERE id NOT IN (
+                        SELECT DISTINCT message_id FROM conduit_playlist
+                    )
+                """
+            )
+            conn.commit()

@@ -114,8 +114,8 @@ class ConduitSync:
         project_name: str = settings.default_project_name,
         persist: bool | str = False,
         cached: bool | str = False,
-        verbosity: "Verbosity" = settings.default_verbosity,
-        console: "Console | None" = None,
+        verbosity: Verbosity = settings.default_verbosity,
+        console: Console | None = None,
         system: str | None = None,  # placeholder for future system-message wiring
         debug_payload: bool = False,
         **param_kwargs: Any,
