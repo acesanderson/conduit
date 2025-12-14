@@ -169,7 +169,7 @@ def load_settings() -> Settings:
         from conduit.domain.config.conduit_options import ConduitOptions
 
         return ConduitOptions(
-            verbosity=verbosity,
+            verbosity=default_verbosity,
             project_name=name,
             cache=default_cache(name),
             repository=default_repository(name),
@@ -188,7 +188,7 @@ def load_settings() -> Settings:
         {
             "system_prompt": system_prompt,
             "preferred_model": preferred_model,
-            "default_verbosity": verbosity,
+            "default_verbosity": default_verbosity,
             "server_models": server_models,
             "paths": paths,
             # Lazy loaders

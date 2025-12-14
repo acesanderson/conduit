@@ -3,8 +3,10 @@ from conduit.storage.cache.protocol import ConduitCache
 from conduit.storage.repository.protocol import (
     ConversationRepository,
 )
+from conduit.storage.repository.persistence_mode import PersistenceMode
 from pydantic import BaseModel, Field, ConfigDict
 from rich.console import Console
+from typing import Literal
 
 
 class ConduitOptions(BaseModel):
@@ -36,6 +38,7 @@ class ConduitOptions(BaseModel):
     # Overrides for request behavior
     use_cache: bool | None = True  # Technically: "if cache exists, use it"
     include_history: bool = True  # Whether to include conversation history
+    persistence_mode: PersistenceMode = PersistenceMode.RESUME
 
     # Dev options
     debug_payload: bool = False  # Log full request/response payloads for debugging

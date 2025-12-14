@@ -57,19 +57,23 @@ class ConduitBase:
         PURE CPU: Build initial conversation object.
         Load from repository if enabled and last conversation exists.
         """
+        from conduit.storage.repository.persistence_mode import PersistenceMode
+
         # Load from repository if persistence is enabled
         if options.repository and options.repository.last:
             logger.info("Loading last conversation from repository.")
             conversation = options.repository.last
+            if options.persistence_mode == PersistenceMode.OVERWRITE:
+                logger.info("Overwriting conversation as per persistence_mode.")
+                conversation.messages = []
+            if params.system:
+                conversation.ensure_system_message(params.system)
         else:
             logger.info("Creating new conversation.")
             conversation = Conversation()
 
-        # Append rendered prompt as UserMessage
-        conversation.messages.append(UserMessage(content=rendered_prompt))
-        # Attach system message if exists in options
-        if params.system:
-            conversation.ensure_system_message(params.system)
+        # Add rendered prompt as UserMessage
+        conversation.add(UserMessage(content=rendered_prompt))
         return conversation
 
     # Abstract methods (must be implemented by subclasses)

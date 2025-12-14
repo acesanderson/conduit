@@ -9,7 +9,7 @@ NOTE: Typing is a mess in python. We have two types for Message:
 from __future__ import annotations
 from conduit.domain.message.role import Role
 from pydantic import BaseModel, Field, model_validator
-from typing import Literal, Any, Annotated
+from typing import Literal, Any, Annotated, override
 import time
 import uuid
 
@@ -108,7 +108,7 @@ class ImageOutput(BaseModel):
 
 
 # All possible user content types
-Content = str | list[TextContent | ImageContent | AudioContent]
+Content = str | list[TextContent | ImageContent | AudioContent | str]
 
 
 # tool primitive
@@ -133,6 +133,7 @@ class Message(BaseModel):
     """
 
     role: Role
+    content: Content | None
     timestamp: int = Field(default_factory=lambda: int(time.time() * 1000))
     message_id: uuid.UUID = Field(
         default_factory=lambda: uuid.UUID(int=uuid.uuid4().int)
@@ -154,6 +155,13 @@ class Message(BaseModel):
         """
         return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.timestamp / 1000))
 
+    @override
+    def __hash__(self) -> int:
+        """
+        Hash for caching and identity checks.
+        """
+        return hash(self.role.value + str(self.content))
+
 
 class SystemMessage(Message):
     """
@@ -162,7 +170,7 @@ class SystemMessage(Message):
 
     role: Role = Role.SYSTEM
     role_str: Literal["system"] = "system"
-    content: str
+    content: Content | None
 
 
 class UserMessage(Message):
@@ -173,7 +181,7 @@ class UserMessage(Message):
 
     role: Role = Role.USER
     role_str: Literal["user"] = "user"
-    content: Content
+    content: Content | None
     name: str | None = None
 
 
@@ -187,7 +195,7 @@ class AssistantMessage(Message):
     role_str: Literal["assistant"] = "assistant"
 
     # text
-    content: str | list[str] | None = None
+    content: Content | None = None
     reasoning: str | None = None
 
     # action
