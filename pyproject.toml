@@ -126,12 +126,12 @@ headwater_api = { path = "../headwater/headwater-api", editable = true }
 headwater_client = { path = "../headwater/headwater-client", editable = true }
 
 [project.scripts]
-bchat = "conduit.scripts.chat_cli:main"
-chat = "conduit.scripts.fchat_cli:main"
-conduit = "conduit.scripts.conduit_cli:main"
-imagegen = "conduit.scripts.imagegen_cli:main"
-models = "conduit.scripts.models_cli:main"
-tokens = "conduit.odometer.database.pgres.snapshot:main"
-update = "conduit.scripts.update_modelstore:main"
-update_ollama = "conduit.scripts.update_ollama_list:main"
-tokenize="conduit.scripts.tokenize_cli:main"
+bchat = "conduit.apps.scripts.chat_cli:main"
+chat = "conduit.apps.scripts.fchat_cli:main"
+conduit = "conduit.apps.scripts.conduit_cli:main"
+imagegen = "conduit.apps.scripts.imagegen_cli:main"
+models = "conduit.apps.scripts.models_cli:main"
+tokens = "conduit.apps.scripts.tokens_cli:main"
+update = "conduit.apps.scripts.update_modelstore:main"
+update_ollama = "conduit.apps.scripts.update_ollama_list:main"
+tokenize="conduit.apps.scripts.tokenize_cli:main"
