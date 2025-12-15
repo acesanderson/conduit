@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, model_validator
 from typing import Literal, Any, Annotated, override
 import time
 import uuid
+import functools
 
 
 # Multimodal display helpers
@@ -108,7 +109,7 @@ class ImageOutput(BaseModel):
 
 
 # All possible user content types
-Content = str | list[TextContent | ImageContent | AudioContent | str]
+Content = str | dict | list[TextContent | ImageContent | AudioContent | str]
 
 
 # tool primitive
@@ -207,6 +208,49 @@ class AssistantMessage(Message):
 
     # Special structured output (e.g. parsed JSON, XML, etc.) from Instructor
     parsed: BaseModel | list[BaseModel] | None = Field(default=None, exclude=True)
+
+    @functools.cached_property
+    def perplexity_content(self) -> Any:
+        """
+        Lazy factory for Perplexity responses with citations.
+        If content has Perplexity structure (text + citations), construct rich PerplexityContent object.
+        Import happens inside method for encapsulation and to avoid circular dependencies.
+
+        Returns:
+            PerplexityContent object if content matches Perplexity structure, None otherwise.
+        """
+        if not isinstance(self.content, dict):
+            return None
+
+        # Import inside method to avoid circular dependency
+        from conduit.core.clients.perplexity.perplexity_content import (
+            PerplexityContent,
+            PerplexityCitation,
+        )
+
+        # Case 1: Text response with full structure
+        if "text" in self.content and "citations" in self.content:
+            citations = [
+                PerplexityCitation(**c) for c in self.content["citations"]
+            ]
+            return PerplexityContent(
+                text=self.content["text"],
+                citations=citations,
+            )
+
+        # Case 2: Structured response - citations only
+        if "citations" in self.content and self.parsed is not None:
+            # Use JSON representation of structured object as "text"
+            text = self.parsed.model_dump_json(indent=2)
+            citations = [
+                PerplexityCitation(**c) for c in self.content["citations"]
+            ]
+            return PerplexityContent(
+                text=text,
+                citations=citations,
+            )
+
+        return None
 
     @model_validator(mode="after")
     def validate_structure(self) -> AssistantMessage:

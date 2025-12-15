@@ -1,39 +1,45 @@
 from __future__ import annotations
 from conduit.core.clients.client_base import Client
-from conduit.storage.odometer.usage import Usage
 from conduit.core.clients.payload_base import Payload
 from conduit.core.clients.anthropic.payload import AnthropicPayload
 from conduit.core.clients.anthropic.adapter import convert_message_to_anthropic
-from anthropic import (
-    Anthropic,
-    AsyncAnthropic,
-    Stream,
-    AsyncStream as AnthropicAsyncStream,
-)
+from conduit.domain.result.response import GenerationResponse
+from conduit.domain.result.response_metadata import ResponseMetadata, StopReason
+from conduit.domain.message.message import AssistantMessage
+from anthropic import AsyncAnthropic, AsyncStream
 from typing import TYPE_CHECKING, override, Any
-from abc import ABC
 import instructor
 from instructor import Instructor
 import os
+import time
 
 if TYPE_CHECKING:
-    from conduit.domain.request.request import Request
-    from conduit.core.parser.stream.protocol import SyncStream, AsyncStream
+    from conduit.domain.request.request import GenerationRequest
     from conduit.domain.message.message import Message
-    from conduit.domain.result.result import ConduitResult
+    from conduit.domain.result.result import GenerationResult
 
 
-class AnthropicClient(Client, ABC):
+class AnthropicClient(Client):
+    """
+    Client implementation for Anthropic's Claude API.
+    Async only.
+    """
+
     def __init__(self):
-        self._client: Instructor = self._initialize_client()
+        instructor_client, raw_client = self._initialize_client()
+        self._client: Instructor = instructor_client
+        self._raw_client: AsyncAnthropic = raw_client
 
     @override
-    def _initialize_client(self) -> Instructor:
+    def _initialize_client(self) -> tuple[Instructor, AsyncAnthropic]:
         """
-        We use the Instructor library by default, as this offers a great interface for doing function calling and working with pydantic objects.
+        Creates both raw and instructor-wrapped clients.
+        Raw client for standard completions, Instructor for structured responses.
+        Uses instructor.from_anthropic() for Anthropic-specific handling.
         """
-        anthropic_client = Anthropic(api_key=self._get_api_key())
-        return instructor.from_anthropic(anthropic_client)
+        raw_client = AsyncAnthropic(api_key=self._get_api_key())
+        instructor_client = instructor.from_anthropic(raw_client)
+        return instructor_client, raw_client
 
     @override
     def _get_api_key(self) -> str:
@@ -51,7 +57,7 @@ class AnthropicClient(Client, ABC):
         return convert_message_to_anthropic(message)
 
     @override
-    def _convert_request(self, request: Request) -> Payload:
+    def _convert_request(self, request: GenerationRequest) -> Payload:
         """
         Translates the internal generic Request DTO into the specific
         dictionary parameters required by Anthropic's SDK.
@@ -77,13 +83,13 @@ class AnthropicClient(Client, ABC):
         system_content = "\n\n".join(system_messages) if system_messages else None
 
         anthropic_payload = AnthropicPayload(
-            model=request.model,
+            model=request.params.model,
             messages=converted_messages,
-            max_tokens=request.max_tokens if request.max_tokens else 4096,
+            max_tokens=request.params.max_tokens if request.params.max_tokens else 4096,
             system=system_content,
-            temperature=request.temperature,
-            top_p=request.top_p,
-            stream=request.stream,
+            temperature=request.params.temperature,
+            top_p=request.params.top_p,
+            stream=request.params.stream,
         )
         return anthropic_payload
 
@@ -130,117 +136,140 @@ class AnthropicClient(Client, ABC):
 
         raise ValueError("Payload must be string or list[Message]")
 
-
-class AnthropicClientSync(AnthropicClient):
-    @override
-    def _initialize_client(self) -> Instructor:
-        """
-        We use the Instructor library by default, as this offers a great interface for doing function calling and working with pydantic objects.
-        """
-        anthropic_client = Anthropic(api_key=self._get_api_key())
-        return instructor.from_anthropic(anthropic_client)
-
-    @override
-    def query(
-        self,
-        request: Request,
-    ) -> ConduitResult:
-        payload = self._convert_request(request)
-        payload_dict = payload.model_dump(exclude_none=True)
-
-        # Now, make the call
-        structured_response = None
-        if request.response_model is not None:
-            # We want the raw response from Anthropic, so we use `create_with_completion`
-            structured_response, result = self._client.messages.create_with_completion(
-                response_model=request.response_model, **payload_dict
-            )
-        else:
-            # Use the standard completion method
-            result = self._client.messages.create(
-                response_model=request.response_model, **payload_dict
-            )
-
-        # Capture usage
-        if isinstance(result, Stream):
-            # Handle streaming response if needed; usage is handled by StreamParser
-            usage = Usage(input_tokens=0, output_tokens=0)
-            return result, usage
-
-        usage = Usage(
-            input_tokens=result.usage.input_tokens,
-            output_tokens=result.usage.output_tokens,
-        )
-
-        if structured_response is not None:
-            # If we have a structured response, return it along with usage
-            return structured_response, usage
-
-        # First try to get text content from the result
-        try:
-            result = result.content[0].text
-            return result, usage
-        except AttributeError:
-            # If the result is a BaseModel or Stream, handle accordingly
-            pass
-
-        return result, usage
-
-
-class AnthropicClientAsync(AnthropicClient):
-    @override
-    def _initialize_client(self) -> Instructor:
-        """
-        We use the Instructor library by default, as this offers a great interface for doing function calling and working with pydantic objects.
-        """
-        anthropic_async_client = AsyncAnthropic(api_key=self._get_api_key())
-        return instructor.from_anthropic(anthropic_async_client)
-
     @override
     async def query(
         self,
-        request: Request,
-    ) -> ConduitResult:
+        request: GenerationRequest,
+    ) -> GenerationResult:
+        match request.params.output_type:
+            case "text":
+                return await self._generate_text(request)
+            case "structured_response":
+                return await self._generate_structured_response(request)
+            case _:
+                raise ValueError(
+                    f"Unsupported output type: {request.params.output_type}"
+                )
+
+    async def _generate_text(self, request: GenerationRequest) -> GenerationResult:
+        """
+        Generate text using Anthropic's Claude API and return a GenerationResponse.
+
+        Returns:
+            - GenerationResponse object for successful non-streaming requests
+            - AsyncStream object for streaming requests
+        """
         payload = self._convert_request(request)
         payload_dict = payload.model_dump(exclude_none=True)
 
-        # Now, make the call
-        structured_response = None
-        if request.response_model is not None:
-            # We want the raw response from Anthropic, so we use `create_with_completion`
-            (
-                structured_response,
-                result,
-            ) = await self._client.messages.create_with_completion(
-                response_model=request.response_model, **payload_dict
-            )
-        else:
-            # Use the standard completion method
-            result = await self._client.messages.create(
-                response_model=request.response_model, **payload_dict
-            )
+        # Track timing
+        start_time = time.time()
 
-        # Capture usage
-        if isinstance(result, AnthropicAsyncStream):
-            # Handle streaming response if needed; usage is handled by StreamParser
-            usage = Usage(input_tokens=0, output_tokens=0)
-            return result, usage
+        # Use the raw client for standard completions
+        result = await self._raw_client.messages.create(**payload_dict)
 
-        usage = Usage(
-            input_tokens=result.usage.input_tokens,
-            output_tokens=result.usage.output_tokens,
+        # Handle streaming response
+        if isinstance(result, AsyncStream):
+            # For streaming, return the AsyncStream object directly
+            return result
+
+        # Assemble response metadata
+        duration = (time.time() - start_time) * 1000  # Convert to milliseconds
+        model_stem = result.model
+        input_tokens = result.usage.input_tokens  # Anthropic uses input_tokens not prompt_tokens
+        output_tokens = result.usage.output_tokens  # Anthropic uses output_tokens not completion_tokens
+
+        # Determine stop reason
+        stop_reason = StopReason.STOP
+        if hasattr(result, "stop_reason"):
+            match result.stop_reason:
+                case "end_turn":
+                    stop_reason = StopReason.STOP
+                case "max_tokens":
+                    stop_reason = StopReason.LENGTH
+                case "stop_sequence":
+                    stop_reason = StopReason.STOP
+
+        # Extract the text content (Anthropic-specific path)
+        content = result.content[0].text  # Different from OpenAI: content[0].text not choices[0].message.content
+        assistant_message = AssistantMessage(content=content)
+
+        # Create ResponseMetadata
+        metadata = ResponseMetadata(
+            duration=duration,
+            model_slug=model_stem,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            stop_reason=stop_reason,
         )
 
-        if structured_response is not None:
-            # If we have a structured response, return it along with usage
-            return structured_response, usage
+        # Create and return Response
+        return GenerationResponse(
+            message=assistant_message,
+            request=request,
+            metadata=metadata,
+        )
 
-        # First try to get text content from the result
-        try:
-            result = result.content[0].text
-            return result, usage
-        except AttributeError:
-            # If the result is a BaseModel or AsyncStream, handle accordingly
-            pass
+    async def _generate_structured_response(
+        self, request: GenerationRequest
+    ) -> GenerationResponse:
+        """
+        Generate a structured response using Anthropic's function calling and return a GenerationResponse.
 
-        return result, usage
+        Returns:
+            - GenerationResponse object with parsed structured data in AssistantMessage.parsed
+        """
+        payload = self._convert_request(request)
+        payload_dict = payload.model_dump(exclude_none=True)
+
+        # Track timing
+        start_time = time.time()
+
+        # Make the API call with function calling using instructor client
+        (
+            user_obj,
+            completion,
+        ) = await self._client.messages.create_with_completion(
+            response_model=request.params.response_model, **payload_dict
+        )
+
+        # Assemble response metadata
+        duration = (time.time() - start_time) * 1000  # Convert to milliseconds
+        model_stem = completion.model
+        input_tokens = completion.usage.input_tokens
+        output_tokens = completion.usage.output_tokens
+
+        # Determine stop reason
+        stop_reason = StopReason.STOP
+        if hasattr(completion, "stop_reason"):
+            match completion.stop_reason:
+                case "end_turn":
+                    stop_reason = StopReason.STOP
+                case "max_tokens":
+                    stop_reason = StopReason.LENGTH
+                case "stop_sequence":
+                    stop_reason = StopReason.STOP
+
+        # Create AssistantMessage with parsed structured data
+        # For Anthropic, content[0].text may be None for structured responses
+        content_text = completion.content[0].text if completion.content else None
+        assistant_message = AssistantMessage(
+            content=content_text,
+            parsed=user_obj,
+        )
+
+        # Create ResponseMetadata
+        metadata = ResponseMetadata(
+            duration=duration,
+            model_slug=model_stem,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            stop_reason=stop_reason,
+        )
+
+        # Create and return Response
+        return GenerationResponse(
+            message=assistant_message,
+            request=request,
+            metadata=metadata,
+        )
