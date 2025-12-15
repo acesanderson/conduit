@@ -1,7 +1,9 @@
 from __future__ import annotations
-from conduit.core.clients.openai.client import OpenAIClientSync, OpenAIClientAsync
-from conduit.domain.request.request import Request
-from conduit.domain.result.response import Response
+from conduit.core.clients.openai.client import OpenAIClient
+from conduit.utils.progress.verbosity import Verbosity
+from conduit.core.clients.google.client import GoogleClient
+from conduit.domain.request.request import GenerationRequest
+from conduit.domain.result.response import GenerationResponse
 from conduit.domain.message.message import (
     UserMessage,
     TextContent,
@@ -9,7 +11,8 @@ from conduit.domain.message.message import (
     ImageContent,
 )
 from conduit.domain.request.generation_params import GenerationParams
-from conduit.core.parser.stream.protocol import SyncStream, AsyncStream
+from conduit.domain.config.conduit_options import ConduitOptions
+from conduit.core.parser.stream.protocol import AsyncStream
 from pydantic import BaseModel
 import pytest
 import base64
@@ -22,7 +25,6 @@ AUDIO_PATH = (
     / "src"
     / "conduit"
     / "core"
-    / "model"
     / "clients"
     / "harvard.mp3"
 )
@@ -34,7 +36,6 @@ IMAGE_PATH = (
     / "src"
     / "conduit"
     / "core"
-    / "model"
     / "clients"
     / "image.png"
 )
@@ -61,7 +62,8 @@ def openai_text_request():
     messages = [user_message]
     model = "gpt-3.5-turbo-0125"
     params = GenerationParams(model=model)
-    return Request(params=params, messages=messages)
+    options = ConduitOptions(project_name="test", verbosity=Verbosity.PROGRESS)
+    return GenerationRequest(params=params, messages=messages, options=options)
 
 
 @pytest.fixture
@@ -71,7 +73,7 @@ def openai_stream_request():
     messages = [user_message]
     model = "gpt-3.5-turbo-0125"
     params = GenerationParams(model=model, stream=True)
-    return Request(params=params, messages=messages)
+    return GenerationRequest(params=params, messages=messages)
 
 
 @pytest.fixture
@@ -83,7 +85,7 @@ def openai_structured_request():
     messages = [user_message]
     model = "gpt-3.5-turbo-0125"
     params = GenerationParams(model=model, response_model=Frog)
-    return Request(params=params, messages=messages)
+    return GenerationRequest(params=params, messages=messages)
 
 
 # Helper functions for multimodal tests
@@ -119,7 +121,7 @@ def openai_audio_input_request():
     # Use the audio-capable model
     model = "gpt-4o-audio-preview"
     params = GenerationParams(model=model)
-    return Request(params=params, messages=messages, output_type="text")
+    return GenerationRequest(params=params, messages=messages, output_type="text")
 
 
 @pytest.fixture
@@ -131,7 +133,7 @@ def openai_audio_generation_request():
     # Default TTS model
     model = "tts-1"
     params = GenerationParams(model=model)
-    return Request(params=params, messages=messages, output_type="audio")
+    return GenerationRequest(params=params, messages=messages, output_type="audio")
 
 
 @pytest.fixture
@@ -149,7 +151,9 @@ def openai_audio_transcription_request():
     # Use the Whisper model
     model = "whisper-1"
     params = GenerationParams(model=model)
-    return Request(params=params, messages=messages, output_type="transcription")
+    return GenerationRequest(
+        params=params, messages=messages, output_type="transcription"
+    )
 
 
 @pytest.fixture
@@ -169,7 +173,7 @@ def openai_image_analysis_request():
     # Use the vision-capable model
     model = "gpt-4o"
     params = GenerationParams(model=model)
-    return Request(params=params, messages=messages, output_type="text")
+    return GenerationRequest(params=params, messages=messages, output_type="text")
 
 
 @pytest.fixture
@@ -183,7 +187,7 @@ def openai_image_generation_request():
     # Default DALL-E model
     model = "dall-e-3"
     params = GenerationParams(model=model)
-    return Request(params=params, messages=messages, output_type="image")
+    return GenerationRequest(params=params, messages=messages, output_type="image")
 
 
 ####################
@@ -454,3 +458,182 @@ def test_openai_image_generation_sync(openai_image_generation_request):
 
     # Verify request is preserved
     assert result.request == openai_image_generation_request
+
+
+####################
+# Google Gemini Fixtures
+####################
+
+
+@pytest.fixture
+def google_text_request():
+    """Basic text generation request for Google Gemini"""
+    user_message = UserMessage(content="Hello, how are you?")
+    messages = [user_message]
+    model = "flash"
+    params = GenerationParams(model=model)
+    options = ConduitOptions(project_name="test", verbosity=Verbosity.PROGRESS)
+    return GenerationRequest(params=params, messages=messages, options=options)
+
+
+@pytest.fixture
+def google_stream_request():
+    """Streaming text generation request for Google Gemini"""
+    user_message = UserMessage(content="Tell me a story about a brave knight.")
+    messages = [user_message]
+    model = "flash"
+    params = GenerationParams(model=model, stream=True)
+    options = ConduitOptions(project_name="test", verbosity=Verbosity.PROGRESS)
+    return GenerationRequest(params=params, messages=messages, options=options)
+
+
+@pytest.fixture
+def google_structured_request():
+    """Structured response request for Google Gemini"""
+    user_message = UserMessage(
+        content="Create a frog to delight me.",
+    )
+    messages = [user_message]
+    model = "flash"
+    params = GenerationParams(model=model, response_model=Frog)
+    options = ConduitOptions(project_name="test", verbosity=Verbosity.PROGRESS)
+    return GenerationRequest(params=params, messages=messages, options=options)
+
+
+@pytest.fixture
+def google_image_analysis_request():
+    """Image analysis (vision) request for Google Gemini"""
+    # Load the image file
+    image_url = load_image_as_base64(IMAGE_PATH)
+
+    # Create multimodal content with text and image
+    text_content = TextContent(text="What is in this image? Describe it in detail.")
+    image_content = ImageContent(url=image_url, detail="high")
+
+    user_message = UserMessage(content=[text_content, image_content])
+    messages = [user_message]
+
+    # Use the vision-capable model
+    model = "flash"
+    params = GenerationParams(model=model)
+    options = ConduitOptions(project_name="test", verbosity=Verbosity.PROGRESS)
+    return GenerationRequest(params=params, messages=messages, options=options)
+
+
+####################
+# Google Gemini Tests
+####################
+
+
+@pytest.mark.asyncio
+async def test_google_text_generation(google_text_request):
+    """Test Google Gemini text generation returns a GenerationResponse object"""
+    client = GoogleClient()
+    result = await client.query(google_text_request)
+
+    # Verify it returns a GenerationResponse object
+    assert isinstance(result, GenerationResponse)
+
+    # Verify Response structure
+    assert hasattr(result, "message")
+    assert hasattr(result, "request")
+    assert hasattr(result, "metadata")
+
+    # Verify the message content
+    assert result.message is not None
+    assert isinstance(result.content, str)
+    assert len(result.content) > 0
+
+    # Verify metadata has usage information
+    assert result.metadata.input_tokens > 0
+    assert result.metadata.output_tokens > 0
+    assert result.total_tokens > 0
+
+    # Verify request is preserved
+    assert result.request == google_text_request
+
+
+@pytest.mark.asyncio
+async def test_google_streaming(google_stream_request):
+    """Test Google Gemini streaming returns an AsyncStream object"""
+    client = GoogleClient()
+    result = await client.query(google_stream_request)
+
+    # For streaming, we should get an AsyncStream object directly
+    assert isinstance(result, AsyncStream)
+
+
+@pytest.mark.asyncio
+async def test_google_structured_response(google_structured_request):
+    """Test Google Gemini structured response returns a GenerationResponse with structured content"""
+    client = GoogleClient()
+    result = await client.query(google_structured_request)
+
+    # Verify it returns a GenerationResponse object
+    assert isinstance(result, GenerationResponse)
+
+    # Verify the parsed field contains the structured Frog object
+    assert result.message.parsed is not None
+    assert isinstance(result.message.parsed, Frog)
+    assert hasattr(result.message.parsed, "species")
+    assert hasattr(result.message.parsed, "age")
+    assert hasattr(result.message.parsed, "name")
+    assert hasattr(result.message.parsed, "occupation")
+    assert hasattr(result.message.parsed, "color")
+    assert hasattr(result.message.parsed, "legs")
+    assert hasattr(result.message.parsed, "continent")
+
+    # Verify metadata has usage information
+    assert result.metadata.input_tokens > 0
+    assert result.metadata.output_tokens > 0
+
+
+@pytest.mark.asyncio
+async def test_google_image_analysis(google_image_analysis_request):
+    """Test Google Gemini image analysis (vision) capability"""
+    client = GoogleClient()
+    result = await client.query(google_image_analysis_request)
+
+    # Verify it returns a GenerationResponse object
+    assert isinstance(result, GenerationResponse)
+
+    # Verify Response structure
+    assert hasattr(result, "message")
+    assert hasattr(result, "request")
+    assert hasattr(result, "metadata")
+
+    # Verify the message content (should describe the image)
+    assert result.message is not None
+    assert isinstance(result.content, str)
+    assert len(result.content) > 0
+
+    # Verify metadata has usage information
+    assert result.metadata.input_tokens > 0
+    assert result.metadata.output_tokens > 0
+
+    # Verify request is preserved
+    assert result.request == google_image_analysis_request
+
+
+@pytest.mark.asyncio
+async def test_google_metadata_structure(google_text_request):
+    """Test that Google Gemini responses have proper metadata structure"""
+    client = GoogleClient()
+    result = await client.query(google_text_request)
+
+    # Verify metadata structure
+    assert hasattr(result.metadata, "duration")
+    assert hasattr(result.metadata, "model_slug")
+    assert hasattr(result.metadata, "input_tokens")
+    assert hasattr(result.metadata, "output_tokens")
+    assert hasattr(result.metadata, "stop_reason")
+    assert hasattr(result.metadata, "timestamp")
+
+    # Verify metadata types and values
+    assert isinstance(result.metadata.duration, (int, float))
+    assert result.metadata.duration > 0
+    assert isinstance(result.metadata.model_slug, str)
+    assert len(result.metadata.model_slug) > 0
+    assert isinstance(result.metadata.input_tokens, int)
+    assert isinstance(result.metadata.output_tokens, int)
+    assert result.metadata.stop_reason is not None

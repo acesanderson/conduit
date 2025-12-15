@@ -6,7 +6,7 @@ Usage:
     python snapshot.py
 """
 
-from conduit.storage.odometer.database.pgres.PostgresBackend import PostgresBackend
+from conduit.storage.odometer.pgres.postgres_backend import PostgresBackend
 from datetime import date
 from rich.console import Console
 from rich.table import Table
