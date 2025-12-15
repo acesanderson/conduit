@@ -14,6 +14,8 @@ if TYPE_CHECKING:
     from conduit.domain.request.query_input import QueryInput
     from conduit.domain.result.result import GenerationResult
     from conduit.domain.message.message import Message
+    from conduit.utils.progress.verbosity import Verbosity
+    from rich.console import Console
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +109,60 @@ class ModelSync:
         """
         return self._run_sync(self._impl.tokenize(payload))
 
+    # Factory
+    @classmethod
+    def create(
+        cls,
+        model: str,
+        *,
+        project_name: str = settings.default_project_name,
+        persist: bool | str = False,
+        cached: bool | str = False,
+        verbosity: Verbosity = settings.default_verbosity,
+        console: Console | None = None,
+        system: str | None = None,
+        debug_payload: bool = False,
+        **param_kwargs: Any,
+    ) -> ModelSync:
+        """
+        Factory with sensible defaults.
+
+        - `model`: required model name/alias (used for GenerationParams.model).
+        - `param_kwargs`: go directly into GenerationParams(...).
+        - `cached` / `persist` / `verbosity` / `console`:
+            baked into ConduitOptions as baseline behavior.
+        """
+        # Params: seed with model + any extra params
+        params = GenerationParams(model=model, **param_kwargs, system=system)
+
+        # Options: start from global defaults
+        options = settings.default_conduit_options()
+
+        # Collect overrides
+        opt_updates: dict[str, Any] = {"verbosity": verbosity}
+
+        if console is not None:
+            opt_updates["console"] = console
+
+        # Cache wiring
+        if cached:
+            cache_name = cached if isinstance(cached, str) else project_name
+            opt_updates["cache"] = settings.default_cache(name=cache_name)
+
+        # Persistence wiring
+        if persist:
+            repo_name = persist if isinstance(persist, str) else project_name
+            opt_updates["repository"] = settings.default_repository(name=repo_name)
+
+        # Debug
+        if debug_payload:
+            opt_updates["debug_payload"] = True
+
+        # Apply updates (Pydantic v2)
+        options = options.model_copy(update=opt_updates)
+
+        return cls(model=model, params=params, options=options)
+
     # Config methods - mutate stored options
     def enable_cache(self, name: str = settings.default_project_name) -> None:
         """Enable caching with specified name."""
@@ -172,7 +228,15 @@ class ModelSync:
 
 
 if __name__ == "__main__":
-    model = ModelSync("gpt3", temperature=1.0)
-    model.enable_cache("test")
+    # Simple usage example using the factory
+    model = ModelSync.create(
+        model="gpt3",
+        cached=True,
+        persist=True,
+        temperature=1.0,
+        system="You are a helpful assistant.",
+        debug_payload=True,
+    )
+
     result = model.query("Hello, world!")
     print(result)
