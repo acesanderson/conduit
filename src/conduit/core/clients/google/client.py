@@ -7,9 +7,11 @@ from conduit.core.clients.client_base import Client
 from conduit.core.clients.payload_base import Payload
 from conduit.core.clients.google.payload import GooglePayload
 from conduit.core.clients.google.adapter import convert_message_to_google
+from conduit.core.clients.google.image_params import GoogleImageParams
+from conduit.core.clients.google.audio_params import GoogleAudioParams
 from conduit.domain.result.response import GenerationResponse
 from conduit.domain.result.response_metadata import ResponseMetadata, StopReason
-from conduit.domain.message.message import AssistantMessage
+from conduit.domain.message.message import AssistantMessage, ImageOutput
 from openai import AsyncOpenAI, AsyncStream
 from typing import TYPE_CHECKING, override, Any
 import instructor
@@ -17,6 +19,7 @@ from instructor import Instructor
 from abc import ABC
 import os
 import time
+import base64
 
 if TYPE_CHECKING:
     from conduit.domain.result.result import GenerationResult
@@ -151,6 +154,10 @@ class GoogleClient(Client, ABC):
         match request.params.output_type:
             case "text":
                 return await self._generate_text(request)
+            case "image":
+                return await self._generate_image(request)
+            case "audio":
+                return await self._generate_audio(request)
             case "structured_response":
                 return await self._generate_structured_response(request)
             case _:
@@ -264,6 +271,136 @@ class GoogleClient(Client, ABC):
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             stop_reason=stop_reason,
+        )
+
+        # Create and return Response
+        return GenerationResponse(
+            message=assistant_message,
+            request=request,
+            metadata=metadata,
+        )
+
+    async def _generate_image(self, request: GenerationRequest) -> GenerationResponse:
+        """
+        Generate an image using Google's Imagen and return a GenerationResponse.
+
+        Returns:
+            - Response object with ImageOutput in AssistantMessage.images
+        """
+        start_time = time.time()
+
+        # Extract text prompt from the last message
+        last_message = request.messages[-1]
+        if isinstance(last_message.content, str):
+            prompt = last_message.content
+        else:
+            # Handle multimodal content - extract text
+            prompt = " ".join(
+                [block.text for block in last_message.content if hasattr(block, "text")]
+            )
+
+        # Get image parameters (use defaults if not provided)
+        image_params = GoogleImageParams()
+        if (
+            request.params.client_params
+            and "image_params" in request.params.client_params
+        ):
+            image_params = request.params.client_params["image_params"]
+
+        # Call the images.generate endpoint
+        response = await self._raw_client.images.generate(
+            model=image_params.model.value,
+            prompt=prompt,
+            response_format=image_params.response_format.value,
+            n=image_params.n,
+        )
+
+        duration = (time.time() - start_time) * 1000
+
+        # Convert response to ImageOutput objects
+        image_outputs = []
+        for image_data in response.data:
+            image_output = ImageOutput(
+                url=image_data.url if hasattr(image_data, "url") else None,
+                b64_json=image_data.b64_json
+                if hasattr(image_data, "b64_json")
+                else None,
+                revised_prompt=image_data.revised_prompt
+                if hasattr(image_data, "revised_prompt")
+                else None,
+            )
+            image_outputs.append(image_output)
+
+        # Create AssistantMessage with images
+        assistant_message = AssistantMessage(images=image_outputs)
+
+        # Create ResponseMetadata (Imagen doesn't provide token counts)
+        metadata = ResponseMetadata(
+            duration=duration,
+            model_slug=image_params.model.value,
+            input_tokens=0,  # Imagen doesn't provide token counts
+            output_tokens=0,
+            stop_reason=StopReason.STOP,
+        )
+
+        # Create and return Response
+        return GenerationResponse(
+            message=assistant_message,
+            request=request,
+            metadata=metadata,
+        )
+
+    async def _generate_audio(self, request: GenerationRequest) -> GenerationResponse:
+        """
+        Generate audio using Google's TTS API and return a GenerationResponse.
+
+        Returns:
+            - Response object with base64-encoded audio data
+        """
+        start_time = time.time()
+
+        # Extract text from the last message
+        last_message = request.messages[-1]
+        if isinstance(last_message.content, str):
+            text_input = last_message.content
+        else:
+            # Handle multimodal content - extract text
+            text_input = " ".join(
+                [block.text for block in last_message.content if hasattr(block, "text")]
+            )
+
+        # Get audio parameters (use defaults if not provided)
+        audio_params = GoogleAudioParams()
+        if (
+            request.params.client_params
+            and "audio_params" in request.params.client_params
+        ):
+            audio_params = request.params.client_params["audio_params"]
+
+        # Call the audio.speech.create endpoint
+        response = await self._raw_client.audio.speech.create(
+            model=audio_params.model.value,
+            voice=audio_params.voice.value,
+            input=text_input,
+            response_format=audio_params.response_format.value,
+        )
+
+        duration = (time.time() - start_time) * 1000
+
+        # Convert audio bytes to base64
+        audio_bytes = response.read()
+        audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
+
+        # Create AssistantMessage with audio data
+        assistant_message = AssistantMessage(content=audio_base64)
+
+        # Create ResponseMetadata (TTS doesn't provide token counts)
+        metadata = ResponseMetadata(
+            duration=duration,
+            model_slug=audio_params.model.value,
+            input_tokens=0,  # TTS doesn't provide token counts
+            output_tokens=0,
+            stop_reason=StopReason.STOP,
         )
 
         # Create and return Response
