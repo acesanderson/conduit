@@ -2,7 +2,7 @@
   "banana": "gemini-2.5-flash-image-preview",
   "claude": "claude-sonnet-4-5-20250929",
   "deepseek": "deepseek-chat",
-  "flash": "gemini-2.5-flash",
+  "flash": "gemini-3-flash",
   "gemini": "gemini-2.5-flash",
   "gemini3": "gemini-3-pro-preview",
   "gpt": "gpt-5-mini",

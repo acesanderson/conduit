@@ -13,55 +13,7 @@ from typing import Literal, Any, Annotated, override
 import time
 import uuid
 import functools
-
-
-# Multimodal display helpers
-def display(image_content: str) -> None:
-    """
-    Display a base64-encoded image using chafa.
-    Your mileage may vary depending on the terminal and chafa version.
-    """
-    import subprocess
-    import base64
-    import os
-
-    try:
-        image_data = base64.b64decode(image_content)
-        cmd = ["chafa", "-"]
-
-        # If in tmux or SSH, force text mode for consistency
-        if (
-            os.environ.get("TMUX")
-            or os.environ.get("SSH_CLIENT")
-            or os.environ.get("SSH_CONNECTION")
-        ):
-            cmd.extend(["--format", "symbols", "--symbols", "block"])
-        process = subprocess.Popen(cmd, stdin=subprocess.PIPE)
-        process.communicate(input=image_data)
-    except Exception as e:
-        print(f"Error displaying image: {e}")
-
-
-def play(audio_content: str):
-    """
-    Play the audio from the base64 content (no file required).
-    """
-    from pydub import AudioSegment
-    from pydub.playback import play
-    import base64
-    import io
-
-    # Decode base64 to bytes
-    audio_bytes = base64.b64decode(audio_content)
-
-    # Create a file-like object from bytes
-    audio_buffer = io.BytesIO(audio_bytes)
-
-    # Load audio from the buffer
-    audio = AudioSegment.from_file(audio_buffer, format=format)
-
-    # Play the audio
-    play(audio)
+from pathlib import Path
 
 
 # Content types
@@ -80,6 +32,25 @@ class ImageContent(BaseModel):
     url: str  # data:image/png;base64,... or https://...
     detail: Literal["auto", "low", "high"] = "auto"
 
+    @classmethod
+    def from_file(cls, file_path: str | Path) -> ImageContent:
+        """
+        Load image from a file and encode as base64 data URL.
+        """
+        import base64
+        from pathlib import Path
+        import mimetypes
+
+        file_path = Path(file_path)
+        with open(file_path, "rb") as f:
+            image_bytes = f.read()
+        image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+        mime_type, _ = mimetypes.guess_type(file_path)
+        if mime_type is None:
+            mime_type = "image/png"  # Default to PNG
+        data_url = f"data:{mime_type};base64,{image_b64}"
+        return cls(url=data_url)
+
 
 class AudioContent(BaseModel):
     """
@@ -89,6 +60,20 @@ class AudioContent(BaseModel):
     type: Literal["input_audio"] = "input_audio"
     data: str  # Base64 encoded audio
     format: Literal["wav", "mp3"] = "mp3"
+
+    @classmethod
+    def from_file(cls, file_path: str | Path) -> AudioContent:
+        """
+        Load audio from a file and encode as base64.
+        """
+        import base64
+        from pathlib import Path
+
+        file_path = Path(file_path)
+        with open(file_path, "rb") as f:
+            audio_bytes = f.read()
+        audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+        return cls(data=audio_b64, format=file_path.suffix.lstrip("."))
 
 
 class AudioOutput(BaseModel):
@@ -230,9 +215,7 @@ class AssistantMessage(Message):
 
         # Case 1: Text response with full structure
         if "text" in self.content and "citations" in self.content:
-            citations = [
-                PerplexityCitation(**c) for c in self.content["citations"]
-            ]
+            citations = [PerplexityCitation(**c) for c in self.content["citations"]]
             return PerplexityContent(
                 text=self.content["text"],
                 citations=citations,
@@ -242,9 +225,7 @@ class AssistantMessage(Message):
         if "citations" in self.content and self.parsed is not None:
             # Use JSON representation of structured object as "text"
             text = self.parsed.model_dump_json(indent=2)
-            citations = [
-                PerplexityCitation(**c) for c in self.content["citations"]
-            ]
+            citations = [PerplexityCitation(**c) for c in self.content["citations"]]
             return PerplexityContent(
                 text=text,
                 citations=citations,

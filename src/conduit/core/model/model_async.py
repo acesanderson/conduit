@@ -9,6 +9,8 @@ from typing import override, TYPE_CHECKING
 import logging
 
 if TYPE_CHECKING:
+    from conduit.core.model.modalities.audio import AudioAsync
+    from conduit.core.model.modalities.image import ImageAsync
     from conduit.domain.message.message import Message
 
 logger = logging.getLogger(__name__)
@@ -19,6 +21,40 @@ class ModelAsync(ModelBase):
     Async implementation of Model - a stateless "dumb pipe".
     Execution context (params/options) passed explicitly to methods.
     """
+
+    def __init__(self, model: str):
+        """
+        Initialize the async model with only its identity.
+
+        Args:
+            model: The model name/alias (e.g., "gpt-4o", "claude-sonnet-4")
+        """
+        super().__init__(model=model)
+        # Plugins
+        self._audio: AudioAsync | None = None
+        self._image: ImageAsync | None = None
+
+    @property
+    def audio(self) -> AudioAsync:
+        """
+        Lazy loading of audio generation/analyzation namespace.
+        """
+        from conduit.core.model.modalities.audio import AudioAsync
+
+        if self._audio is None:
+            self._audio = AudioAsync(parent=self)
+        return self._audio
+
+    @property
+    def image(self) -> ImageAsync:
+        """
+        Lazy loading of image generation/analyzation namespace.
+        """
+        from conduit.core.model.modalities.image import ImageAsync
+
+        if self._image is None:
+            self._image = ImageAsync(parent=self)
+        return self._image
 
     @override
     def get_client(self, model_name: str) -> Client:

@@ -15,6 +15,7 @@ from conduit.core.model.models.modelstore import ModelStore
 from conduit.domain.request.generation_params import GenerationParams
 from conduit.domain.request.query_input import QueryInput, constrain_query_input
 from conduit.domain.request.request import GenerationRequest
+from conduit.core.model.model_type import ModelType
 
 if TYPE_CHECKING:
     from conduit.domain.config.conduit_options import ConduitOptions
@@ -34,6 +35,8 @@ class ModelRemote:
     - Designed for scripts and REPL usage with remote model serving.
     - Includes server-specific features: status, ping, batch operations.
     """
+
+    model_type: ModelType = ModelType.REMOTE
 
     def __init__(
         self,

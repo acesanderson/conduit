@@ -18,7 +18,9 @@ class ConduitOptions(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     project_name: str
-    verbosity: Verbosity
+    verbosity: Verbosity = Field(
+        default=Verbosity.PROGRESS, description="Verbosity level for logging and UI."
+    )
     cache: ConduitCache | None = Field(
         default=None,
         description="Cache backend for storing/retrieving generations.",

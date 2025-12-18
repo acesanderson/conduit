@@ -12,6 +12,8 @@ if TYPE_CHECKING:
     from conduit.domain.message.message import Message
     from conduit.domain.result.result import GenerationResult
     from conduit.domain.config.conduit_options import ConduitOptions
+    from conduit.core.model.modalities.audio import AudioSync, AudioAsync
+    from conduit.core.model.modalities.image import ImageSync, ImageAsync
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,9 @@ class ModelBase:
         # Model identity - the only thing stored
         self.model_name: str = ModelStore.validate_model(model)
         self.client: Client = self.get_client(model_name=self.model_name)
+        # Plugins
+        self._audio: AudioSync | AudioAsync | None = None
+        self._image: ImageSync | ImageAsync | None = None
 
     # Class methods for global info
     @classmethod
