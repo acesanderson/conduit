@@ -1,4 +1,5 @@
 {
+  "google-imagen": "imagen-4.0-generate-001",
   "banana": "gemini-2.5-flash-image-preview",
   "claude": "claude-sonnet-4-5-20250929",
   "deepseek": "deepseek-chat",
