@@ -45,7 +45,7 @@ def main():
                 f"Invalid provider: {args.provider}. Must be one of: {' | '.join(providers)}."
             )
     if args.model:
-        model_string = ModelStore()._validate_model
+        model_string = ModelStore().validate_model
         if not model_string:
             raise ValueError(
                 f"Model {args.model} not found. Available models: {', '.join(models)}."

@@ -1,70 +1,29 @@
-from conduit.domain.result.error import ConduitError, ErrorInfo, ErrorDetail
-from conduit.domain.result.response import Response
-from conduit.domain.request.request import Request
-from conduit.domain.message.textmessage import TextMessage
-from conduit.domain.message.imagemessage import ImageMessage
-from conduit.domain.message.audiomessage import AudioMessage
-from conduit.domain.message.messages import Messages
-from datetime import datetime
+from conduit.domain.result.response import GenerationResponse
+from conduit.domain.request.request import GenerationRequest
+from conduit.domain.message.message import (
+    UserMessage,
+    AssistantMessage,
+)
+from conduit.domain.conversation.conversation import Conversation
 from pathlib import Path
 
 dir_path = Path(__file__).parent
 
 # Messages
-sample_message = TextMessage(role="user", content="Hello, world!")
-sample_messages = Messages(
-    [
-        TextMessage(role="user", content="Hello, world!"),
-        TextMessage(role="assistant", content="Hello! How can I assist you today?"),
-        TextMessage(role="user", content="What is the weather like?"),
-    ]
-)
+sample_message = UserMessage(content="Hello, world!")
+sample_messages = [
+    UserMessage(content="Hello, world!"),
+    AssistantMessage(content="Hello! How can I assist you today?"),
+    UserMessage(content="What is the weather like?"),
+]
+sample_conversation = Conversation(messages=sample_messages)
 
 sample_audio_file = dir_path / "audio.mp3"
-sample_audio_message = AudioMessage.from_audio_file(
-    role="user",
-    text_content="This is a sample audio message.",
-    audio_file=sample_audio_file,
-)
 sample_image_file = dir_path / "image.png"
-sample_image_message = ImageMessage.from_image_file(
-    role="user",
-    text_content="This is a sample image message.",
-    image_file=sample_image_file,
-)
-# Requests, results, etc.
-sample_error = ConduitError(
-    info=ErrorInfo(
-        code="ERR001",
-        message="An unexpected error occurred",
-        category="RuntimeError",
-        timestamp=datetime.now(),
-    ),
-    detail=ErrorDetail(
-        exception_type="ValueError",
-        stack_trace="Traceback (most recent call last): ...",  # Example stack trace
-        raw_response=None,  # Could be a response object or None
-        request_params=None,  # Could be a dict of request parameters or None
-        retry_count=0,  # Number of retries attempted
-    ),
-)
-sample_response = Response(
-    message=sample_message,
-    request=Request(model="gpt-3.5-turbo-0125", messages=sample_messages),
-    duration=1.23,
-    input_tokens=60,
-    output_tokens=120,
-)
-sample_request = Request(
-    model="gpt-3.5-turbo-0125",
-    messages=[
-        TextMessage(role="user", content="Hello, world!"),
-        TextMessage(role="assistant", content="Hello! How can I assist you today?"),
-    ],
-    temperature=0.7,
-    stream=True,
-    parser=None,  # Assuming no parser for this example
-)
+
+# Requests, results, etc. TBD
+sample_response: GenerationResponse
+sample_request: GenerationRequest
 
 # For Async testing
 sample_async_prompt = """Name ten {{things}}."""

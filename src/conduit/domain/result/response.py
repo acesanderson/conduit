@@ -93,3 +93,42 @@ class GenerationResponse(BaseModel):
         else:
             output = content
         return output
+
+    # Interaction methods
+    def play(self) -> None:
+        """
+        Play audio if available.
+        """
+        if self.request.params.output_type != "audio":
+            raise ValueError("Response is not audio type.")
+        from pydub import AudioSegment
+        from pydub.playback import play
+        import io
+        import base64
+
+        audio_data_b64 = self.message.content
+        audio_data = base64.b64decode(audio_data_b64)
+        audio_format = self.request.params.client_params.get("response_format", "mp3")
+        audio_segment = AudioSegment.from_file(
+            io.BytesIO(audio_data), format=audio_format
+        )
+        play(audio_segment)
+
+    def display(self) -> None:
+        """
+        Display image if available, using viu in a subprocess.
+        """
+        if self.request.params.output_type != "image":
+            raise ValueError("Response is not image type.")
+        if self.message.images is None or len(self.message.images) == 0:
+            raise ValueError("No images in the response to display.")
+        import subprocess
+        import base64
+        import io
+        from PIL import Image
+
+        image_data_b64 = self.message.images[0].b64_json
+        image_data = base64.b64decode(image_data_b64)
+        image = Image.open(io.BytesIO(image_data))
+        image.save("/tmp/temp_image.png")
+        subprocess.run(["viu", "/tmp/temp_image.png"])

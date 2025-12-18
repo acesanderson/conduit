@@ -1,7 +1,7 @@
 from __future__ import annotations
 import asyncio
 import logging
-from typing import Any, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING, override
 
 from conduit.config import settings
 from conduit.core.model.model_async import ModelAsync
@@ -10,6 +10,8 @@ from conduit.domain.request.request import GenerationRequest
 from conduit.utils.concurrency.warn import _warn_if_loop_exists
 
 if TYPE_CHECKING:
+    from conduit.core.model.modalities.audio import AudioSync
+    from conduit.core.model.modalities.image import ImageSync
     from conduit.domain.config.conduit_options import ConduitOptions
     from conduit.domain.request.query_input import QueryInput
     from conduit.domain.result.result import GenerationResult
@@ -69,6 +71,32 @@ class ModelSync:
             updated_data = self.params.model_dump()
             updated_data.update(kwargs)
             self.params = GenerationParams(**updated_data)
+
+        # Plugins
+        self._audio: AudioSync | None = None
+        self._image: ImageSync | None = None
+
+    @property
+    def audio(self) -> AudioSync:
+        """
+        Lazy loading of audio generation/analyzation namespace.
+        """
+        from conduit.core.model.modalities.audio import AudioSync
+
+        if self._audio is None:
+            self._audio = AudioSync(parent=self)
+        return self._audio
+
+    @property
+    def image(self) -> ImageSync:
+        """
+        Lazy loading of image generation/analyzation namespace.
+        """
+        from conduit.core.model.modalities.image import ImageSync
+
+        if self._image is None:
+            self._image = ImageSync(parent=self)
+        return self._image
 
     def query(
         self, query_input: QueryInput | None = None, **kwargs: Any
@@ -220,23 +248,9 @@ class ModelSync:
         """
         return getattr(self._impl, name)
 
+    @override
     def __repr__(self) -> str:
         return (
             f"ModelSync(model={self._impl.model_name!r}, "
             f"params={self.params!r}, options={self.options!r})"
         )
-
-
-if __name__ == "__main__":
-    # Simple usage example using the factory
-    model = ModelSync.create(
-        model="gpt3",
-        cached=True,
-        persist=True,
-        temperature=1.0,
-        system="You are a helpful assistant.",
-        debug_payload=True,
-    )
-
-    result = model.query("Hello, world!")
-    print(result)
