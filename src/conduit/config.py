@@ -21,6 +21,7 @@ from xdg_base_dirs import (
 import os
 from collections.abc import Callable
 from typing import TYPE_CHECKING
+from importlib.metadata import version
 
 if TYPE_CHECKING:
     from conduit.storage.odometer.odometer_registry import OdometerRegistry
@@ -38,6 +39,12 @@ _odometer_registry: OdometerRegistry | None = None
 CONFIG_DIR = Path(xdg_config_home()) / "conduit"
 STATE_DIR = Path(xdg_state_home()) / "conduit"
 DATA_DIR = Path(xdg_data_home()) / "conduit"
+
+# Version
+try:
+    __version__ = version("conduit")
+except Exception:
+    __version__ = "unknown"
 
 # File paths
 SYSTEM_PROMPT_PATH = CONFIG_DIR / "system_message.jinja2"
@@ -58,6 +65,7 @@ class Settings:
     server_models: list[str]
     paths: dict[str, Path]
     default_project_name: str
+    version: str
     # Lazy loaders
     odometer_registry: Callable[[], OdometerRegistry]
     default_params: Callable[[], GenerationParams]
@@ -76,6 +84,7 @@ def load_settings() -> Settings:
         "server_models": [],
         "paths": {},
         "default_project_name": "conduit",
+        "version": __version__,
     }
 
     # Config files (medium priority)
