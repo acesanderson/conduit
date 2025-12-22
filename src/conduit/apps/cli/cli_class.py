@@ -56,30 +56,38 @@ class ConduitCLI:
         self.name: str = name
         self.description: str = description
         self.query_function: CLIQueryFunctionProtocol = query_function
+        self.version: str = version
         # Components
         self.printer: Printer = Printer()
         self.cli: click.Group = self._build_cli()
 
     def _build_cli(self) -> click.Group:
-        stdin: str = self._get_stdin()
-        printer: Printer = self.printer
+        stdin = self._get_stdin()
+        printer = self.printer
+        version_string: str = self.version
 
         @click.group(invoke_without_command=True)
-        @click.option("--version", is_flag=True)
+        @click.option("--version", "show_version", is_flag=True)
         @click.option("--raw", is_flag=True)
+        @click.argument("query_input", nargs=-1)
         @click.pass_context
-        def cli(ctx, version, raw):
+        def cli(ctx, show_version, raw, query_input):
             ctx.ensure_object(dict)
             ctx.obj["stdin"] = stdin
             ctx.obj["printer"] = printer
+
             if raw:
                 printer.set_raw(True)
 
-            if version:
-                click.echo(version)
+            if show_version:
+                click.echo(version_string)
                 ctx.exit()
 
-            if ctx.invoked_subcommand is None:
+            # Important design decision: if no subcommand is invoked, treat input as a query
+            if ctx.invoked_subcommand is None and query_input:
+                query_cmd = cli.get_command(ctx, "query")
+                ctx.invoke(query_cmd, query_input=query_input)
+            elif ctx.invoked_subcommand is None:
                 click.echo(ctx.get_help())
 
         return cli
