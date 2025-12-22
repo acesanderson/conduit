@@ -11,7 +11,7 @@ from signal import signal, SIGPIPE, SIG_DFL
 from rich.console import Console
 
 # Treat broken pipes cleanly (avoid stack traces in pipelines)
-signal(SIGPIPE, SIG_DFL)
+_ = signal(SIGPIPE, SIG_DFL)
 
 IS_TTY = sys.stdout.isatty()
 
