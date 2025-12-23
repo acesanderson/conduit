@@ -11,10 +11,11 @@ from pydantic import BaseModel, Field, model_validator
 import time
 import uuid
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 if TYPE_CHECKING:
     from conduit.domain.request.generation_params import GenerationParams
+    from rich.console import Console, ConsoleOptions, RenderResult
 
 
 class ConversationState(Enum):
@@ -190,3 +191,44 @@ class Conversation(BaseModel):
 
         system_message = SystemMessage(content=system_content)
         self.system = system_message
+
+    # Display dunders
+    @override
+    def __str__(self) -> str:
+        """
+        Full string representation of the conversation history.
+        """
+        output = ""
+        for message in self.messages:
+            output += f"{message.role.value.upper()}: {message.content}\n"
+        return output.strip()
+
+    def __rich_console__(
+        self, console: Console, options: ConsoleOptions
+    ) -> RenderResult:
+        """
+        Every message object has a __rich_console__ method, so we can leverage that here.
+        Combine those renderables into one for the conversation.
+        """
+        for message in self.messages:
+            yield from message.__rich_console__(console, options)
+        return
+
+
+if __name__ == "__main__":
+    # Simple test of conversation display, first create a dummy conversation
+    from conduit.domain.message.message import UserMessage, AssistantMessage
+
+    conv = Conversation(topic="Test Conversation")
+    conv.ensure_system_message("You are a helpful assistant.")
+    conv.add(UserMessage(content="Hello, how are you?"))
+    conv.add(
+        AssistantMessage(
+            content="I'm doing well, thank you! How can I assist you today?"
+        )
+    )
+    print(conv)
+    from rich.console import Console
+
+    console = Console()
+    console.print(conv)

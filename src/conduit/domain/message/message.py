@@ -214,13 +214,14 @@ class SystemMessage(Message):
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> RenderResult:
-        yield Rule(style="dim white")
-        yield Text(
-            f"System Context • {self._extract_text_content()[:50]}...",
-            style="dim italic",
-            justify="center",
+        yield Panel(
+            Markdown(self._extract_text_content()),
+            title=f"System • [dim]{self.time}[/dim]",
+            title_align="left",
+            border_style="white",
+            box=ROUNDED,
+            padding=(0, 2),
         )
-        yield Text("")  # Spacing
 
 
 class UserMessage(Message):
@@ -264,7 +265,7 @@ class UserMessage(Message):
             title_align="left",
             border_style="green",
             box=ROUNDED,
-            padding=(1, 2),
+            padding=(0, 2),
         )
 
 
@@ -412,7 +413,7 @@ class AssistantMessage(Message):
             title_align="left",
             border_style="blue",
             box=HEAVY,
-            padding=(1, 2),
+            padding=(0, 2),
         )
 
 
