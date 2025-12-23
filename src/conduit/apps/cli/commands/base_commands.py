@@ -1,3 +1,9 @@
+"""
+The Command layer defines Click commands and routes to handlers.
+Click context is passed to handlers via ctx. Click context should not leak outside of this layer.
+If context needs to be edited (like with conversation state management), it should be done here.
+"""
+
 from __future__ import annotations
 import click
 from conduit.apps.cli.commands.commands import CommandCollection
@@ -67,18 +73,41 @@ class BaseCommands(CommandCollection):
                 conduit query Explain quantum computing --model gpt-4
                 cat file.py | conduit query "Refactor this code"
             """
-            # Smudge together query input (handles both quoted and unquoted args)
+            # 1. Unpack Dependencies from Context
+            # The command layer is responsible for knowing WHERE things live (ctx.obj)
+            printer = ctx.obj["printer"]
+            query_function = ctx.obj["query_function"]
+            verbosity = ctx.obj["verbosity"]
+
+            # 2. Extract Config / State
+            stdin = ctx.obj.get("stdin")
+            system_message = ctx.obj.get("system_message")
+            user_name = ctx.obj.get("name")
+            preferred_model = ctx.obj.get("preferred_model")
+
+            # 3. Resolve Logic (Boundary Responsibility)
+            # Determine the final model string here, so the handler is deterministic
+            resolved_model = model or preferred_model or "gpt-4o"
+
+            # Smudge query arguments
             query_input_str = " ".join(query_input).strip()
 
+            # 4. Delegate to Handler
             handlers.handle_query(
-                ctx,
-                model,
-                local,
-                raw,
-                temperature,
-                chat,
-                append,
-                query_input_str,
+                query_input=query_input_str,
+                model=resolved_model,
+                local=local,
+                raw=raw,
+                temperature=temperature,
+                chat=chat,
+                append=append,
+                # Injected Dependencies
+                printer=printer,
+                query_function=query_function,
+                stdin=stdin,
+                system_message=system_message,
+                verbosity=verbosity,
+                user_name=user_name,
             )
 
         @click.command()
@@ -97,10 +126,16 @@ class BaseCommands(CommandCollection):
         def wipe(ctx: click.Context):
             """Wipe message history."""
             repository: ConversationRepository = ctx.obj["repository"]
-            conversation_id: str | UUID = ctx.obj["conversation_id"]
+            conversation = ctx.obj["conversation"]
+            conversation_id: str = conversation.conversation_id
             printer: Printer = ctx.obj["printer"]
 
             handlers.handle_wipe(printer, repository, conversation_id)
+            # Reset conversation in context
+            from conduit.domain.conversation.conversation import Conversation
+
+            ctx.obj["conversation"] = Conversation()
+            repository.save(ctx.obj["conversation"], name="Untitled")
 
         @click.command()
         @click.pass_context
