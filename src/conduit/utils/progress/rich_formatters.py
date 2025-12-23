@@ -96,7 +96,8 @@ def _response_complete_rich(response: GenerationResponse) -> Panel:
         for msg in response.request.messages:
             role_style = "green" if msg.role == "system" else "yellow"
             grid.add_row(
-                f"[{role_style}]{msg.role.upper()}[/{role_style}]", str(msg.content)
+                f"[{role_style}]{msg.role.value.upper()}[/{role_style}]",
+                str(msg.content),
             )
             grid.add_row("", "")  # Spacer
 

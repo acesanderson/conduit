@@ -66,14 +66,19 @@ class ModelAsync(ModelBase):
     @override
     async def query(
         self,
-        query_input: QueryInput | str | list[Message],
-        params: GenerationParams,
-        options: ConduitOptions,
+        request: GenerationRequest | None = None,
+        query_input: QueryInput | str | list[Message] | None = None,
+        params: GenerationParams | None = None,
+        options: ConduitOptions | None = None,
     ) -> GenerationResult:
         """
         Execute a query with explicit execution context.
+        You have two options:
+        - Provide a pre-built GenerationRequest via 'request' (other args ignored)
+        - Provide 'query_input', 'params', and 'options' (all required)
 
         Args:
+            request: Pre-built GenerationRequest (optional)
             query_input: The input messages or string
             params: Generation parameters (model, temperature, etc.)
             options: Conduit options (cache, console, etc.)
@@ -81,10 +86,21 @@ class ModelAsync(ModelBase):
         Returns:
             GenerationResult from the LLM
         """
-        logger.info("ModelAsync.query called with model: %s", self.model_name)
-        request = self._prepare_request(query_input, params, options)
-        result = await self.pipe(request)
-        return result
+        # First, pass through the request if provided
+        if request is not None:
+            logger.info("ModelAsync.query called with pre-built request")
+            result = await self.pipe(request)
+            return result
+        # Otherwise, the other three args are mandatory
+        else:
+            if query_input is None or params is None or options is None:
+                raise ValueError(
+                    "If 'request' is not provided, 'query_input', 'params', and 'options' must all be provided."
+                )
+            logger.info("ModelAsync.query called with model: %s", self.model_name)
+            request = self._prepare_request(query_input, params, options)
+            result = await self.pipe(request)
+            return result
 
     @override
     async def tokenize(self, payload: str | list[Message]) -> int:

@@ -174,14 +174,15 @@ def load_settings() -> Settings:
     def default_conduit_options(name: str = default_project_name) -> ConduitOptions:
         """
         Assemble default ConduitOptions from settings.
+        Default is NO cache, no repository.
         """
         from conduit.domain.config.conduit_options import ConduitOptions
 
         return ConduitOptions(
             verbosity=default_verbosity,
             project_name=name,
-            cache=default_cache(name),
-            repository=default_repository(name),
+            cache=None,
+            repository=None,
             console=config["default_console"],
         )
 

@@ -58,10 +58,10 @@ class GenerationRequest(BaseModel):
     params: GenerationParams
     options: ConduitOptions
 
-    # Request params
+    # Request param overrides
     use_cache: bool | None = True  # Technically: "if cache exists, use it"
     include_history: bool = True  # Whether to include conversation history
-    verbosity: Verbosity = Verbosity.PROGRESS
+    verbosity_override: Verbosity | None = None
 
     def generate_cache_key(self) -> str:
         """
