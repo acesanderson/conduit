@@ -16,11 +16,17 @@ from conduit.apps.cli.query.query_function import (
     CLIQueryFunctionProtocol,
     default_query_function,
 )
+from conduit.domain.conversation.conversation import Conversation
+from conduit.storage.repository.protocol import ConversationRepository
+from conduit.storage.repository.postgres_repository import (
+    PostgresConversationRepository,
+)
 from conduit.apps.cli.commands.commands import CommandCollection
 from conduit.apps.cli.utils.printer import Printer
-import click
 import sys
+import click
 import logging
+
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +34,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_NAME = settings.default_project_name
 DEFAULT_DESCRIPTION = "Conduit: The LLM CLI"
 DEFAULT_QUERY_FUNCTION = default_query_function
+PREFERRED_MODEL = settings.preferred_model
+DEFAULT_SYSTEM_MESSAGE = settings.system_prompt
 
 
 class ConduitCLI:
@@ -50,6 +58,8 @@ class ConduitCLI:
         name: str = "conduit",
         description: str = DEFAULT_DESCRIPTION,
         query_function: CLIQueryFunctionProtocol = DEFAULT_QUERY_FUNCTION,
+        model: str = PREFERRED_MODEL,
+        system_message: str = DEFAULT_SYSTEM_MESSAGE,
         version: str = settings.version,
     ):
         # Parameters
@@ -57,9 +67,29 @@ class ConduitCLI:
         self.description: str = description
         self.query_function: CLIQueryFunctionProtocol = query_function
         self.version: str = version
+        self.preferred_model: str = model
+        self.system_message: str = system_message
         # Components
         self.printer: Printer = Printer()
         self.cli: click.Group = self._build_cli()
+        self.repository: ConversationRepository = self._load_repository()
+        # Load last conversation or create new
+        self.conversation: Conversation = self.repository.last or Conversation()
+
+    def _load_repository(self) -> PostgresConversationRepository:
+        """
+        Load the conversation repository.
+        Returns:
+            ConversationRepository: The loaded repository.
+        """
+        from dbclients.clients.postgres import get_postgres_client
+
+        conn_factory = get_postgres_client("context_db", dbname=self.name)
+
+        repository = PostgresConversationRepository(
+            conn_factory=conn_factory, name=self.name
+        )
+        return repository
 
     def _build_cli(self) -> click.Group:
         stdin = self._get_stdin()
@@ -73,8 +103,15 @@ class ConduitCLI:
         @click.pass_context
         def cli(ctx, show_version, raw, query_input):
             ctx.ensure_object(dict)
+            ctx.obj["name"] = self.name
             ctx.obj["stdin"] = stdin
             ctx.obj["printer"] = printer
+            ctx.obj["repository"] = self.repository
+            ctx.obj["conversation"] = self.conversation
+            ctx.obj["query_function"] = self.query_function
+            ctx.obj["preferred_model"] = self.preferred_model
+            ctx.obj["system_message"] = self.system_message
+            ctx.obj["verbosity"] = settings.default_verbosity
 
             if raw:
                 printer.set_raw(True)

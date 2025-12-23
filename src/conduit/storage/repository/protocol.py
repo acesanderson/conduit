@@ -4,7 +4,6 @@ from uuid import UUID
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from conduit.domain.message.message import SystemMessage
     from conduit.domain.conversation.conversation import Conversation
 
 
@@ -35,6 +34,14 @@ class ConversationRepository(Protocol):
 
     def save(self, conversation: Conversation, name: str | None = None) -> None:
         """Upserts Conversation metadata and message links."""
+        ...
+
+    def remove_by_conversation_id(self, conversation_id: str | UUID) -> None:
+        """Removes a Conversation and its links from the repository."""
+        ...
+
+    def wipe(self) -> None:
+        """Wipes all Conversations from the repository."""
         ...
 
     @property
