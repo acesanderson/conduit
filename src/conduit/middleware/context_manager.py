@@ -36,6 +36,11 @@ def middleware_context_manager(request: GenerationRequest):
     5. UI Stop: Trigger Success/Cached/Error display.
     6. Teardown: Write to cache and emit telemetry.
     """
+    # resolve verbosity -- is there an override?
+    if request.verbosity_override is not None:
+        verbosity = request.verbosity_override
+    else:
+        verbosity = request.options.verbosity
 
     # --- 1. SETUP ---
     handler = _get_progress_handler(request)
@@ -50,11 +55,11 @@ def middleware_context_manager(request: GenerationRequest):
 
     # --- 2. UI START ---
     # Only show spinner if verbosity allows
-    if request.verbosity >= Verbosity.PROGRESS:
+    if verbosity >= Verbosity.PROGRESS:
         handler.show_spinner(
             model_name=model_name,
             query_preview=preview,
-            verbosity=request.verbosity,
+            verbosity=verbosity,
         )
 
     # --- Intermezzo: debug ---
@@ -88,20 +93,20 @@ def middleware_context_manager(request: GenerationRequest):
     result = ctx.get("result")
 
     # Determine how to display the result (Lightning Bolt vs Green Check)
-    if request.verbosity >= Verbosity.PROGRESS:
+    if verbosity >= Verbosity.PROGRESS:
         if ctx["cache_hit"]:
             handler.show_cached(
                 model_name=model_name,
                 query_preview=preview,
                 duration=duration,
-                verbosity=request.verbosity,
+                verbosity=verbosity,
             )
         else:
             handler.show_complete(
                 model_name=model_name,
                 query_preview=preview,
                 duration=duration,
-                verbosity=request.verbosity,
+                verbosity=verbosity,
                 response_obj=result if isinstance(result, GenerationResponse) else None,
             )
 

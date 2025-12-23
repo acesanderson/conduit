@@ -7,6 +7,7 @@ from conduit.config import settings
 from conduit.core.model.model_async import ModelAsync
 from conduit.domain.request.generation_params import GenerationParams
 from conduit.domain.request.request import GenerationRequest
+from conduit.utils.progress.verbosity import Verbosity
 from conduit.utils.concurrency.warn import _warn_if_loop_exists
 
 if TYPE_CHECKING:
@@ -16,7 +17,6 @@ if TYPE_CHECKING:
     from conduit.domain.request.query_input import QueryInput
     from conduit.domain.result.result import GenerationResult
     from conduit.domain.message.message import Message
-    from conduit.utils.progress.verbosity import Verbosity
     from rich.console import Console
 
 logger = logging.getLogger(__name__)
@@ -109,6 +109,12 @@ class ModelSync:
             **kwargs: Either param overrides (temperature, max_tokens, etc.)
                      or a pre-built 'request' for advanced usage
 
+        Currently accepted kwargs:
+            - request: GenerationRequest (bypass normal flow
+            - verbosity: Verbosity
+            - cache: bool
+            - include_history: bool
+
         Returns:
             GenerationResult from the LLM
         """
@@ -120,16 +126,39 @@ class ModelSync:
                     f"request must be a GenerationRequest, got {type(request)}"
                 )
             # Bypass normal flow and call pipe directly
-            return self._run_sync(self._impl.pipe(request, self.options))
+            return self._run_sync(self._impl.pipe(request))
 
-        # Normal flow: build effective params and delegate
+        # Ensure query_input is provided
         if query_input is None:
             raise ValueError("query_input is required")
 
-        effective_params = self._build_params(kwargs)
-        return self._run_sync(
-            self._impl.query(query_input, effective_params, self.options)
+        # Construct effective params -- these are overrides.
+        # First make a copy of stored params, then apply any overrides from kwargs.
+        effective_params = self.params.model_copy()
+        param_overrides = {
+            k: v for k, v in kwargs.items() if k in effective_params.model_fields
+        }
+        if param_overrides:
+            updated_data = effective_params.model_dump()
+            updated_data.update(param_overrides)
+            effective_params = GenerationParams(**updated_data)
+        else:
+            effective_params = self.params
+
+        # Build Request from stored params/options
+        request = self._impl._prepare_request(
+            query_input, effective_params, self.options
         )
+
+        # Implement overrides
+        if "verbosity" in kwargs:
+            request.verbosity_override = kwargs["verbosity"]
+        if "cache" in kwargs:
+            request.use_cache = kwargs["cache"]
+        if "include_history" in kwargs:
+            request.include_history = kwargs["include_history"]
+
+        return self._run_sync(self._impl.query(request))
 
     def tokenize(self, payload: str | list[Message]) -> int:
         """

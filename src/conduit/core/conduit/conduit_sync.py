@@ -180,7 +180,7 @@ class ConduitSync:
         *,
         cached: bool | None,
         persist: bool | None,
-        verbosity: "Verbosity | None",
+        verbosity: Verbosity | None,
     ) -> ConduitOptions:
         opts = self.options or settings.default_conduit_options()
 
