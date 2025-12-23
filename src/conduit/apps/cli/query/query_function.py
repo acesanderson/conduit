@@ -6,18 +6,20 @@ Our default query function -- passed into ConduitCLI as a dependency.
 Define your own for customization.
 """
 
+from conduit.config import settings
 from conduit.core.prompt.prompt import Prompt
 from conduit.domain.result.response import GenerationResponse
 from conduit.utils.progress.verbosity import Verbosity
-from pydantic import BaseModel, Field
+from conduit.apps.cli.utils.printer import Printer
+from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-# Our input schema for the query function
-class CLIQueryFunctionInputs(BaseModel):
+@dataclass
+class CLIQueryFunctionInputs:
     """
     This has defaults, besides query_input, which is required.
     All query functions need to accept this object.
@@ -26,32 +28,19 @@ class CLIQueryFunctionInputs(BaseModel):
     """
 
     # Prompt inputs
-    query_input: str = Field(..., description="The main query input string.")
-    context: str = Field(
-        default="", description="Additional context to include in the query."
-    )
-    append: str = Field(default="", description="String to append to the query.")
-    system_message: str | None = Field(
-        None, description="System message for the model."
-    )
+    query_input: str
+    printer: Printer
+    context: str = ""
+    append: str = ""
+    system_message: str = ""
     # Configs
-    name: str = Field(default="default", description="Name of the CLI app.")
-    cache: bool | None = Field(
-        default=True, description="Flag to indicate if caching should be used."
-    )
-    local: bool | None = Field(
-        default=False, description="Flag to indicate if local processing is desired."
-    )
-    preferred_model: str = Field(
-        default="haiku", description="The preferred model to use for the query."
-    )
-    verbose: Verbosity = Field(
-        default=Verbosity.PROGRESS,
-        description="Verbosity level for logging during the query.",
-    )
-    include_history: bool = Field(
-        default=True, description="Whether to include message history in the query."
-    )
+    temperature: float = 0.7
+    name: str = "default"
+    cache: bool = True
+    local: bool = False
+    preferred_model: str = settings.preferred_model
+    verbose: Verbosity = Verbosity.PROGRESS
+    include_history: bool = True
 
 
 # Our protocol

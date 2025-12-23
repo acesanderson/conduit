@@ -1,6 +1,17 @@
+from __future__ import annotations
 import click
 from conduit.apps.cli.commands.commands import CommandCollection
-from typing import override
+from conduit.apps.cli.handlers.base_handlers import BaseHandlers
+from typing import override, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from conduit.utils.progress.verbosity import Verbosity
+    from conduit.domain.conversation.conversation import Conversation
+    from conduit.storage.repository.protocol import ConversationRepository
+    from conduit.apps.cli.utils.printer import Printer
+    from uuid import UUID
+
+handlers = BaseHandlers()
 
 
 class BaseCommands(CommandCollection):
@@ -15,7 +26,7 @@ class BaseCommands(CommandCollection):
 
     @override
     def _register_commands(self):
-        """Define all commands as bound methods."""
+        """Define all the base commands as bound methods."""
 
         @click.command()
         @click.option("-m", "--model", type=str, help="Specify the model to use.")
@@ -29,9 +40,6 @@ class BaseCommands(CommandCollection):
         @click.option(
             "-p", "--prepend", type=str, help="Prepend to query before stdin."
         )
-        @click.option(
-            "-f", "--file", type=click.Path(exists=True), help="Read input from file."
-        )
         @click.argument("query_input", nargs=-1)
         @click.pass_context
         def query(
@@ -43,52 +51,91 @@ class BaseCommands(CommandCollection):
             chat: bool,
             append: str,
             prepend: str,
-            file: str,
             query_input: str,
         ):
             """Execute a query (default command)."""
-            raise NotImplementedError
+            handlers.handle_query(
+                ctx,
+                model,
+                local,
+                raw,
+                temperature,
+                chat,
+                append,
+                prepend,
+                query_input,
+            )
 
         @click.command()
-        def history():
+        def history(ctx: click.Context):
             """View message history."""
-            raise NotImplementedError
+            repository: ConversationRepository = ctx.obj["repository"]
+            conversation_id: str | UUID = ctx.obj["conversation_id"]
+            printer: Printer = ctx.obj["printer"]
+
+            handlers.handle_history(repository, conversation_id, printer)
 
         @click.command()
-        def wipe():
+        def wipe(ctx: click.Context):
             """Wipe message history."""
-            raise NotImplementedError
+            repository: ConversationRepository = ctx.obj["repository"]
+            conversation_id: str | UUID = ctx.obj["conversation_id"]
+            printer: Printer = ctx.obj["printer"]
+
+            handlers.handle_wipe(printer, repository, conversation_id)
 
         @click.command()
-        def ping():
+        def ping(ctx: click.Context):
             """Ping the Headwater server."""
-            raise NotImplementedError
+            printer: Printer = ctx.obj["printer"]
+
+            handlers.handle_ping(printer)
 
         @click.command()
-        def status():
+        def status(ctx: click.Context):
             """Get Headwater server status."""
-            raise NotImplementedError
+            printer: Printer = ctx.obj["printer"]
+
+            handlers.handle_status(printer)
 
         @click.command()
-        def shell():
+        def shell(ctx: click.Context):
             """Enter interactive shell mode."""
             raise NotImplementedError
 
         @click.command()
-        def last():
+        def last(ctx: click.Context):
             """Get the last message."""
-            raise NotImplementedError
+            conversation: Conversation = ctx.obj["conversation"]
+            printer: Printer = ctx.obj["printer"]
+
+            handlers.handle_last(printer, conversation)
 
         @click.command()
         @click.argument("index", type=int)
-        def get(index):
+        def get(ctx: click.Context, index: int):
             """Get a specific message from history."""
-            raise NotImplementedError
+            conversation: Conversation = ctx.obj["conversation"]
+            printer: Printer = ctx.obj["printer"]
+
+            handlers.handle_get(index, conversation, printer)
 
         @click.command()
-        def config():
+        def config(ctx: click.Context):
             """View current configuration."""
-            raise NotImplementedError
+            printer: Printer = ctx.obj["printer"]
+            preferred_model: str = ctx.obj["preferred_model"]
+            system_message: str = ctx.obj["system_message"]
+            chat: bool = ctx.obj["chat"]
+            verbosity: Verbosity = ctx.obj["verbosity"]
+
+            handlers.handle_config(
+                printer,
+                preferred_model,
+                system_message,
+                chat,
+                verbosity,
+            )
 
         self._commands = [
             query,

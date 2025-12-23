@@ -115,6 +115,18 @@ class PostgresConversationRepository:
 
         return Conversation(conversation_id=str(conversation_id), messages=messages)
 
+    def remove_by_conversation_id(self, conversation_id: str | UUID) -> None:
+        """Removes conversation by ID within the current project."""
+        with self._conn_factory() as conn, conn.cursor() as cursor:
+            cursor.execute(
+                """
+                    DELETE FROM conduit_conversations
+                    WHERE project_name = %s AND id = %s
+                """,
+                (self.project_name, str(conversation_id)),
+            )
+            conn.commit()
+
     def load_by_name(self, name: str) -> Conversation | None:
         """Load conversation by name within the current project."""
         with self._conn_factory() as conn, conn.cursor() as cursor:

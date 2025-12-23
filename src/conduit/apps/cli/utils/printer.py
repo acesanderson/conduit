@@ -43,7 +43,7 @@ class Printer:
             if s and not s.endswith("\n"):
                 self._write("\n")
 
-    def print_pretty(self, *args, **kwargs):
+    def print_pretty(self, *args, **kwargs) -> None:
         """
         Human-facing UI (stderr via Rich).
         """
