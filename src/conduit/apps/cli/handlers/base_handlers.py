@@ -102,22 +102,14 @@ class BaseHandlers:
         """
         logger.info("Viewing message history...")
         conversation = repository.load_by_conversation_id(conversation_id)
-        messages = conversation.messages if conversation else []
-        output = "# Message History\n\n"
-        if not messages:
-            printer.print_pretty("[red]No messages in history.[/red]")
-            sys.exit()
-        for i, message in enumerate(messages):
-            output += f"## Message {i + 1}\n\n"
-            output += str(message) + "\n\n"
-        printer.print_markdown(output)
+        printer.print_markdown(conversation)
         sys.exit()
 
     @staticmethod
     def handle_wipe(
         printer: Printer,
         repository: ConversationRepository,
-        conversation_id: str | UUID,
+        conversation_id: str,
     ):
         """
         Clear the message history after user confirmation.
@@ -223,82 +215,53 @@ class BaseHandlers:
 """
         printer.print_markdown(config_md)
 
-    """
-    ctx obj:
-                ctx.obj["name"] = self.name
-                ctx.obj["stdin"] = stdin
-                ctx.obj["printer"] = printer
-                ctx.obj["repository"] = self.repository
-                ctx.obj["conversation"] = self.conversation
-                ctx.obj["query_function"] = self.query_function
-                ctx.obj["preferred_model"] = self.preferred_model
-                ctx.obj["system_message"] = self.system_message
-                ctx.obj["verbosity"] = settings.default_verbosity
-
-    CLIQueryFunctionInputs:
-                query_input: str
-                printer: Printer
-                context: str = ""
-                append: str = ""
-                system_message: str = ""
-                # Configs
-                temperature: float = 0.7
-                name: str = "default"
-                cache: bool = True
-                local: bool = False
-                preferred_model: str = settings.preferred_model
-                verbose: Verbosity = Verbosity.PROGRESS
-                include_history: bool = True
-    """
-
-    # Now our query handler
     @staticmethod
     def handle_query(
-        ctx: click.Context,
+        query_input: str,
         model: str,
         local: bool,
         raw: bool,
-        temperature: float,
+        temperature: float | None,
         chat: bool,
-        append: str,
-        query_input: str,
+        append: str | None,
+        # Injected Dependencies
+        printer: Printer,
+        query_function: CLIQueryFunctionProtocol,
+        stdin: str | None,
+        system_message: str | None,
+        verbosity: Verbosity,
+        user_name: str | None,
     ) -> None:
         """
         Here we resolve all inputs for flat input to the query function.
+        Dependencies are injected explicitly, removing the Click context coupling.
         """
-        from conduit.apps.cli.query.query_function import (
-            CLIQueryFunctionInputs,
-            CLIQueryFunctionProtocol,
-        )
+        from conduit.apps.cli.query.query_function import CLIQueryFunctionInputs
 
-        # Now resolve stdin
-        stdin = ctx.obj["stdin"]
-        stdin = stdin if isinstance(stdin, str) and stdin.strip() else None
-        ctx.obj["stdin"] = stdin
-        # Grab printer since we're printing below
-        printer: Printer = ctx.obj["printer"]
+        # 1. Normalize Context (stdin)
+        # Handle cases where stdin might be an empty string or whitespace
+        context_text = stdin if isinstance(stdin, str) and stdin.strip() else ""
 
+        # 2. Build Inputs
         inputs = CLIQueryFunctionInputs(
             query_input=query_input,
             printer=printer,
-            context=stdin or "",
+            context=context_text,
             append=append or "",
-            system_message=ctx.obj["system_message"],
-            name=ctx.obj["name"],
+            system_message=system_message,
+            name=user_name,
             cache=not local,
             local=local,
-            preferred_model=model if model else ctx.obj["preferred_model"],
-            verbose=ctx.obj["verbosity"],
+            preferred_model=model,  # Model is already resolved by the Command layer
+            verbose=verbosity,
             include_history=chat,
             temperature=temperature,
         )
 
-        query_function: CLIQueryFunctionProtocol = ctx.obj["query_function"]
-        if not isinstance(query_function, CLIQueryFunctionProtocol):
-            raise TypeError(
-                "Submitted query_function does not implement CLIQueryFunctionProtocol"
-            )
+        # 3. Execute
         response = query_function(inputs)
+
+        # 4. Display
         if raw:
             printer.print_raw(response.content)
         else:
