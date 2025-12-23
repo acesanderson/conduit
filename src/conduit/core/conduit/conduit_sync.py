@@ -59,7 +59,7 @@ class ConduitSync:
         *,
         cached: bool | None = None,
         persist: bool | None = None,
-        verbosity: "Verbosity | None" = None,
+        verbosity: Verbosity | None = None,
         param_overrides: dict[str, Any] | None = None,
     ) -> Conversation:
         """
@@ -119,7 +119,7 @@ class ConduitSync:
         system: str | None = None,  # placeholder for future system-message wiring
         debug_payload: bool = False,
         **param_kwargs: Any,
-    ) -> "ConduitSync":
+    ) -> ConduitSync:
         """
         Factory with sensible defaults.
 

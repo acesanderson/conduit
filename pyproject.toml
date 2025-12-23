@@ -128,10 +128,11 @@ headwater_client = { path = "../headwater/headwater-client", editable = true }
 [project.scripts]
 bchat = "conduit.apps.scripts.chat_cli:main"
 chat = "conduit.apps.scripts.fchat_cli:main"
-conduit = "conduit.apps.scripts.conduit_cli:main"
 imagegen = "conduit.apps.scripts.imagegen_cli:main"
 models = "conduit.apps.scripts.models_cli:main"
 tokens = "conduit.apps.scripts.tokens_cli:main"
 update = "conduit.apps.scripts.update_modelstore:main"
 update_ollama = "conduit.apps.scripts.update_ollama_list:main"
 tokenize="conduit.apps.scripts.tokenize_cli:main"
+conduit = "conduit.apps.scripts.conduit_cli:main"
+ask = "conduit.apps.scripts.conduit_cli:query_entrypoint"

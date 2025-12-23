@@ -28,32 +28,48 @@ class BaseCommands(CommandCollection):
     def _register_commands(self):
         """Define all the base commands as bound methods."""
 
-        @click.command()
-        @click.option("-m", "--model", type=str, help="Specify the model to use.")
+        @click.command(no_args_is_help=True)
+        @click.option(
+            "-m", "--model", type=str, help="Specify the model to use.", default=None
+        )
         @click.option("-L", "--local", is_flag=True, help="Use local HeadwaterServer.")
         @click.option("-r", "--raw", is_flag=True, help="Print raw output.")
         @click.option("-t", "--temperature", type=float, help="Temperature (0.0-1.0).")
         @click.option(
             "-c", "--chat", is_flag=True, help="Enable chat mode with history."
         )
-        @click.option("-a", "--append", type=str, help="Append to query after stdin.")
         @click.option(
-            "-p", "--prepend", type=str, help="Prepend to query before stdin."
+            "-a",
+            "--append",
+            type=str,
+            help="Append to query after stdin.",
+            default=None,
         )
         @click.argument("query_input", nargs=-1)
         @click.pass_context
         def query(
             ctx: click.Context,
-            model: str,
+            model: str | None,
             local: bool,
             raw: bool,
-            temperature: float,
+            temperature: float | None,
             chat: bool,
-            append: str,
-            prepend: str,
-            query_input: str,
+            append: str | None,
+            query_input: tuple[str, ...],
         ):
-            """Execute a query (default command)."""
+            """
+            Execute a query against the LLM.
+
+            Input can be passed as arguments or piped via stdin.
+
+            Examples:
+                conduit query "Why is the sky blue?"
+                conduit query Explain quantum computing --model gpt-4
+                cat file.py | conduit query "Refactor this code"
+            """
+            # Smudge together query input (handles both quoted and unquoted args)
+            query_input_str = " ".join(query_input).strip()
+
             handlers.handle_query(
                 ctx,
                 model,
@@ -62,20 +78,22 @@ class BaseCommands(CommandCollection):
                 temperature,
                 chat,
                 append,
-                prepend,
-                query_input,
+                query_input_str,
             )
 
         @click.command()
+        @click.pass_context
         def history(ctx: click.Context):
             """View message history."""
             repository: ConversationRepository = ctx.obj["repository"]
-            conversation_id: str | UUID = ctx.obj["conversation_id"]
+            conversation: Conversation = ctx.obj["conversation"]
+            conversation_id: str = conversation.conversation_id
             printer: Printer = ctx.obj["printer"]
 
             handlers.handle_history(repository, conversation_id, printer)
 
         @click.command()
+        @click.pass_context
         def wipe(ctx: click.Context):
             """Wipe message history."""
             repository: ConversationRepository = ctx.obj["repository"]
@@ -85,6 +103,7 @@ class BaseCommands(CommandCollection):
             handlers.handle_wipe(printer, repository, conversation_id)
 
         @click.command()
+        @click.pass_context
         def ping(ctx: click.Context):
             """Ping the Headwater server."""
             printer: Printer = ctx.obj["printer"]
@@ -92,6 +111,7 @@ class BaseCommands(CommandCollection):
             handlers.handle_ping(printer)
 
         @click.command()
+        @click.pass_context
         def status(ctx: click.Context):
             """Get Headwater server status."""
             printer: Printer = ctx.obj["printer"]
@@ -99,11 +119,13 @@ class BaseCommands(CommandCollection):
             handlers.handle_status(printer)
 
         @click.command()
+        @click.pass_context
         def shell(ctx: click.Context):
             """Enter interactive shell mode."""
             raise NotImplementedError
 
         @click.command()
+        @click.pass_context
         def last(ctx: click.Context):
             """Get the last message."""
             conversation: Conversation = ctx.obj["conversation"]
@@ -112,6 +134,7 @@ class BaseCommands(CommandCollection):
             handlers.handle_last(printer, conversation)
 
         @click.command()
+        @click.pass_context
         @click.argument("index", type=int)
         def get(ctx: click.Context, index: int):
             """Get a specific message from history."""
@@ -121,6 +144,7 @@ class BaseCommands(CommandCollection):
             handlers.handle_get(index, conversation, printer)
 
         @click.command()
+        @click.pass_context
         def config(ctx: click.Context):
             """View current configuration."""
             printer: Printer = ctx.obj["printer"]

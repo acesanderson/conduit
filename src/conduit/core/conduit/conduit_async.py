@@ -51,23 +51,3 @@ class ConduitAsync(ConduitBase):
             options.repository.save(updated_conversation)
 
         return updated_conversation
-
-
-if __name__ == "__main__":
-    from conduit.config import settings
-    from conduit.core.prompt.prompt import Prompt
-    import asyncio
-
-    async def main():
-        prompt = Prompt("Hello, {name}!")
-        conduit = ConduitAsync(prompt)
-
-        params = GenerationParams(model="gpt-4o")
-        options = settings.default_conduit_options()
-
-        conversation = await conduit.run(
-            input_variables={"name": "World"}, params=params, options=options
-        )
-        print(conversation)
-
-    asyncio.run(main())

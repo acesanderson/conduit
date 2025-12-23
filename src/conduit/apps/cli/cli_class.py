@@ -96,13 +96,15 @@ class ConduitCLI:
         printer = self.printer
         version_string: str = self.version
 
+        # invoke_without_command=True allows us to handle --version
+        # without triggering a "Missing command" error
         @click.group(invoke_without_command=True)
         @click.option("--version", "show_version", is_flag=True)
         @click.option("--raw", is_flag=True)
-        @click.argument("query_input", nargs=-1)
         @click.pass_context
-        def cli(ctx, show_version, raw, query_input):
+        def cli(ctx, show_version, raw):
             ctx.ensure_object(dict)
+            # Dependency Injection
             ctx.obj["name"] = self.name
             ctx.obj["stdin"] = stdin
             ctx.obj["printer"] = printer
@@ -113,18 +115,18 @@ class ConduitCLI:
             ctx.obj["system_message"] = self.system_message
             ctx.obj["verbosity"] = settings.default_verbosity
 
+            # Global Handler: Raw Mode
             if raw:
                 printer.set_raw(True)
 
+            # Global Handler: Version
             if show_version:
                 click.echo(version_string)
                 ctx.exit()
 
-            # Important design decision: if no subcommand is invoked, treat input as a query
-            if ctx.invoked_subcommand is None and query_input:
-                query_cmd = cli.get_command(ctx, "query")
-                ctx.invoke(query_cmd, query_input=query_input)
-            elif ctx.invoked_subcommand is None:
+            # Strict Logic: If no subcommand is provided, just show help.
+            # We no longer guess that the user meant to query.
+            if ctx.invoked_subcommand is None:
                 click.echo(ctx.get_help())
 
         return cli
