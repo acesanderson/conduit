@@ -1,26 +1,3 @@
-ok, my design has evolved a bit since that design doc.
-
-Here are my primitives:
-==Protocol Layer==
-- Message: classes for defining a standardized version of UserMessage, SystemMessage, ToolMessage, AssistantMessage. My previous implementation just had a "Role" and "Content" field; these are designed to be multichannel. So there could be both text and image, for example. This is designed to be easily cacheable and serializable across HTTP.
-- Request: this combines a GenerationParameters (standardized parameters and a dict field that can take custom parameters) with a list[Message], which is the conversation history thus far. The last Message will, by design, be either a UserMessage or a ToolMethod (returning the results of a ToolCall). This is designed to be easily cacheable and serializable across HTTP. If you want the latest state of the Conversation, it's the list[Message].
-- Response: this is a successful result of a Client call to an LLM. It combines the original Request, a Message object (the new output), and a ResponseMetadata class (which has duration, tokens used, etc.). This is designed to be easily cacheable and serializable across HTTP. If you want the latest state of the Conversation, it's the list[Message] from the Request object with the new Message from the Response appended to the end.
-- Client: a series of provider-specific class that take a standardized Request object and return ConduitResult. Examples: OpenAIClientSync, OpenAIClientAsync, etc. through Anthropic, Ollama, Google, and Perplexity. ConduitResult is a Union of: Response, ConduitError (detailed error class for transmitting across HTTP), and streamables (SyncStream, AsyncStream) which are defined by a Protocol. Those are for message parsing, for example for tools calls. Due to the design of Request / Response, the ultimate purpose of a Client is to progress a Conversation from a UserMessage or a ToolMessage to an AssistantMessage. In addition to those cloud providers, I have a RemoteClient which sends a Request to my ML server, which returns a Response. This allows me to make use of my RTX 5090 and advanced hardware for local generation.
-==Instrumentation Layer==
-- Model: A convenience wrapper for Client, which is initialized by a model name and optional parameters. There is a Sync and Async version of this. In a way, a Model is a collection of factory methods for creating Requests; it's also the easiest way to just dash off an LLM request in a script. It's the main interface for applications to make LLM calls without having to hand-roll the Request object.
-- Prompt: a convenience wrapper for Prompts, which defaults to jinja2 and handles rendering / input schema detection and validation.
-- Parser: a simple object that wraps a Pydantic class for use with structure output (with python Instructor library).
-==Orchestration Layer==
-- Conversation: this wraps a list[Message] with convenience functions and serialization and metadata, and is the data object at the center of conversation state management.
-- Channel: this was formerly called a "Conduit", and is a way to connect a Model, a Prompt, and a Parser to generate Responses. It also manages conversation state. There's a SyncConduit, a BatchConduit, an AsyncConduit, and a ToolConduit (implementation TBD).
-- Engine: this is the FSM, and its job is to take a Conversation and progress it to the next step. If the last message is a UserMessage, the next state is "GENERATE" (to get an ASsistant message). If it's an ASsistant message, it's "TERMINATE". There's also EXECUTE for tools calls. Channel objects use this under the hood. Just like a Model provides a UI layer on top of Client, Channel does that for Engine. A Channel object's job is to generate a conversation of a desired state and send it to the Engine. That's it. (obviously batching adds the element of an async engine)
-
-Assess this design
-
-
-
-
-
 # Conduit
 
 **The Universal Runtime for LLM Applications.**
