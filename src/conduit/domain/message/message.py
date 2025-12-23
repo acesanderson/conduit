@@ -1,5 +1,5 @@
 """
-NOTE: Typing is a mess in python. We have two types for Message:
+ NOTE: Typing is a mess in python. We have two types for Message:
 - Message: the base class for all messages, used for isinstance checks.
 - MessageUnion: a discriminated union of all message types, used for parsing/serialization.
 
@@ -7,23 +7,36 @@ NOTE: Typing is a mess in python. We have two types for Message:
 """
 
 from __future__ import annotations
-from conduit.domain.message.role import Role
-from pydantic import BaseModel, Field, model_validator
-from typing import Literal, Any, Annotated, override
-import time
-import uuid
+import base64
 import functools
 import logging
+import mimetypes
+import time
+import uuid
 from pathlib import Path
+from typing import Literal
+from typing import Any
+from typing import Annotated
+from typing import override
 
-# Rich Imports for UI Rendering
-from rich.console import Console, ConsoleOptions, RenderResult
+# Third-party imports
+from pydantic import BaseModel
+from pydantic import Field
+from pydantic import model_validator
+from rich.console import Console
+from rich.console import ConsoleOptions
+from rich.console import RenderResult
+from rich.console import Group
 from rich.panel import Panel
 from rich.markdown import Markdown
 from rich.text import Text
 from rich.syntax import Syntax
 from rich.rule import Rule
-from rich.box import ROUNDED, HEAVY
+from rich.box import ROUNDED
+from rich.box import HEAVY
+
+# Local imports (Assumed based on your snippet)
+from conduit.domain.message.role import Role
 
 logger = logging.getLogger(__name__)
 
@@ -49,9 +62,6 @@ class ImageContent(BaseModel):
         """
         Load image from a file and encode as base64 data URL.
         """
-        import base64
-        import mimetypes
-
         file_path = Path(file_path)
         with open(file_path, "rb") as f:
             image_bytes = f.read()
@@ -77,8 +87,6 @@ class AudioContent(BaseModel):
         """
         Load audio from a file and encode as base64.
         """
-        import base64
-
         file_path = Path(file_path)
         with open(file_path, "rb") as f:
             audio_bytes = f.read()
@@ -140,7 +148,7 @@ class Message(BaseModel):
     def _disallow_base_instantiation(cls, data):
         if cls is Message:
             raise TypeError(
-                "Message is an abstract base class and cannot be instantiated directly. Use SystemMessage, UserMessage, AssistantMessage, or ToolMessage. If you need to discriminate between them, use MessageUnion."
+                "Message is an abstract base class. Use SystemMessage, UserMessage, AssistantMessage, or ToolMessage."
             )
         return data
 
@@ -153,9 +161,6 @@ class Message(BaseModel):
 
     @override
     def __hash__(self) -> int:
-        """
-        Hash for caching and identity checks.
-        """
         return hash(self.role.value + str(self.content))
 
     def _extract_text_content(self) -> str:
@@ -183,7 +188,6 @@ class Message(BaseModel):
         """
         The "Pipe" View.
         Returns the pure text payload for piping/clipboard.
-        Non-text content is replaced with simple placeholders like [Image Content].
         """
         return self._extract_text_content()
 
@@ -192,10 +196,8 @@ class Message(BaseModel):
     ) -> RenderResult:
         """
         The "Pretty" View.
-        Renders the message as a Rich renderable (Panel, Rule, etc).
-        Subclasses should override this for specific styling.
         """
-        # Fallback for base class (shouldn't really happen)
+        # Fallback for base class
         yield Text(str(self))
 
 
@@ -212,10 +214,9 @@ class SystemMessage(Message):
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> RenderResult:
-        # System messages are subtle context markers
         yield Rule(style="dim white")
         yield Text(
-            f"⚙️ System Context • {self._extract_text_content()[:50]}...",
+            f"System Context • {self._extract_text_content()[:50]}...",
             style="dim italic",
             justify="center",
         )
@@ -225,7 +226,6 @@ class SystemMessage(Message):
 class UserMessage(Message):
     """
     Messages sent by the human.
-    Supports simple strings or complex multimodal chains (Text + Image).
     """
 
     role: Role = Role.USER
@@ -238,32 +238,25 @@ class UserMessage(Message):
         self, console: Console, options: ConsoleOptions
     ) -> RenderResult:
         text_content = self._extract_text_content()
+        header = f"User • [dim]{self.time}[/dim]"
 
-        # Header info
-        header = f"👤 User • [dim]{self.time}[/dim]"
-
-        # Handle complex content display for UI (beyond just text extraction)
         renderables = []
         if isinstance(self.content, list):
-            # Check for images/audio to display placeholders
             images = [i for i in self.content if isinstance(i, ImageContent)]
             audio = [a for a in self.content if isinstance(a, AudioContent)]
 
             if images:
                 renderables.append(
-                    Text(f"📷 {len(images)} Image(s) Attached", style="cyan italic")
+                    Text(f"{len(images)} Image(s) Attached", style="cyan italic")
                 )
             if audio:
                 renderables.append(
-                    Text(f"🎤 {len(audio)} Audio Clip(s) Attached", style="cyan italic")
+                    Text(f"{len(audio)} Audio Clip(s) Attached", style="cyan italic")
                 )
             if images or audio:
                 renderables.append(Rule(style="dim"))
 
-        # Main text
         renderables.append(Markdown(text_content))
-
-        from rich.console import Group
 
         yield Panel(
             Group(*renderables),
@@ -278,7 +271,6 @@ class UserMessage(Message):
 class AssistantMessage(Message):
     """
     Messages generated by the LLM.
-    Supports Text, Reasoning, Tools, Audio, Images, and Structured Objects.
     """
 
     role: Role = Role.ASSISTANT
@@ -295,7 +287,7 @@ class AssistantMessage(Message):
     audio: AudioOutput | None = None
     images: list[ImageOutput] | None = None
 
-    # Special structured output (e.g. parsed JSON, XML, etc.) from Instructor
+    # structured output
     parsed: BaseModel | list[BaseModel] | None = Field(default=None, exclude=True)
 
     @functools.cached_property
@@ -311,7 +303,6 @@ class AssistantMessage(Message):
             PerplexityCitation,
         )
 
-        # Case 1: Text response with full structure
         if "text" in self.content and "citations" in self.content:
             citations = [PerplexityCitation(**c) for c in self.content["citations"]]
             return PerplexityContent(
@@ -319,9 +310,7 @@ class AssistantMessage(Message):
                 citations=citations,
             )
 
-        # Case 2: Structured response - citations only
         if "citations" in self.content and self.parsed is not None:
-            # Use JSON representation of structured object as "text"
             text = self.parsed.model_dump_json(indent=2)
             citations = [PerplexityCitation(**c) for c in self.content["citations"]]
             return PerplexityContent(
@@ -352,11 +341,9 @@ class AssistantMessage(Message):
 
     @override
     def __str__(self) -> str:
-        # Override for Assistant because it might have tool calls but no content
         if self.content:
             return self._extract_text_content()
         if self.tool_calls:
-            # If purely a tool call message, return a representation of the calls
             return "\n".join(
                 [f"[ToolCall: {tc.function_name}]" for tc in self.tool_calls]
             )
@@ -366,16 +353,14 @@ class AssistantMessage(Message):
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> RenderResult:
-        from rich.console import Group
-
         renderables = []
 
-        # 1. Reasoning (DeepSeek style)
+        # 1. Reasoning
         if self.reasoning:
             renderables.append(
                 Panel(
                     Markdown(self.reasoning),
-                    title="🧠 Chain of Thought",
+                    title="Chain of Thought",
                     style="dim",
                     border_style="dim",
                 )
@@ -392,19 +377,19 @@ class AssistantMessage(Message):
                 renderables.append(
                     Panel(
                         Syntax(tool_code, "python", theme="monokai", word_wrap=True),
-                        title=f"🛠️ Call: {tool.function_name}",
-                        border_style="magenta",
+                        title=f"Call: {tool.function_name}",
+                        border_style="yellow",
                     )
                 )
 
         # 4. Multimodal Outputs
         if self.images:
             renderables.append(
-                Text(f"🎨 Generated {len(self.images)} Image(s)", style="cyan")
+                Text(f"Generated {len(self.images)} Image(s)", style="cyan")
             )
         if self.audio:
             transcript = f" ({self.audio.transcript})" if self.audio.transcript else ""
-            renderables.append(Text(f"🔊 Generated Audio{transcript}", style="cyan"))
+            renderables.append(Text(f"Generated Audio{transcript}", style="cyan"))
 
         # 5. Structured Parsed Output
         if self.parsed:
@@ -416,14 +401,14 @@ class AssistantMessage(Message):
             renderables.append(
                 Panel(
                     Syntax(json_str, "json", theme="monokai", word_wrap=True),
-                    title="🧩 Structured Output",
+                    title="Structured Output",
                     border_style="cyan",
                 )
             )
 
         yield Panel(
             Group(*renderables),
-            title=f"🤖 Assistant • [dim]{self.time}[/dim]",
+            title=f"Assistant • [dim]{self.time}[/dim]",
             title_align="left",
             border_style="blue",
             box=HEAVY,
@@ -446,12 +431,11 @@ class ToolMessage(Message):
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> RenderResult:
-        # Tool outputs are technical details, usually code/json
         yield Panel(
             Syntax(self.content, "json", theme="monokai", word_wrap=True),
-            title=f"🛠️ Tool Output: {self.name or 'Unknown'} • [dim]{self.time}[/dim]",
+            title=f"Tool Output: {self.name or 'Unknown'} • [dim]{self.time}[/dim]",
             title_align="left",
-            border_style="magenta",
+            border_style="yellow",
             box=ROUNDED,
         )
 
