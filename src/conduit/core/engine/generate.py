@@ -19,7 +19,7 @@ async def generate(
     conversation: Conversation, params: GenerationParams, options: ConduitOptions
 ) -> Conversation:
     messages = conversation.messages
-    model = ModelAsync("gpt")
+    model = ModelAsync(params.model)
     request = GenerationRequest.from_conversation(conversation, params, options)
     response = await model.pipe(request)
     assert isinstance(response, GenerationResponse), (

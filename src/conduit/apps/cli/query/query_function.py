@@ -67,9 +67,9 @@ def default_query_function(
     # Extract inputs from dict
     name: str = inputs.name
     query_input: str = inputs.query_input
-    context: str | None = inputs.context
-    append: str | None = inputs.append
-    local: bool | None = inputs.local
+    context: str = inputs.context
+    append: str = inputs.append
+    local: bool = inputs.local
     preferred_model: str = inputs.preferred_model
     verbose: Verbosity = inputs.verbose
     include_history: bool = inputs.include_history
@@ -77,7 +77,7 @@ def default_query_function(
     system = inputs.system_message
 
     # ConduitCLI's default POSIX philosophy: embrace pipes and redirection
-    combined_query = "\n\n".join([query_input, context, append])
+    combined_query = "\n\n".join([query_input, context, append]).strip()
 
     # Our chain
     if local:

@@ -90,7 +90,7 @@ class BaseHandlers:
         )
         return imagemessage
 
-    # Handlers -- should match config file exactly (per validate_handlers)
+    # Handlers
     @staticmethod
     def handle_history(
         repository: ConversationRepository,
@@ -223,6 +223,34 @@ class BaseHandlers:
 """
         printer.print_markdown(config_md)
 
+    """
+    ctx obj:
+                ctx.obj["name"] = self.name
+                ctx.obj["stdin"] = stdin
+                ctx.obj["printer"] = printer
+                ctx.obj["repository"] = self.repository
+                ctx.obj["conversation"] = self.conversation
+                ctx.obj["query_function"] = self.query_function
+                ctx.obj["preferred_model"] = self.preferred_model
+                ctx.obj["system_message"] = self.system_message
+                ctx.obj["verbosity"] = settings.default_verbosity
+
+    CLIQueryFunctionInputs:
+                query_input: str
+                printer: Printer
+                context: str = ""
+                append: str = ""
+                system_message: str = ""
+                # Configs
+                temperature: float = 0.7
+                name: str = "default"
+                cache: bool = True
+                local: bool = False
+                preferred_model: str = settings.preferred_model
+                verbose: Verbosity = Verbosity.PROGRESS
+                include_history: bool = True
+    """
+
     # Now our query handler
     @staticmethod
     def handle_query(
@@ -233,32 +261,43 @@ class BaseHandlers:
         temperature: float,
         chat: bool,
         append: str,
-        prepend: str,
         query_input: str,
     ) -> None:
+        """
+        Here we resolve all inputs for flat input to the query function.
+        """
         from conduit.apps.cli.query.query_function import (
             CLIQueryFunctionInputs,
             CLIQueryFunctionProtocol,
         )
 
+        # Now resolve stdin
+        stdin = ctx.obj["stdin"]
+        stdin = stdin if isinstance(stdin, str) and stdin.strip() else None
+        ctx.obj["stdin"] = stdin
+        # Grab printer since we're printing below
         printer: Printer = ctx.obj["printer"]
 
         inputs = CLIQueryFunctionInputs(
             query_input=query_input,
-            printer=ctx.obj["printer"],
-            context=prepend,
-            append=append,
+            printer=printer,
+            context=stdin or "",
+            append=append or "",
             system_message=ctx.obj["system_message"],
             name=ctx.obj["name"],
             cache=not local,
             local=local,
-            preferred_model=model,
+            preferred_model=model if model else ctx.obj["preferred_model"],
             verbose=ctx.obj["verbosity"],
             include_history=chat,
             temperature=temperature,
         )
 
         query_function: CLIQueryFunctionProtocol = ctx.obj["query_function"]
+        if not isinstance(query_function, CLIQueryFunctionProtocol):
+            raise TypeError(
+                "Submitted query_function does not implement CLIQueryFunctionProtocol"
+            )
         response = query_function(inputs)
         if raw:
             printer.print_raw(response.content)
