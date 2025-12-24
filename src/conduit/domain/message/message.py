@@ -14,29 +14,18 @@ import mimetypes
 import time
 import uuid
 from pathlib import Path
-from typing import Literal
-from typing import Any
-from typing import Annotated
-from typing import override
-
-# Third-party imports
-from pydantic import BaseModel
-from pydantic import Field
-from pydantic import model_validator
-from rich.console import Console
-from rich.console import ConsoleOptions
-from rich.console import RenderResult
-from rich.console import Group
-from rich.panel import Panel
-from rich.markdown import Markdown
-from rich.text import Text
-from rich.syntax import Syntax
-from rich.rule import Rule
-from rich.box import ROUNDED
-from rich.box import HEAVY
-
-# Local imports (Assumed based on your snippet)
+from typing import Literal, Any, Annotated, override, TYPE_CHECKING
+from pydantic import BaseModel, Field, model_validator
 from conduit.domain.message.role import Role
+
+if TYPE_CHECKING:
+    from rich.console import Console, ConsoleOptions, RenderResult, Group
+    from rich.panel import Panel
+    from rich.markdown import Markdown
+    from rich.text import Text
+    from rich.syntax import Syntax
+    from rich.rule import Rule
+    from rich.box import ROUNDED, HEAVY
 
 logger = logging.getLogger(__name__)
 
@@ -197,7 +186,8 @@ class Message(BaseModel):
         """
         The "Pretty" View.
         """
-        # Fallback for base class
+        from rich.text import Text
+
         yield Text(str(self))
 
 
@@ -214,6 +204,10 @@ class SystemMessage(Message):
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> RenderResult:
+        from rich.panel import Panel
+        from rich.markdown import Markdown
+        from rich.box import ROUNDED
+
         yield Panel(
             Markdown(self._extract_text_content()),
             title=f"System • [dim]{self.time}[/dim]",
@@ -238,6 +232,13 @@ class UserMessage(Message):
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> RenderResult:
+        from rich.panel import Panel
+        from rich.markdown import Markdown
+        from rich.rule import Rule
+        from rich.text import Text
+        from rich.console import Group
+        from rich.box import ROUNDED
+
         text_content = self._extract_text_content()
         header = f"User • [dim]{self.time}[/dim]"
 
@@ -354,6 +355,13 @@ class AssistantMessage(Message):
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> RenderResult:
+        from rich.panel import Panel
+        from rich.markdown import Markdown
+        from rich.syntax import Syntax
+        from rich.text import Text
+        from rich.console import Group
+        from rich.box import HEAVY
+
         renderables = []
 
         # 1. Reasoning
@@ -432,6 +440,10 @@ class ToolMessage(Message):
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> RenderResult:
+        from rich.panel import Panel
+        from rich.syntax import Syntax
+        from rich.box import ROUNDED
+
         yield Panel(
             Syntax(self.content, "json", theme="monokai", word_wrap=True),
             title=f"Tool Output: {self.name or 'Unknown'} • [dim]{self.time}[/dim]",
@@ -446,3 +458,27 @@ MessageUnion = Annotated[
     SystemMessage | UserMessage | AssistantMessage | ToolMessage,
     Field(discriminator="role_str"),
 ]
+
+if __name__ == "__main__":
+    # Test rich rendering
+    from rich.console import Console
+
+    console = Console()
+
+    messages: list[Message] = [
+        SystemMessage(content="You are a helpful assistant."),
+        UserMessage(content="Hello, can you show me a picture of a cat?"),
+        AssistantMessage(
+            content=[
+                TextContent(text="Sure! Here is a picture of a cat:"),
+            ]
+        ),
+        ToolMessage(
+            content='{"result": "Tool executed successfully."}',
+            tool_call_id=str(uuid.uuid4()),
+            name="fetch_cat_image",
+        ),
+    ]
+
+    for msg in messages:
+        console.print(msg)

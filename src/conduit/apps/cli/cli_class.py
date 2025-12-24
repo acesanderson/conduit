@@ -11,21 +11,23 @@ To customize:
 This allows you to tailor the behavior of ConduitCLI while leveraging its existing features.
 """
 
+from __future__ import annotations
 from conduit.config import settings
 from conduit.apps.cli.query.query_function import (
     CLIQueryFunctionProtocol,
     default_query_function,
 )
-from conduit.domain.conversation.conversation import Conversation
 from conduit.storage.repository.protocol import ConversationRepository
-from conduit.storage.repository.postgres_repository import (
-    PostgresConversationRepository,
-)
 from conduit.apps.cli.commands.commands import CommandCollection
 from conduit.apps.cli.utils.printer import Printer
+from functools import cached_property
 import sys
 import click
 import logging
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from conduit.domain.conversation.conversation import Conversation
 
 
 logger = logging.getLogger(__name__)
@@ -72,17 +74,18 @@ class ConduitCLI:
         # Components
         self.printer: Printer = Printer()
         self.cli: click.Group = self._build_cli()
-        self.repository: ConversationRepository = self._load_repository()
-        # Load last conversation or create new
-        self.conversation: Conversation = self.repository.last or Conversation()
 
-    def _load_repository(self) -> PostgresConversationRepository:
+    @cached_property
+    def repository(self) -> ConversationRepository:
         """
         Load the conversation repository.
         Returns:
             ConversationRepository: The loaded repository.
         """
         from dbclients.clients.postgres import get_postgres_client
+        from conduit.storage.repository.postgres_repository import (
+            PostgresConversationRepository,
+        )
 
         conn_factory = get_postgres_client("context_db", dbname=self.name)
 
@@ -90,6 +93,21 @@ class ConduitCLI:
             conn_factory=conn_factory, name=self.name
         )
         return repository
+
+    @cached_property
+    def conversation(self) -> Conversation:
+        """
+        Load the last conversation or create a new one.
+        Returns:
+            Conversation: The loaded or new conversation.
+        """
+        last_conversation = self.repository.last
+        if last_conversation is not None:
+            return last_conversation
+        else:
+            from conduit.domain.conversation.conversation import Conversation
+
+            return Conversation()
 
     def _build_cli(self) -> click.Group:
         stdin = self._get_stdin()
@@ -108,8 +126,8 @@ class ConduitCLI:
             ctx.obj["name"] = self.name
             ctx.obj["stdin"] = stdin
             ctx.obj["printer"] = printer
-            ctx.obj["repository"] = self.repository
-            ctx.obj["conversation"] = self.conversation
+            ctx.obj["repository"] = lambda: self.repository  # Lazy load
+            ctx.obj["conversation"] = lambda: self.conversation  # Lazy load
             ctx.obj["query_function"] = self.query_function
             ctx.obj["preferred_model"] = self.preferred_model
             ctx.obj["system_message"] = self.system_message
