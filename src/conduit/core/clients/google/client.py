@@ -3,6 +3,7 @@ For Google Gemini models.
 """
 
 from __future__ import annotations
+from functools import cached_property
 from conduit.core.clients.client_base import Client
 from conduit.core.clients.payload_base import Payload
 from conduit.core.clients.google.payload import GooglePayload
@@ -12,49 +13,51 @@ from conduit.core.clients.google.audio_params import GoogleAudioParams
 from conduit.domain.result.response import GenerationResponse
 from conduit.domain.result.response_metadata import ResponseMetadata, StopReason
 from conduit.domain.message.message import AssistantMessage, ImageOutput
-from openai import AsyncOpenAI, AsyncStream
 from typing import TYPE_CHECKING, override, Any
-import instructor
-from instructor import Instructor
-from abc import ABC
 import os
 import time
 import base64
 
 if TYPE_CHECKING:
+    from openai import AsyncOpenAI, AsyncStream
+    from instructor import Instructor
     from conduit.domain.result.result import GenerationResult
     from conduit.domain.request.request import GenerationRequest
     from conduit.domain.message.message import Message
 
 
-class GoogleClient(Client, ABC):
+class GoogleClient(Client):
     """
     Client implementation for Google's Gemini API using the OpenAI-compatible endpoint.
     Async by default.
     """
 
-    def __init__(self):
-        instructor_client, raw_client = self._initialize_client()
-        self._client: Instructor = instructor_client
-        self._raw_client: AsyncOpenAI = raw_client
+    @cached_property
+    def async_client(self) -> AsyncOpenAI:
+        """
+        Exposes the raw AsyncOpenAI client for direct use if needed.
+        """
+        from openai import AsyncOpenAI
 
-    @override
-    def _initialize_client(self) -> tuple[Instructor, AsyncOpenAI]:
-        """
-        Creates both raw and instructor-wrapped clients.
-        Raw client for standard completions, Instructor for structured responses.
-        """
-        raw_client = AsyncOpenAI(
+        async_client = AsyncOpenAI(
             api_key=self._get_api_key(),
             base_url="https://generativelanguage.googleapis.com/v1beta/",
         )
+        return async_client
+
+    @cached_property
+    def instructor_client(self) -> Instructor:
+        """
+        Exposes the Instructor-wrapped client for structured responses.
+        """
+        import instructor
+
         instructor_client = instructor.from_openai(
-            raw_client,
+            self.async_client,
             mode=instructor.Mode.JSON,
         )
-        return instructor_client, raw_client
+        return instructor_client
 
-    @override
     def _get_api_key(self) -> str:
         api_key = os.getenv("GOOGLE_API_KEY")
         if not api_key:
@@ -104,7 +107,6 @@ class GoogleClient(Client, ABC):
         """
         import google.generativeai as genai
 
-        # Configure the native SDK with the API key
         genai.configure(api_key=self._get_api_key())
         model_client = genai.GenerativeModel(model_name=model)
 
@@ -180,7 +182,7 @@ class GoogleClient(Client, ABC):
         start_time = time.time()
 
         # Use the raw client for standard completions
-        result = await self._raw_client.chat.completions.create(**payload_dict)
+        result = await self.async_client.chat.completions.create(**payload_dict)
 
         # Handle streaming response
         if isinstance(result, AsyncStream):
@@ -241,7 +243,7 @@ class GoogleClient(Client, ABC):
         (
             user_obj,
             completion,
-        ) = await self._client.chat.completions.create_with_completion(
+        ) = await self.instructor_client.chat.completions.create_with_completion(
             response_model=request.params.response_model, **payload_dict
         )
 
@@ -308,7 +310,7 @@ class GoogleClient(Client, ABC):
             image_params = request.params.client_params["image_params"]
 
         # Call the images.generate endpoint
-        response = await self._raw_client.images.generate(
+        response = await self.async_client.images.generate(
             model=image_params.model.value,
             prompt=prompt,
             response_format=image_params.response_format.value,
@@ -378,7 +380,7 @@ class GoogleClient(Client, ABC):
             audio_params = request.params.client_params["audio_params"]
 
         # Call the audio.speech.create endpoint
-        response = await self._raw_client.audio.speech.create(
+        response = await self.async_client.audio.speech.create(
             model=audio_params.model.value,
             voice=audio_params.voice.value,
             input=text_input,

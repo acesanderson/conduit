@@ -7,17 +7,16 @@ from conduit.domain.result.response import GenerationResponse
 from conduit.domain.result.response_metadata import ResponseMetadata, StopReason
 from conduit.domain.message.message import AssistantMessage
 from functools import cached_property
-from anthropic import AsyncAnthropic, AsyncStream
 from typing import TYPE_CHECKING, override, Any
-import instructor
-from instructor import Instructor
 import os
 import time
 
 if TYPE_CHECKING:
+    from anthropic import AsyncAnthropic, AsyncStream, Anthropic
     from conduit.domain.request.request import GenerationRequest
     from conduit.domain.message.message import Message
     from conduit.domain.result.result import GenerationResult
+    from instructor import Instructor
 
 
 class AnthropicClient(Client):
@@ -26,23 +25,36 @@ class AnthropicClient(Client):
     Async only.
     """
 
-    def __init__(self):
-        instructor_client, raw_client = self._initialize_client()
-        self._client: Instructor = instructor_client
-        self._raw_client: AsyncAnthropic = raw_client
-
-    @override
-    def _initialize_client(self) -> tuple[Instructor, AsyncAnthropic]:
+    @cached_property
+    def async_client(self) -> AsyncAnthropic:
         """
-        Creates both raw and instructor-wrapped clients.
-        Raw client for standard completions, Instructor for structured responses.
-        Uses instructor.from_anthropic() for Anthropic-specific handling.
+        Provides access to the raw AsyncAnthropic client for advanced use cases.
         """
-        raw_client = AsyncAnthropic(api_key=self._get_api_key())
-        instructor_client = instructor.from_anthropic(raw_client)
-        return instructor_client, raw_client
+        from anthropic import AsyncAnthropic
 
-    @override
+        async_client = AsyncAnthropic(api_key=self._get_api_key())
+        return async_client
+
+    @cached_property
+    def sync_client(self) -> Anthropic:
+        """
+        Provides access to the raw synchronous Anthropic client for advanced use cases.
+        """
+        from anthropic import Anthropic
+
+        sync_client = Anthropic(api_key=self._get_api_key())
+        return sync_client
+
+    @cached_property
+    def instructor_client(self) -> Instructor:
+        """
+        Provides access to the Instructor-wrapped Anthropic client for structured responses.
+        """
+        import instructor
+
+        instructor_client = instructor.from_anthropic(self.async_client)
+        return instructor_client
+
     def _get_api_key(self) -> str:
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if api_key is None:
@@ -99,14 +111,12 @@ class AnthropicClient(Client):
         """
         Get token count per official Anthropic api endpoint.
         """
-        # We need a raw client for this, not the instructor wrapper
-        anthropic_client = Anthropic(api_key=self._get_api_key())
 
         # CASE 1: Raw String (Benchmarking)
         # We wrap it in a user message to satisfy the API, then subtract the overhead.
         if isinstance(payload, str):
             messages = [{"role": "user", "content": payload}]
-            response = anthropic_client.messages.count_tokens(
+            response = self.sync_client.messages.count_tokens(
                 model=model,
                 messages=messages,
             )
@@ -160,6 +170,8 @@ class AnthropicClient(Client):
             - GenerationResponse object for successful non-streaming requests
             - AsyncStream object for streaming requests
         """
+        from anthropic import AsyncStream
+
         payload = self._convert_request(request)
         payload_dict = payload.model_dump(exclude_none=True)
 
@@ -167,7 +179,7 @@ class AnthropicClient(Client):
         start_time = time.time()
 
         # Use the raw client for standard completions
-        result = await self._raw_client.messages.create(**payload_dict)
+        result = await self.async_client.messages.create(**payload_dict)
 
         # Handle streaming response
         if isinstance(result, AsyncStream):
@@ -236,7 +248,7 @@ class AnthropicClient(Client):
         (
             user_obj,
             completion,
-        ) = await self._client.messages.create_with_completion(
+        ) = await self.instructor_client.messages.create_with_completion(
             response_model=request.params.response_model, **payload_dict
         )
 

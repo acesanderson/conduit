@@ -18,12 +18,6 @@ logger = logging.getLogger(__name__)
 
 
 class Client:
-    def _initialize_client(self) -> object:
-        raise NotImplementedError("Should be implemented in subclass.")
-
-    def _get_api_key(self) -> str:
-        raise NotImplementedError("Should be implemented in subclass.")
-
     def _convert_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
         return [self._convert_message(m) for m in messages]
 
@@ -36,7 +30,7 @@ class Client:
     async def query(self, request: GenerationRequest) -> GenerationResult:
         raise NotImplementedError("Should be implemented in subclass.")
 
-    async def tokenize(self, model: str, payload: str | list[Message]) -> int:
+    def tokenize(self, model: str, payload: str | list[Message]) -> int:
         raise NotImplementedError("Should be implemented in subclass.")
 
     @override
