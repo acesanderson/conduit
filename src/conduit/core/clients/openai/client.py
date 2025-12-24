@@ -14,11 +14,8 @@ from conduit.domain.message.message import (
     ToolCall,
     Message,
 )
-from openai import AsyncOpenAI
-from openai import AsyncStream
 from abc import ABC
-import instructor
-from instructor import Instructor
+from functools import cached_property
 import logging
 import os
 import json
@@ -27,9 +24,10 @@ import base64
 from typing import TYPE_CHECKING, override, Any
 
 if TYPE_CHECKING:
+    from instructor import Instructor
+    from openai import AsyncOpenAI, AsyncStream
     from conduit.domain.result.result import GenerationResult
     from conduit.domain.request.request import GenerationRequest
-    from conduit.core.parser.stream.protocol import AsyncStream
 
 logger = logging.getLogger(__name__)
 
@@ -40,22 +38,26 @@ class OpenAIClient(Client, ABC):
     Async by default.
     """
 
-    # Initialize the OpenAI client
-    def __init__(self):
-        instructor_client, raw_client = self._initialize_client()
-        self._client: Instructor = instructor_client
-        self._raw_client: AsyncOpenAI = raw_client
-
-    @override
-    def _initialize_client(self) -> tuple[Instructor, AsyncOpenAI]:
+    @cached_property
+    def async_client(self) -> AsyncOpenAI:
         """
-        We use the Instructor library by default, as this offers a great interface for doing function calling and working with pydantic objects.
+        Provides access to the raw AsyncOpenAI client for advanced use cases.
         """
-        raw_client = AsyncOpenAI(api_key=self._get_api_key())
-        instructor_client = instructor.from_openai(raw_client)
-        return instructor_client, raw_client
+        from openai import AsyncOpenAI
 
-    @override
+        async_client = AsyncOpenAI(api_key=self._get_api_key())
+        return async_client
+
+    @cached_property
+    def instructor_client(self) -> Instructor:
+        """
+        Provides access to the Instructor client for advanced use cases.
+        """
+        import instructor
+
+        instructor_client = instructor.from_openai(self.async_client)
+        return instructor_client
+
     def _get_api_key(self) -> str:
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
@@ -227,7 +229,7 @@ class OpenAIClient(Client, ABC):
         start_time = time.time()
 
         # Use the standard completion method
-        result = await self._raw_client.chat.completions.create(**payload_dict)
+        result = await self.async_client.chat.completions.create(**payload_dict)
 
         # Handle streaming response
         if isinstance(result, AsyncStream):
@@ -299,7 +301,7 @@ class OpenAIClient(Client, ABC):
             image_params = request.params.client_params["image_params"]
 
         # Call the images.generate endpoint
-        response = await self._raw_client.images.generate(
+        response = await self.async_client.images.generate(
             model=image_params.model.value,
             prompt=prompt,
             size=image_params.size.value,
@@ -372,7 +374,7 @@ class OpenAIClient(Client, ABC):
             audio_params = request.params.client_params["audio_params"]
 
         # Call the audio.speech.create endpoint
-        response = await self._raw_client.audio.speech.create(
+        response = await self.async_client.audio.speech.create(
             model=audio_params.model.value,
             voice=audio_params.voice.value,
             input=text_input,
@@ -446,7 +448,7 @@ class OpenAIClient(Client, ABC):
         audio_file.name = f"audio.{audio_format}"
 
         # Call the audio.transcriptions.create endpoint
-        response = await self._raw_client.audio.transcriptions.create(
+        response = await self.async_client.audio.transcriptions.create(
             model=transcription_params.model.value,
             file=audio_file,
             language=transcription_params.language,
@@ -502,7 +504,7 @@ class OpenAIClient(Client, ABC):
         (
             user_obj,
             completion,
-        ) = await self._client.chat.completions.create_with_completion(
+        ) = await self.instructor_client.chat.completions.create_with_completion(
             response_model=request.params.response_model, **payload_dict
         )
 

@@ -4,23 +4,24 @@ The list of ollama models is host-specific, and therefore in our state directory
 Ollama context sizes is user-configurable, and therefore in our config directory.
 """
 
+from __future__ import annotations
 from conduit.config import settings
 from conduit.core.model.models.providerstore import ProviderStore
 from conduit.core.model.models.provider import Provider
-from conduit.core.model.models.modelspec import ModelSpec
-from conduit.core.model.models.modelspecs_CRUD import (
-    get_modelspec_by_name,
-    get_all_modelspecs,
-    delete_modelspec,
-    get_all_model_names,
-)
 from conduit.core.clients.client_base import Client
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TYPE_CHECKING
 import json
 import itertools
 import logging
 from rich.console import RenderableType
+
+if TYPE_CHECKING:
+    from conduit.core.model.models.modelspec import ModelSpec
+    from conduit.core.model.models.modelspecs_CRUD import (
+        get_modelspec_by_name,
+        get_all_modelspecs,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -240,6 +241,11 @@ class ModelStore:
     @classmethod
     def _update_models(cls):
         from conduit.core.model.models.research_models import create_modelspec
+        from conduit.core.model.models.modelspecs_CRUD import (
+            get_all_modelspecs,
+            delete_modelspec,
+            get_all_model_names,
+        )
 
         # Get all ModelSpec objects from the database
         modelspec_db_names = set(get_all_model_names())
@@ -280,6 +286,8 @@ class ModelStore:
         Check if the model specifications in the database are consistent with the models.json file.
         Returns True if consistent, False otherwise.
         """
+        from conduit.core.model.models.modelspecs_CRUD import get_all_modelspecs
+
         # Get list of models from models.json
         models = cls.models()
 
