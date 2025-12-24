@@ -4,7 +4,7 @@ from typing import override
 
 from conduit.storage.odometer.pgres.persistence_backend import PersistenceBackend
 from conduit.storage.odometer.token_event import TokenEvent
-from dbclients import get_postgres_client
+from dbclients.clients.postgres import get_postgres_client
 
 logger = logging.getLogger(__name__)
 

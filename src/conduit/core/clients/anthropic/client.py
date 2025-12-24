@@ -6,6 +6,7 @@ from conduit.core.clients.anthropic.adapter import convert_message_to_anthropic
 from conduit.domain.result.response import GenerationResponse
 from conduit.domain.result.response_metadata import ResponseMetadata, StopReason
 from conduit.domain.message.message import AssistantMessage
+from functools import cached_property
 from anthropic import AsyncAnthropic, AsyncStream
 from typing import TYPE_CHECKING, override, Any
 import instructor
@@ -176,8 +177,12 @@ class AnthropicClient(Client):
         # Assemble response metadata
         duration = (time.time() - start_time) * 1000  # Convert to milliseconds
         model_stem = result.model
-        input_tokens = result.usage.input_tokens  # Anthropic uses input_tokens not prompt_tokens
-        output_tokens = result.usage.output_tokens  # Anthropic uses output_tokens not completion_tokens
+        input_tokens = (
+            result.usage.input_tokens
+        )  # Anthropic uses input_tokens not prompt_tokens
+        output_tokens = (
+            result.usage.output_tokens
+        )  # Anthropic uses output_tokens not completion_tokens
 
         # Determine stop reason
         stop_reason = StopReason.STOP
@@ -191,7 +196,9 @@ class AnthropicClient(Client):
                     stop_reason = StopReason.STOP
 
         # Extract the text content (Anthropic-specific path)
-        content = result.content[0].text  # Different from OpenAI: content[0].text not choices[0].message.content
+        content = result.content[
+            0
+        ].text  # Different from OpenAI: content[0].text not choices[0].message.content
         assistant_message = AssistantMessage(content=content)
 
         # Create ResponseMetadata

@@ -15,7 +15,6 @@ if TYPE_CHECKING:
     from conduit.domain.conversation.conversation import Conversation
     from conduit.storage.repository.protocol import ConversationRepository
     from conduit.apps.cli.utils.printer import Printer
-    from uuid import UUID
 
 handlers = BaseHandlers()
 
@@ -114,8 +113,8 @@ class BaseCommands(CommandCollection):
         @click.pass_context
         def history(ctx: click.Context):
             """View message history."""
-            repository: ConversationRepository = ctx.obj["repository"]
-            conversation: Conversation = ctx.obj["conversation"]
+            repository: ConversationRepository = ctx.obj["repository"]()  # Lazy load
+            conversation: Conversation = ctx.obj["conversation"]()  # Lazy load
             conversation_id: str = conversation.conversation_id
             printer: Printer = ctx.obj["printer"]
 
@@ -125,8 +124,8 @@ class BaseCommands(CommandCollection):
         @click.pass_context
         def wipe(ctx: click.Context):
             """Wipe message history."""
-            repository: ConversationRepository = ctx.obj["repository"]
-            conversation = ctx.obj["conversation"]
+            repository: ConversationRepository = ctx.obj["repository"]()  # Lazy load
+            conversation = ctx.obj["conversation"]()  # Lazy load
             conversation_id: str = conversation.conversation_id
             printer: Printer = ctx.obj["printer"]
 
