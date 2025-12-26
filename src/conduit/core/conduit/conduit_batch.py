@@ -234,10 +234,13 @@ class ConduitBatch:
         params = GenerationParams(model=model, **param_kwargs)
 
         # Options: start from global defaults
-        options = settings.default_conduit_options()
+        options = settings.default_conduit_options(name=project_name)
+
+        opt_updates: dict[str, Any] = {}
 
         # Collect overrides
-        opt_updates = {"verbosity": verbosity}
+        if verbosity is not None:
+            opt_updates["verbosity"] = verbosity
 
         if console is not None:
             opt_updates["console"] = console
@@ -278,8 +281,11 @@ class ConduitBatch:
         # Options: start from global defaults
         options = settings.default_conduit_options()
 
+        opt_updates: dict[str, Any] = {}
+
         # Collect overrides
-        opt_updates = {"verbosity": verbosity}
+        if verbosity is not None:
+            opt_updates["verbosity"] = verbosity
 
         # Cache wiring
         if cached:
@@ -349,35 +355,3 @@ class ConduitBatch:
             f"ConduitBatch(prompt={self.prompt!r}, "
             f"params={self.params!r}, options={self.options!r})"
         )
-
-
-if __name__ == "__main__":
-    # Example 1: Template mode with input variables
-    prompt = Prompt("Hello, {{name}}!")
-    batch = ConduitBatch.create(model="gpt-4o", prompt=prompt)
-
-    input_variables = [
-        {"name": "Alice"},
-        {"name": "Bob"},
-        {"name": "Charlie"},
-    ]
-
-    conversations = batch.run(input_variables_list=input_variables)
-    for conv in conversations:
-        print(conv)
-
-    # Example 2: String mode with pre-rendered prompts
-    batch_no_prompt = ConduitBatch.create(model="gpt-4o")
-
-    prompts = [
-        "What is 1+1?",
-        "What is 2+2?",
-        "What is 3+3?",
-    ]
-
-    conversations = batch_no_prompt.run(prompt_strings_list=prompts)
-    for conv in conversations:
-        print(conv)
-
-    # Example 3: With rate limiting (max 2 concurrent requests)
-    conversations = batch.run(input_variables_list=input_variables, max_concurrent=2)

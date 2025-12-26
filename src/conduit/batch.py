@@ -18,7 +18,6 @@ __all__ = [
     "GenerationParams",
     "GenerationRequest",
     "GenerationResponse",
-    "Message",
     "ModelAsync",
     "Prompt",
     "Verbosity",
