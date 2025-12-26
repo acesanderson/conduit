@@ -103,7 +103,17 @@ class ModelStore:
         return local_models
 
     @classmethod
-    def aliases(cls):
+    def cloud_models(cls) -> list[str]:
+        """List of all cloud-hosted models supported by Conduit library."""
+        models = cls.models()
+        cloud_models: list[str] = []
+        for provider, model_list in models.items():
+            if provider not in ["ollama", "local"]:
+                cloud_models.extend(model_list)
+        return cloud_models
+
+    @classmethod
+    def aliases(cls) -> dict[str, str]:
         """Definitive list of model aliases supported by Conduit library."""
         with open(ALIASES_PATH) as f:
             return json.load(f)

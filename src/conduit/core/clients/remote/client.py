@@ -6,7 +6,7 @@ from conduit.domain.result.response import GenerationResponse
 from conduit.domain.result.response_metadata import ResponseMetadata, StopReason
 from conduit.domain.message.message import AssistantMessage
 from headwater_api.classes import StatusResponse
-from headwater_client.client.headwater_client import HeadwaterClient
+from headwater_client.client.headwater_client_async import HeadwaterAsyncClient
 from typing import override, TYPE_CHECKING, Any
 import json
 import logging
@@ -23,27 +23,33 @@ logger = logging.getLogger(__name__)
 
 class RemoteClient(Client):
     def __init__(self):
-        self._client = self._initialize_client()
+        self._client: HeadwaterAsyncClient = self._initialize_client()
+        self.is_healthy: None | bool = None
+        self.status: None | StatusResponse = None
 
-    @override
-    def _initialize_client(self) -> HeadwaterClient:
+    def _initialize_client(self) -> HeadwaterAsyncClient:
         """Initialize SiphonClient connection"""
-        client = HeadwaterClient()
+        client = HeadwaterAsyncClient()
+        return client
 
-        # Test connection
-        try:
-            status = client.ping()
-            if status == False:
-                raise ConnectionError("Server is not healthy")
-            return client
-        except Exception as e:
-            raise ConnectionError(f"Failed to connect to Headwater server: {e}")
+    async def _ping_server(self) -> bool:
+        """Ping remote server to check health"""
+        logger.debug("Pinging remote server...")
+        is_healthy = await self._client.ping()
+        return is_healthy
 
-    def _validate_server_model(self, model_name: str) -> bool:
-        """Validate that the model is available on the server"""
-        try:
-            status: StatusResponse = self._client.get_status()
-            available_models = getattr(status, "models_available", [])
+    async def _validate_server_model(self, model_name: str) -> bool:
+        """
+        Validate that the model is available on the server, IF not already in our canonical list of models.
+        """
+        from conduit.core.model.models.modelstore import ModelStore
+
+        if model_name in ModelStore.cloud_models():
+            logger.debug(f"Model '{model_name}' is a registered cloud model.")
+            return True
+        else:
+            logger.debug(f"Validating model '{model_name}' on remote server.")
+            available_models = getattr(self.status, "models_available", [])
             logger.info(f"Available models on server: {available_models}")
             # Update server models file
             if available_models:
@@ -58,19 +64,11 @@ class RemoteClient(Client):
 
             if model_name not in available_models:
                 raise ValueError(
-                    f"Model '{model_name}' not available on server. "
-                    f"Available models: {available_models}"
+                    f"Model '{model_name}' not available on server. Available models: {available_models}"
                 )
             else:
                 logger.info(f"Model '{model_name}' is available on server.")
                 return True
-        except Exception as e:
-            raise ValueError(f"Failed to validate model on server: {e}")
-
-    @override
-    def _get_api_key(self) -> str:
-        """Remote client doesn't use API keys - authentication handled by HeadwaterClient"""
-        return ""
 
     @override
     def _convert_message(self, message: Message) -> dict[str, Any]:
@@ -99,6 +97,18 @@ class RemoteClient(Client):
         Query the remote model via HeadwaterClient.
         Routes to appropriate generation method based on output_type.
         """
+        # Initial handshake / health check
+        if self.is_healthy is None:  # First time check
+            self.is_healthy = await self._ping_server()
+            if self.is_healthy:
+                self.status = await self._client.get_status()
+        if not self.is_healthy:  # Subsequent checks
+            raise ConnectionError("Cannot connect to remote server.")
+
+        # Validate model availability on server
+        _ = await self._validate_server_model(model_name=request.params.model)
+
+        # Route to appropriate generation method
         match request.params.output_type:
             case "text":
                 return await self._generate_text(request)
@@ -120,31 +130,22 @@ class RemoteClient(Client):
         """
         start_time = time.time()
 
-        # Validate model availability on server
-        _ = self._validate_server_model(model_name=request.params.model)
+        response = await self._client.conduit.query_generate(request)
 
-        # TBD: Update this to use async HeadwaterClient method
-        # response = await self._client.conduit.query_async(request)
-        # For now, placeholder:
-        raise NotImplementedError(
-            "Remote text generation logic needed - update HeadwaterClient call to async"
+        duration = (time.time() - start_time) * 1000
+        assistant_message = AssistantMessage(content=str(response.content))
+        metadata = ResponseMetadata(
+            duration=duration,
+            model_slug=request.params.model,
+            input_tokens=response.metadata.input_tokens,
+            output_tokens=response.metadata.output_tokens,
+            stop_reason=StopReason.STOP,
         )
-
-        # TBD: Parse server response and construct GenerationResponse
-        # duration = (time.time() - start_time) * 1000
-        # assistant_message = AssistantMessage(content=response.content)
-        # metadata = ResponseMetadata(
-        #     duration=duration,
-        #     model_slug=request.params.model,
-        #     input_tokens=response.input_tokens,
-        #     output_tokens=response.output_tokens,
-        #     stop_reason=StopReason.STOP,
-        # )
-        # return GenerationResponse(
-        #     message=assistant_message,
-        #     request=request,
-        #     metadata=metadata,
-        # )
+        return GenerationResponse(
+            message=assistant_message,
+            request=request,
+            metadata=metadata,
+        )
 
     async def _generate_image(self, request: GenerationRequest) -> GenerationResponse:
         """
@@ -205,11 +206,37 @@ class RemoteClient(Client):
         token_count = response.token_count
         return token_count
 
-    # Client/server specific methods
-    def get_status(self) -> StatusResponse:
-        """Get server status"""
-        return self._client.get_status()
+    # Convenience methods (ping, status)
+    async def ping(self) -> bool:
+        """Ping the remote server to check connectivity."""
+        return await self._ping_server()
 
-    def ping(self) -> bool:
-        """Ping server to check health"""
-        return self._client.ping()
+    async def get_status(self) -> StatusResponse:
+        """Get the status of the remote server."""
+        if self.status is None:
+            self.status = await self._client.get_status()
+        return self.status
+
+
+if __name__ == "__main__":
+    from conduit.domain.request.request import GenerationRequest
+    from conduit.examples.sample_requests import sample_request
+    import asyncio
+
+    # Instantiate RemoteClient
+    client = RemoteClient()
+
+    async def test_query(request: GenerationRequest):
+        # Test ping
+        is_alive = await client.ping()
+        print(f"Server is alive: {is_alive}")
+
+        # Test get_status
+        status = await client.get_status()
+        print(f"Server status: {status}")
+
+        # Test query
+        result = await client.query(request)
+        print(f"Generation result: {result}")
+
+    asyncio.run(test_query(sample_request))
