@@ -24,14 +24,15 @@ class ModelAsync(ModelBase):
     Execution context (params/options) passed explicitly to methods.
     """
 
-    def __init__(self, model: str):
+    def __init__(self, model: str, client: Client | None = None):
         """
         Initialize the async model with only its identity.
 
         Args:
             model: The model name/alias (e.g., "gpt-4o", "claude-sonnet-4")
+            client: Optional client injection for advanced use cases (e.g., remote models)
         """
-        super().__init__(model=model)
+        super().__init__(model=model, client=client)
         # Plugins
         self._audio: AudioAsync | None = None
         self._image: ImageAsync | None = None

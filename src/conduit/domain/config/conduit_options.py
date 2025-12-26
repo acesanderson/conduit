@@ -43,6 +43,7 @@ class ConduitOptions(BaseModel):
 
     # Dev options
     debug_payload: bool = False  # Log full request/response payloads for debugging
+    use_remote: bool = False  # Whether to use remote server for model execution
 
     @field_validator("verbosity")
     @classmethod

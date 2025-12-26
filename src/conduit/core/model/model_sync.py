@@ -5,6 +5,7 @@ from typing import Any, TYPE_CHECKING, override
 
 from conduit.config import settings
 from conduit.core.model.model_async import ModelAsync
+from conduit.core.clients.client_base import Client
 from conduit.domain.request.generation_params import GenerationParams
 from conduit.domain.request.request import GenerationRequest
 from conduit.utils.progress.verbosity import Verbosity
@@ -38,6 +39,7 @@ class ModelSync:
         model: str,
         params: GenerationParams | None = None,
         options: ConduitOptions | None = None,
+        client: Client | None = None,
         **kwargs: Any,
     ):
         """
@@ -48,10 +50,11 @@ class ModelSync:
             params: LLM parameters (temperature, max_tokens, etc.).
                     If not provided, defaults will be used with the specified model.
             options: Runtime configuration (caching, console, etc.).
+            client: Optional client injection for advanced use cases (e.g., remote models)
             **kwargs: Additional parameters merged into GenerationParams (e.g., temperature=0.7).
         """
         # 1. Instantiate the async implementation (dumb pipe - only needs model identity)
-        self._impl = ModelAsync(model)
+        self._impl = ModelAsync(model, client=client)
 
         # 2. Store execution context
         if params is None:
@@ -180,6 +183,7 @@ class ModelSync:
         console: Console | None = None,
         system: str | None = None,
         debug_payload: bool = False,
+        use_remote: bool = False,
         **param_kwargs: Any,
     ) -> ModelSync:
         """
@@ -215,6 +219,10 @@ class ModelSync:
         # Debug
         if debug_payload:
             opt_updates["debug_payload"] = True
+
+        # Remote execution
+        if use_remote:
+            opt_updates["use_remote"] = True
 
         # Apply updates (Pydantic v2)
         options = options.model_copy(update=opt_updates)
