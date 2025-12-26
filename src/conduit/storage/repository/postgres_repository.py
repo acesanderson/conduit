@@ -290,6 +290,21 @@ class PostgresConversationRepository:
             )
             conn.commit()
 
+    # Global methods
+    def list_all_projects(self) -> list[str]:
+        """
+        Lists all distinct project names in the conversations table.
+        """
+        with self._conn_factory() as conn, conn.cursor() as cursor:
+            cursor.execute(
+                """
+                    SELECT DISTINCT project_name
+                    FROM conduit_conversations
+                """
+            )
+            rows = cursor.fetchall()
+        return [row[0] for row in rows]
+
     def prune(self, keep: int = 5) -> None:
         """
         Prunes old conversations, keeping only the most recent 'keep' conversations.
@@ -333,3 +348,20 @@ class PostgresConversationRepository:
                 """
             )
             conn.commit()
+
+
+def get_postgres_repository(table_name: str) -> PostgresConversationRepository:
+    """
+    Factory function to get a PostgresConversationRepository for a given project.
+    """
+    from dbclients.clients.postgres import get_postgres_client
+
+    conn_factory = get_postgres_client(
+        client_type="context_db",
+        dbname="conduit",
+    )
+
+    return PostgresConversationRepository(
+        name=table_name,
+        conn_factory=conn_factory,
+    )
