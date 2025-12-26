@@ -4,7 +4,7 @@ from conduit.storage.repository.protocol import (
     ConversationRepository,
 )
 from conduit.storage.repository.persistence_mode import PersistenceMode
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from rich.console import Console
 
 
@@ -43,3 +43,10 @@ class ConduitOptions(BaseModel):
 
     # Dev options
     debug_payload: bool = False  # Log full request/response payloads for debugging
+
+    @field_validator("verbosity")
+    @classmethod
+    def verbosity_must_not_be_none(cls, v):
+        if v is None:
+            raise ValueError("verbosity cannot be None")
+        return v
