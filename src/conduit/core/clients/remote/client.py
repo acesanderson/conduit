@@ -216,27 +216,3 @@ class RemoteClient(Client):
         if self.status is None:
             self.status = await self._client.get_status()
         return self.status
-
-
-if __name__ == "__main__":
-    from conduit.domain.request.request import GenerationRequest
-    from conduit.examples.sample_requests import sample_request
-    import asyncio
-
-    # Instantiate RemoteClient
-    client = RemoteClient()
-
-    async def test_query(request: GenerationRequest):
-        # Test ping
-        is_alive = await client.ping()
-        print(f"Server is alive: {is_alive}")
-
-        # Test get_status
-        status = await client.get_status()
-        print(f"Server status: {status}")
-
-        # Test query
-        result = await client.query(request)
-        print(f"Generation result: {result}")
-
-    asyncio.run(test_query(sample_request))

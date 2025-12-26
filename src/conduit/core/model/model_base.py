@@ -26,18 +26,19 @@ class ModelBase:
     Execution context (params/options) passed to methods, not stored.
     """
 
-    def __init__(self, model: str):
+    def __init__(self, model: str, client: Client | None = None):
         """
         Initialize the Model base with only its identity.
 
         Args:
             model: The model name/alias (e.g., "gpt-4o", "claude-sonnet-4")
+            client: Optional client injection for advanced use cases (e.g., remote models)
         """
         from conduit.core.model.models.modelstore import ModelStore
 
         # Model identity - the only thing stored
         self.model_name: str = ModelStore.validate_model(model)
-        self.client: Client = self.get_client(model_name=self.model_name)
+        self.client: Client = client if client is not None else self.get_client(model_name=self.model_name)
         # Plugins
         self._audio: AudioSync | AudioAsync | None = None
         self._image: ImageSync | ImageAsync | None = None

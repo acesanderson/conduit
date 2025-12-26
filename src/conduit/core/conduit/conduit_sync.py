@@ -118,6 +118,7 @@ class ConduitSync:
         console: Console | None = None,
         system: str | None = None,  # placeholder for future system-message wiring
         debug_payload: bool = False,
+        use_remote: bool = False,
         **param_kwargs: Any,
     ) -> ConduitSync:
         """
@@ -162,6 +163,10 @@ class ConduitSync:
         # Debug
         if debug_payload:
             opt_updates["debug_payload"] = True
+
+        # Remote execution
+        if use_remote:
+            opt_updates["use_remote"] = True
 
         # Apply updates (Pydantic v2)
         options = options.model_copy(update=opt_updates)

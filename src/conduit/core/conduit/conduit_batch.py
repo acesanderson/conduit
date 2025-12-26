@@ -202,6 +202,7 @@ class ConduitBatch:
         cached: bool | str = False,
         verbosity: Verbosity = settings.default_verbosity,
         console: Console | None = None,
+        use_remote: bool = False,
         **param_kwargs: Any,
     ) -> "ConduitBatch":
         """
@@ -254,6 +255,10 @@ class ConduitBatch:
         if persist:
             repo_name = persist if isinstance(persist, str) else project_name
             opt_updates["repository"] = settings.default_repository(name=repo_name)
+
+        # Remote execution
+        if use_remote:
+            opt_updates["use_remote"] = True
 
         # Apply updates (Pydantic v2)
         options = options.model_copy(update=opt_updates)

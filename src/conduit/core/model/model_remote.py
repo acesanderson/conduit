@@ -1,39 +1,35 @@
 """
-ModelRemote - Synchronous, UX-focused wrapper for remote model execution.
+Remote Model implementations that use RemoteClient for server-based execution.
 
-This class provides a convenient interface for interacting with models hosted
-on a remote server, with the same fat UX as ModelSync.
+Provides both sync and async interfaces with remote server capabilities like
+ping, status checks, and batch operations.
 """
 
 from __future__ import annotations
-import logging
 from typing import Any, TYPE_CHECKING, override
+import logging
 
-from conduit.config import settings
-from conduit.core.clients.client_base import Client
-from conduit.core.model.models.modelstore import ModelStore
+from conduit.core.model.model_sync import ModelSync
+from conduit.core.model.model_async import ModelAsync
+from conduit.core.clients.remote.client import RemoteClient
 from conduit.domain.request.generation_params import GenerationParams
-from conduit.domain.request.query_input import QueryInput, constrain_query_input
-from conduit.domain.request.request import GenerationRequest
+from conduit.domain.config.conduit_options import ConduitOptions
 
 if TYPE_CHECKING:
+    from headwater_api.classes.server_classes.status import StatusResponse
     from collections.abc import Sequence
-    from conduit.domain.config.conduit_options import ConduitOptions
+    from conduit.domain.request.query_input import QueryInput
     from conduit.domain.result.result import GenerationResult
-    from conduit.domain.message.message import Message
-    from headwater_api.classes import StatusResponse
 
 logger = logging.getLogger(__name__)
 
 
-class ModelRemote:
+class RemoteModelSync(ModelSync):
     """
-    Synchronous, UX-focused wrapper for remote model execution.
+    Synchronous remote model that uses RemoteClient for server-based execution.
 
-    - Holds *how* to execute: GenerationParams, ConduitOptions.
-    - Takes *what* to process at call-time via query_input.
-    - Designed for scripts and REPL usage with remote model serving.
-    - Includes server-specific features: status, ping, batch operations.
+    Inherits all ModelSync functionality while adding remote-specific capabilities
+    like ping(), get_status(), and batch() operations.
     """
 
     def __init__(
@@ -44,237 +40,182 @@ class ModelRemote:
         **kwargs: Any,
     ):
         """
-        Initialize the synchronous remote model wrapper.
+        Initialize the synchronous remote model.
 
         Args:
-            model: Model name/alias (e.g., "gpt-4o", "claude-sonnet-4").
-            params: LLM parameters (temperature, max_tokens, etc.).
-                    If not provided, defaults will be used with the specified model.
-            options: Runtime configuration (caching, console, etc.).
-            **kwargs: Additional parameters merged into GenerationParams (e.g., temperature=0.7).
+            model: Model name/alias (e.g., "claude-3-sonnet", "gpt-4o")
+            params: LLM parameters (temperature, max_tokens, etc.)
+            options: Runtime configuration (caching, console, etc.)
+            **kwargs: Additional parameters merged into GenerationParams
         """
-        from conduit.core.model.models.modelstore import ModelStore
-
-        # 1. Store model identity
-        self.model_name: str = ModelStore.validate_model(model)
-
-        # 2. Get remote client (already synchronous)
-        self.client: Client = ModelStore.get_client(
-            model_name=self.model_name, execution_mode="remote"
+        # Create RemoteClient and inject it
+        remote_client = RemoteClient()
+        super().__init__(
+            model=model, params=params, options=options, client=remote_client, **kwargs
         )
-        logger.info(f"Initialized remote client for model: {self.model_name}")
 
-        # 3. Store execution context
-        if params is None:
-            # Create minimal params with correct model
-            self.params = GenerationParams(model=self.model_name)
-        else:
-            # Use provided params, ensuring model matches
-            if params.model != self.model_name:
-                # Override for consistency
-                self.params = params.model_copy(update={"model": self.model_name})
-            else:
-                self.params = params
-
-        self.options: ConduitOptions = options or settings.default_conduit_options()
-
-        # 4. Merge kwargs into params for convenience
-        if kwargs:
-            updated_data = self.params.model_dump()
-            updated_data.update(kwargs)
-            self.params = GenerationParams(**updated_data)
-
-    def query(
-        self, query_input: QueryInput | None = None, **kwargs: Any
-    ) -> GenerationResult:
-        """
-        Synchronous entry point for generation.
-
-        Args:
-            query_input: The input messages or string
-            **kwargs: Either param overrides (temperature, max_tokens, etc.)
-                     or a pre-built 'request' for advanced usage
-
-        Returns:
-            GenerationResult from the remote LLM
-        """
-        # Handle pre-built request (advanced usage)
-        if "request" in kwargs:
-            request = kwargs["request"]
-            if not isinstance(request, GenerationRequest):
-                raise TypeError(
-                    f"request must be a GenerationRequest, got {type(request)}"
-                )
-            # Call client directly with pre-built request
-            return self.client.query(request)
-
-        # Normal flow: build effective params and delegate
-        if query_input is None:
-            raise ValueError("query_input is required")
-
-        # Handle streaming warning
-        if kwargs.get("stream", False):
-            logger.warning(
-                "Remote models do not support streaming. Ignoring stream=True."
-            )
-            kwargs["stream"] = False
-
-        effective_params = self._build_params(kwargs)
-        request = self._prepare_request(query_input, effective_params, self.options)
-
-        logger.info(f"Sending query to remote server for model: {self.model_name}")
-        return self.client.query(request)
-
-    def batch(
-        self, query_inputs: list[QueryInput | str | Sequence[Message]], **kwargs: Any
-    ) -> list[GenerationResult]:
-        """
-        Synchronous batch generation.
-
-        Args:
-            query_inputs: List of input messages or strings
-            **kwargs: Param overrides applied to all requests
-
-        Returns:
-            List of GenerationResult objects from the remote LLM
-        """
-        effective_params = self._build_params(kwargs)
-
-        # Build requests for all inputs
-        requests = [
-            self._prepare_request(query_input, effective_params, self.options)
-            for query_input in query_inputs
-        ]
-
-        logger.info(
-            f"Sending batch of {len(requests)} queries to remote server "
-            f"for model: {self.model_name}"
-        )
-        return self.client.batch(requests)
-
-    def tokenize(self, payload: str | Sequence[Message]) -> int:
-        """
-        Synchronous entry point for tokenization.
-
-        Args:
-            payload: Text string or list of messages to tokenize
-
-        Returns:
-            Token count for the payload
-        """
-        logger.info(
-            f"Requesting tokenization from remote server for model: {self.model_name}"
-        )
-        return self.client.tokenize(model=self.model_name, payload=payload)
-
-    # Server-specific properties
-    @property
-    def status(self) -> StatusResponse:
-        """Get server status."""
-        logger.info("Fetching server status")
-        return self.client.get_status()
-
-    @property
     def ping(self) -> bool:
-        """Ping server to check health."""
-        logger.info("Pinging server")
-        return self.client.ping()
-
-    # Config methods - mutate stored options
-    def enable_cache(self, name: str = settings.default_project_name) -> None:
-        """Enable caching with specified name."""
-        self.options.cache = settings.default_cache(name)
-        logger.info(f"Enabled cache: {name}")
-
-    def enable_console(self) -> None:
-        """Enable rich console output."""
-        if self.options.console is None:
-            from rich.console import Console
-
-            logger.info("Enabling console.")
-            self.options.console = Console()
-
-    def disable_cache(self) -> None:
-        """Disable caching."""
-        if self.options.cache is not None:
-            logger.info("Disabling cache.")
-            self.options.cache = None
-
-    def disable_console(self) -> None:
-        """Disable console output."""
-        if self.options.console is not None:
-            logger.info("Disabling console.")
-            self.options.console = None
-
-    # Helper methods
-    def _prepare_request(
-        self, query_input: QueryInput, params: GenerationParams, options: ConduitOptions
-    ) -> GenerationRequest:
         """
-        PURE CPU: Constructs and validates the GenerationRequest object.
+        Ping the remote server to check connectivity.
+
+        Returns:
+            Server ping response with timing and status information
         """
-        # Constrain query_input per model capabilities
-        query_input_list: Sequence[Message] = constrain_query_input(
-            query_input=query_input
-        )
+        if not isinstance(self._impl.client, RemoteClient):
+            raise TypeError("ping() requires RemoteClient")
+        return self._run_sync(self._impl.client.ping())
 
-        # Ensure params has correct model name
-        if params.model != self.model_name:
-            params = params.model_copy(update={"model": self.model_name})
-
-        request = GenerationRequest(
-            messages=query_input_list,
-            params=params,
-            options=options,
-        )
-        return request
-
-    def _build_params(self, param_overrides: dict[str, Any] | None) -> GenerationParams:
+    def get_status(self) -> StatusResponse:
         """
-        Build effective params by merging stored params with overrides.
-        """
-        if not param_overrides:
-            return self.params
+        Get the current status of the remote server.
 
-        updated_data = self.params.model_dump()
-        updated_data.update(param_overrides)
-        return GenerationParams(**updated_data)
-
-    # Class methods for global info
-    @classmethod
-    def models(cls) -> dict[str, list[str]]:
+        Returns:
+            Server status information including health and model availability
         """
-        Returns a dictionary of available models.
-        This is useful for introspection and debugging.
-        """
-        return ModelStore.models()
+        if not isinstance(self._impl.client, RemoteClient):
+            raise TypeError("get_status() requires RemoteClient")
+        return self._run_sync(self._impl.client.get_status())
 
-    @override
-    def __repr__(self) -> str:
-        return (
-            f"ModelRemote(model={self.model_name!r}, "
-            f"params={self.params!r}, options={self.options!r})"
-        )
+    def batch(self, query_inputs: Sequence[QueryInput]) -> list[GenerationResult]:
+        """
+        Process multiple queries in a batch on the remote server.
+
+        Args:
+            query_inputs: Sequence of input queries to process
+
+        Returns:
+            List of GenerationResults corresponding to each input
+        """
+        if not isinstance(self._impl.client, RemoteClient):
+            raise TypeError("batch() requires RemoteClient")
+        # Note: This will need to be implemented in RemoteClient
+        return self._run_sync(self._impl.client.batch(query_inputs))
+
+    @property
+    def is_remote(self) -> bool:
+        """Check if this model uses remote execution."""
+        return True
+
+
+class RemoteModelAsync(ModelAsync):
+    """
+    Asynchronous remote model that uses RemoteClient for server-based execution.
+
+    Inherits all ModelAsync functionality while adding remote-specific capabilities
+    like ping(), get_status(), and batch() operations.
+    """
+
+    def __init__(self, model: str):
+        """
+        Initialize the asynchronous remote model.
+
+        Args:
+            model: Model name/alias (e.g., "claude-3-sonnet", "gpt-4o")
+        """
+        # Create RemoteClient and inject it
+        remote_client = RemoteClient()
+        super().__init__(model=model, client=remote_client)
+
+    async def ping(self) -> bool:
+        """
+        Ping the remote server to check connectivity.
+
+        Returns:
+            Server ping response with timing and status information
+        """
+        if not isinstance(self.client, RemoteClient):
+            raise TypeError("ping() requires RemoteClient")
+        return await self.client.ping()
+
+    async def get_status(self) -> StatusResponse:
+        """
+        Get the current status of the remote server.
+
+        Returns:
+            Server status information including health and model availability
+        """
+        if not isinstance(self.client, RemoteClient):
+            raise TypeError("get_status() requires RemoteClient")
+        return await self.client.get_status()
+
+    async def batch(self, query_inputs: Sequence[QueryInput]) -> list[GenerationResult]:
+        """
+        Process multiple queries in a batch on the remote server.
+
+        Args:
+            query_inputs: Sequence of input queries to process
+
+        Returns:
+            List of GenerationResults corresponding to each input
+        """
+        if not isinstance(self.client, RemoteClient):
+            raise TypeError("batch() requires RemoteClient")
+        # Note: This will need to be implemented in RemoteClient
+        return await self.client.batch(query_inputs)
+
+    @property
+    def is_remote(self) -> bool:
+        """Check if this model uses remote execution."""
+        return True
+
+
+# Factory functions for convenient instantiation
+def remote_model_sync(
+    model: str,
+    params: GenerationParams | None = None,
+    options: ConduitOptions | None = None,
+    **kwargs: Any,
+) -> RemoteModelSync:
+    """
+    Factory function to create a synchronous remote model.
+
+    Args:
+        model: Model name/alias (e.g., "claude-3-sonnet", "gpt-4o")
+        params: LLM parameters (temperature, max_tokens, etc.)
+        options: Runtime configuration (caching, console, etc.)
+        **kwargs: Additional parameters merged into GenerationParams
+
+    Returns:
+        Configured RemoteModelSync instance
+    """
+    return RemoteModelSync(model=model, params=params, options=options, **kwargs)
+
+
+def remote_model_async(model: str) -> RemoteModelAsync:
+    """
+    Factory function to create an asynchronous remote model.
+
+    Args:
+        model: Model name/alias (e.g., "claude-3-sonnet", "gpt-4o")
+
+    Returns:
+        Configured RemoteModelAsync instance
+    """
+    return RemoteModelAsync(model=model)
 
 
 if __name__ == "__main__":
-    # Example usage
-    model = ModelRemote("gpt3", temperature=0.7)
-    model.enable_cache("test")
+    from conduit.domain.request.generation_params import GenerationParams
+    from conduit.domain.config.conduit_options import ConduitOptions
+    from conduit.utils.progress.verbosity import Verbosity
 
-    # Single query
-    result = model.query("Hello, world!")
-    print(result)
+    # Instantiate RemoteModelSync
+    model = RemoteModelSync(
+        model="gpt-4o",
+        params=GenerationParams(model="gpt-4o", temperature=0.7),
+        options=ConduitOptions(project_name="test", verbosity=Verbosity.PROGRESS),
+    )
 
-    # Batch queries
-    results = model.batch(["What is Python?", "What is Rust?", "What is Go?"])
-    for r in results:
-        print(r)
+    # Check if remote
+    print(f"Is remote: {model.is_remote}")
 
-    # Tokenization
-    token_count = model.tokenize("I am the very model of a modern major general")
-    print(f"Token count: {token_count}")
+    # Try ping (will fail if no server, but tests instantiation)
+    try:
+        result = model.ping()
+        print(f"Ping result: {result}")
+    except Exception as e:
+        print(f"Ping failed (expected if no server): {type(e).__name__}")
 
-    # Server health
-    print(f"Server status: {model.status}")
-    print(f"Server ping: {model.ping}")
+    # Query
+    result = model.query("Hello, remote model!")
+    print(f"Query result: {result}")

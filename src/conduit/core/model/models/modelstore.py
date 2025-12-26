@@ -350,11 +350,11 @@ class ModelStore:
         from conduit.core.model.models.modelstore import ModelStore
 
         model_list = ModelStore.models()
-        # Handle remote execution mode first -- we don't care about model name here
+        # Handle remote execution mode first
         if execution_mode == "remote":
             from conduit.core.clients.remote.client import RemoteClient
 
-            return RemoteClient()
+            return RemoteClient(model_name)
 
         # Now all sync / async modes
         if model_name in model_list["openai"]:
