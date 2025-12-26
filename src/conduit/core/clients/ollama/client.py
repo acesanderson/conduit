@@ -25,6 +25,7 @@ import logging
 import time
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from conduit.domain.result.result import GenerationResult
     from conduit.domain.request.request import GenerationRequest
     from conduit.domain.message.message import Message
@@ -136,7 +137,7 @@ class OllamaClient(Client):
             json.dump(ollama_model_dict, f)
 
     @override
-    def tokenize(self, model: str, payload: str | list[Message]) -> int:
+    def tokenize(self, model: str, payload: str | Sequence[Message]) -> int:
         """
         Count tokens using Ollama's API via the official library.
         We set "num_predict" to 0 so we only process the prompt/history and get the eval count.
@@ -164,7 +165,7 @@ class OllamaClient(Client):
             )
             return int(response.get("prompt_eval_count", 0))
 
-        raise ValueError("Payload must be string or list[Message]")
+        raise ValueError("Payload must be string or Sequence[Message]")
 
     @override
     async def query(

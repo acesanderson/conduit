@@ -19,6 +19,7 @@ import time
 import base64
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from openai import AsyncOpenAI, AsyncStream
     from instructor import Instructor
     from conduit.domain.result.result import GenerationResult
@@ -100,7 +101,7 @@ class GoogleClient(Client):
         return google_payload
 
     @override
-    def tokenize(self, model: str, payload: str | list[Message]) -> int:
+    def tokenize(self, model: str, payload: str | Sequence[Message]) -> int:
         """
         Get the token count per official tokenizer (through Google Native API).
         We use the google.generativeai SDK for this because Gemini tokens != tiktoken.
@@ -146,7 +147,7 @@ class GoogleClient(Client):
             response = model_client.count_tokens(native_contents)
             return response.total_tokens
 
-        raise ValueError("Payload must be string or list[Message]")
+        raise ValueError("Payload must be string or Sequence[Message]")
 
     @override
     async def query(

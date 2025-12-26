@@ -21,6 +21,7 @@ import os
 import time
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from conduit.domain.result.result import GenerationResult
     from conduit.domain.request.request import GenerationRequest
     from conduit.domain.message.message import Message
@@ -102,7 +103,7 @@ class PerplexityClient(Client):
         return perplexity_payload
 
     @override
-    def tokenize(self, model: str, payload: str | list[Message]) -> int:
+    def tokenize(self, model: str, payload: str | Sequence[Message]) -> int:
         """
         Return the token count for a string, per model's tokenization function.
         cl100k_base is good enough for Perplexity approximation.
@@ -159,7 +160,7 @@ class PerplexityClient(Client):
 
             num_tokens += 3  # reply primer
             return num_tokens
-        raise ValueError("Payload must be string or list[Message]")
+        raise ValueError("Payload must be string or Sequence[Message]")
 
     @override
     async def query(
@@ -292,9 +293,7 @@ class PerplexityClient(Client):
 
         # Extract citations from Perplexity response
         citations_raw = (
-            completion.search_results
-            if hasattr(completion, "search_results")
-            else []
+            completion.search_results if hasattr(completion, "search_results") else []
         )
 
         # Build content dict with citations only (structured response has no text)

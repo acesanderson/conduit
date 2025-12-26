@@ -24,6 +24,7 @@ import base64
 from typing import TYPE_CHECKING, override, Any
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from instructor import Instructor
     from openai import AsyncOpenAI, AsyncStream
     from conduit.domain.result.result import GenerationResult
@@ -91,10 +92,10 @@ class OpenAIClient(Client, ABC):
 
     # Tokenization
     @override
-    async def tokenize(self, model: str, payload: str | list[Message]) -> int:
+    async def tokenize(self, model: str, payload: str | Sequence[Message]) -> int:
         """
         Return the token count for a string or a message list.
-        For list[Message], it calculates the overhead per OpenAI ChatML format.
+        For Sequence[Message], it calculates the overhead per OpenAI ChatML format.
 
         Estimations:
         - Images: 85 tokens (low detail) or 765 tokens (high/auto detail estimate).
@@ -173,7 +174,7 @@ class OpenAIClient(Client, ABC):
             num_tokens += tokens_reply_primer
             return num_tokens
 
-        raise ValueError("Payload must be string or list[Message]")
+        raise ValueError("Payload must be string or Sequence[Message]")
 
     def _get_encoding(self, model: str):
         import tiktoken
@@ -232,6 +233,8 @@ class OpenAIClient(Client, ABC):
         result = await self.async_client.chat.completions.create(**payload_dict)
 
         # Handle streaming response
+        from openai import AsyncStream
+
         if isinstance(result, AsyncStream):
             # For streaming, return the AsyncStream object directly (it's part of ConduitResult)
             return result

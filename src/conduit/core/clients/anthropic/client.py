@@ -12,6 +12,7 @@ import os
 import time
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from anthropic import AsyncAnthropic, AsyncStream, Anthropic
     from conduit.domain.request.request import GenerationRequest
     from conduit.domain.message.message import Message
@@ -107,7 +108,7 @@ class AnthropicClient(Client):
         return anthropic_payload
 
     @override
-    def tokenize(self, model: str, payload: str | list[Message]) -> int:
+    def tokenize(self, model: str, payload: str | Sequence[Message]) -> int:
         """
         Get token count per official Anthropic api endpoint.
         """
@@ -145,7 +146,7 @@ class AnthropicClient(Client):
             )
             return response.input_tokens
 
-        raise ValueError("Payload must be string or list[Message]")
+        raise ValueError("Payload must be string or Sequence[Message]")
 
     @override
     async def query(

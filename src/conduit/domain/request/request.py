@@ -12,6 +12,7 @@ from conduit.domain.request.generation_params import GenerationParams
 from conduit.domain.config.conduit_options import ConduitOptions
 from conduit.domain.message.message import MessageUnion
 from conduit.utils.progress.verbosity import Verbosity
+from collections.abc import Sequence
 import hashlib
 import json
 import logging
@@ -54,7 +55,7 @@ class GenerationRequest(BaseModel):
     Inherits all params (temp, top_p) and adds required transport fields.
     """
 
-    messages: list[MessageUnion]
+    messages: Sequence[MessageUnion]
     params: GenerationParams
     options: ConduitOptions
 

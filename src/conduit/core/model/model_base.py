@@ -9,6 +9,7 @@ import logging
 
 # Load only if type checking
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from conduit.domain.message.message import Message
     from conduit.domain.result.result import GenerationResult
     from conduit.domain.config.conduit_options import ConduitOptions
@@ -69,7 +70,9 @@ class ModelBase:
         PURE CPU: Constructs and validates the GenerationRequest object.
         """
         # Constrain query_input per model capabilities
-        query_input_list: list[Message] = constrain_query_input(query_input=query_input)
+        query_input_list: Sequence[Message] = constrain_query_input(
+            query_input=query_input
+        )
 
         # Ensure params has correct model name
         if params.model != self.model_name:
@@ -94,7 +97,7 @@ class ModelBase:
     ) -> GenerationResult:
         raise NotImplementedError("query must be implemented in subclasses.")
 
-    async def tokenize(self, payload: str | list[Message]) -> int:
+    async def tokenize(self, payload: str | Sequence[Message]) -> int:
         raise NotImplementedError("tokenize must be implemented in subclasses.")
 
     # Dunders
