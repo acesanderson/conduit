@@ -6,7 +6,6 @@ from conduit.storage.repository.protocol import (
 from conduit.storage.repository.persistence_mode import PersistenceMode
 from pydantic import BaseModel, Field, ConfigDict
 from rich.console import Console
-from typing import Literal
 
 
 class ConduitOptions(BaseModel):

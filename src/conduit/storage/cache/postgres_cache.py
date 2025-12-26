@@ -302,3 +302,16 @@ class PostgresCache:
                 writer.writerow([cache_key, response.content])
 
         print(f"Cache exported to {self.name}_cache_export.csv")
+
+
+def get_postgres_cache(
+    table_name: str,
+) -> PostgresCache:
+    # Helper to create PostgresCache with default connection factory
+    from dbclients.clients.postgres import get_postgres_client
+
+    conn_factory = get_postgres_client(
+        "context_db",
+        dbname="conduit",
+    )
+    return PostgresCache(name=table_name, conn_factory=conn_factory)
