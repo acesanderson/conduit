@@ -185,6 +185,8 @@ class GoogleClient(Client):
         # Use the raw client for standard completions
         result = await self.async_client.chat.completions.create(**payload_dict)
 
+        from openai import AsyncStream
+
         # Handle streaming response
         if isinstance(result, AsyncStream):
             # For streaming, return the AsyncStream object directly
