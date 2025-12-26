@@ -15,9 +15,9 @@ from conduit.core.model.models.modelstore import ModelStore
 from conduit.domain.request.generation_params import GenerationParams
 from conduit.domain.request.query_input import QueryInput, constrain_query_input
 from conduit.domain.request.request import GenerationRequest
-from conduit.core.model.model_type import ModelType
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from conduit.domain.config.conduit_options import ConduitOptions
     from conduit.domain.result.result import GenerationResult
     from conduit.domain.message.message import Message
@@ -35,8 +35,6 @@ class ModelRemote:
     - Designed for scripts and REPL usage with remote model serving.
     - Includes server-specific features: status, ping, batch operations.
     """
-
-    model_type: ModelType = ModelType.REMOTE
 
     def __init__(
         self,
@@ -128,7 +126,7 @@ class ModelRemote:
         return self.client.query(request)
 
     def batch(
-        self, query_inputs: list[QueryInput | str | list[Message]], **kwargs: Any
+        self, query_inputs: list[QueryInput | str | Sequence[Message]], **kwargs: Any
     ) -> list[GenerationResult]:
         """
         Synchronous batch generation.
@@ -154,7 +152,7 @@ class ModelRemote:
         )
         return self.client.batch(requests)
 
-    def tokenize(self, payload: str | list[Message]) -> int:
+    def tokenize(self, payload: str | Sequence[Message]) -> int:
         """
         Synchronous entry point for tokenization.
 
@@ -216,7 +214,9 @@ class ModelRemote:
         PURE CPU: Constructs and validates the GenerationRequest object.
         """
         # Constrain query_input per model capabilities
-        query_input_list: list[Message] = constrain_query_input(query_input=query_input)
+        query_input_list: Sequence[Message] = constrain_query_input(
+            query_input=query_input
+        )
 
         # Ensure params has correct model name
         if params.model != self.model_name:

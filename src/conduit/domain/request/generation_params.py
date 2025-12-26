@@ -61,3 +61,17 @@ class GenerationParams(BaseModel):
             except AttributeError:
                 logger.warning(f"Could not generate schema for {self.response_model}")
         return self
+
+    @classmethod
+    def defaults(cls, model_name: str) -> GenerationParams:
+        """
+        Return default generation parameters.
+        """
+        return cls(
+            model=model_name,
+            temperature=0.7,
+            top_p=1.0,
+            max_tokens=2048,
+            stream=False,
+            output_type="text",
+        )

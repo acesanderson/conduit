@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, override
 import logging
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from conduit.core.clients.payload_base import Payload
     from conduit.domain.request.request import GenerationRequest
     from conduit.domain.result.result import GenerationResult
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class Client:
-    def _convert_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
+    def _convert_messages(self, messages: Sequence[Message]) -> list[dict[str, Any]]:
         return [self._convert_message(m) for m in messages]
 
     def _convert_message(self, message: Message) -> dict[str, Any]:
@@ -30,7 +31,7 @@ class Client:
     async def query(self, request: GenerationRequest) -> GenerationResult:
         raise NotImplementedError("Should be implemented in subclass.")
 
-    def tokenize(self, model: str, payload: str | list[Message]) -> int:
+    def tokenize(self, model: str, payload: str | Sequence[Message]) -> int:
         raise NotImplementedError("Should be implemented in subclass.")
 
     @override

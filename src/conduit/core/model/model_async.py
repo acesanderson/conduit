@@ -9,6 +9,8 @@ from typing import override, TYPE_CHECKING
 import logging
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from conduit.domain.request.request import GenerationRequest
     from conduit.core.model.modalities.audio import AudioAsync
     from conduit.core.model.modalities.image import ImageAsync
     from conduit.domain.message.message import Message
@@ -67,7 +69,7 @@ class ModelAsync(ModelBase):
     async def query(
         self,
         request: GenerationRequest | None = None,
-        query_input: QueryInput | str | list[Message] | None = None,
+        query_input: QueryInput | str | Sequence[Message] | None = None,
         params: GenerationParams | None = None,
         options: ConduitOptions | None = None,
     ) -> GenerationResult:
@@ -103,28 +105,10 @@ class ModelAsync(ModelBase):
             return result
 
     @override
-    async def tokenize(self, payload: str | list[Message]) -> int:
+    async def tokenize(self, payload: str | Sequence[Message]) -> int:
         """
         Get the token length for the given model.
         Implementation at the client level.
         """
         logger.info("ModelAsync.tokenize called with model: %s", self.model_name)
         return await self.client.tokenize(model=self.model_name, payload=payload)
-
-
-if __name__ == "__main__":
-    from conduit.config import settings
-    import asyncio
-
-    async def main():
-        model = ModelAsync("gpt3")
-        params = GenerationParams(model="gpt3")
-        options = settings.default_conduit_options()
-
-        result = await model.query("Hello, world!", params, options)
-        print(result)
-
-        ts = await model.tokenize("i am the very model of a modern major general")
-        print(ts)
-
-    asyncio.run(main())

@@ -1,5 +1,5 @@
 """
-A Conversation wraps a list[Message] with extra metadata, validation, and helper methods.
+A Conversation wraps a Sequence[Message] with extra metadata, validation, and helper methods.
 It's also a core data object for persistence.
 """
 
@@ -12,6 +12,7 @@ import time
 import uuid
 from enum import Enum
 from typing import TYPE_CHECKING, override
+from collections.abc import Sequence
 
 if TYPE_CHECKING:
     from conduit.domain.request.generation_params import GenerationParams
@@ -49,7 +50,7 @@ class ConversationError(Exception):
 
 class Conversation(BaseModel):
     topic: str = "Untitled"
-    messages: list[Message] = []
+    messages: Sequence[Message] = []
 
     # Generated fields
     conversation_id: str = Field(default_factory=lambda: str(uuid.uuid4()))

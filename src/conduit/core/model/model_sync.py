@@ -11,6 +11,7 @@ from conduit.utils.progress.verbosity import Verbosity
 from conduit.utils.concurrency.warn import _warn_if_loop_exists
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from conduit.core.model.modalities.audio import AudioSync
     from conduit.core.model.modalities.image import ImageSync
     from conduit.domain.config.conduit_options import ConduitOptions
@@ -160,7 +161,7 @@ class ModelSync:
 
         return self._run_sync(self._impl.query(request))
 
-    def tokenize(self, payload: str | list[Message]) -> int:
+    def tokenize(self, payload: str | Sequence[Message]) -> int:
         """
         Synchronous entry point for tokenization.
         """

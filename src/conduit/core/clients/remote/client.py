@@ -13,6 +13,7 @@ import logging
 import time
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from conduit.domain.request.request import GenerationRequest
     from conduit.domain.result.result import GenerationResult
     from conduit.domain.message.message import Message
@@ -125,7 +126,9 @@ class RemoteClient(Client):
         # TBD: Update this to use async HeadwaterClient method
         # response = await self._client.conduit.query_async(request)
         # For now, placeholder:
-        raise NotImplementedError("Remote text generation logic needed - update HeadwaterClient call to async")
+        raise NotImplementedError(
+            "Remote text generation logic needed - update HeadwaterClient call to async"
+        )
 
         # TBD: Parse server response and construct GenerationResponse
         # duration = (time.time() - start_time) * 1000
@@ -170,13 +173,15 @@ class RemoteClient(Client):
         _ = self._validate_server_model(model_name=request.params.model)
 
         # TBD: Update this to use async HeadwaterClient method with structured output
-        raise NotImplementedError("Remote structured response logic needed - update HeadwaterClient call")
+        raise NotImplementedError(
+            "Remote structured response logic needed - update HeadwaterClient call"
+        )
 
     @override
-    async def tokenize(self, model: str, payload: str | list["Message"]) -> int:
+    async def tokenize(self, model: str, payload: str | Sequence[Message]) -> int:
         """
         Get the token count for a text, per a given model's tokenization function.
-        If payload is a list of Messages, we serialize to JSON to approximate the weight
+        If payload is a Sequence of Messages, we serialize to JSON to approximate the weight
         for the server-side tokenizer which expects a string.
         """
         from headwater_api.classes import TokenizationRequest
@@ -191,7 +196,7 @@ class RemoteClient(Client):
             # text = json.dumps([self._convert_message(m) for m in payload])
             text = json.dumps([m.to_openai() for m in payload])
         else:
-            raise ValueError("Payload must be string or list[Message]")
+            raise ValueError("Payload must be string or Sequence[Message]")
 
         request = TokenizationRequest(model=model, text=text)
         # TBD: Update to async HeadwaterClient method
