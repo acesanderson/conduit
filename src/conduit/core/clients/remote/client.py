@@ -11,6 +11,7 @@ from typing import override, TYPE_CHECKING, Any
 import json
 import logging
 import time
+import asyncio
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -23,9 +24,39 @@ logger = logging.getLogger(__name__)
 
 class RemoteClient(Client):
     def __init__(self):
-        self._client: HeadwaterAsyncClient = self._initialize_client()
         self.is_healthy: None | bool = None
         self.status: None | StatusResponse = None
+        # Internal cache storage
+        self._cached_client: HeadwaterAsyncClient | None = None
+        self._cached_loop: asyncio.AbstractEventLoop | None = None
+
+    @property
+    def _client(self) -> HeadwaterAsyncClient:
+        """
+        Lazily initialized HeadwaterAsyncClient.
+        Smart caching: Re-initializes if the asyncio Event Loop has changed
+        (which happens between calls in RemoteModelSync).
+        """
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # Should not happen inside async methods, but safe fallback
+            current_loop = None
+
+        # Check if we have a valid cached client for THIS loop
+        if (
+            self._cached_client
+            and self._cached_loop is current_loop
+            and current_loop is not None
+            and not current_loop.is_closed()
+        ):
+            return self._cached_client
+
+        # Initialize new client
+        logger.debug("Initializing new HeadwaterAsyncClient (New Event Loop detected)")
+        self._cached_client = self._initialize_client()
+        self._cached_loop = current_loop
+        return self._cached_client
 
     def _initialize_client(self) -> HeadwaterAsyncClient:
         """Initialize SiphonClient connection"""
