@@ -5,7 +5,7 @@ It's also a core data object for persistence.
 
 from __future__ import annotations
 from conduit.config import settings
-from conduit.domain.message.message import Message
+from conduit.domain.message.message import MessageUnion, Message
 from conduit.domain.message.role import Role
 from pydantic import BaseModel, Field, model_validator
 import time
@@ -50,35 +50,28 @@ class ConversationError(Exception):
 
 class Conversation(BaseModel):
     topic: str = "Untitled"
-    messages: Sequence[Message] = []
+    messages: Sequence[MessageUnion] = []
 
     # Generated fields
     conversation_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: int = Field(default_factory=lambda: int(time.time() * 1000))
 
-    @model_validator(mode="before")
-    def validate_messages(cls, values):
+    @model_validator(mode="after")
+    def validate_messages(self):
         """
-        Ensure messages is a list of Message objects, and system message rules.
+        Runs AFTER Pydantic has parsed the dict into a Conversation object.
+        'self' is the Conversation instance.
         """
-        # Validate messages
-        messages = values.get("messages", [])
-        if not isinstance(messages, list):
-            raise ConversationError("Messages must be a list of Message objects.")
-        for message in messages:
-            if not isinstance(message, Message):
-                raise ConversationError(
-                    "All items in messages must be instances of Message."
-                )
-        # If there is a system message, ensure that (1) it's first and (2) there's only one
-        system_messages = [m for m in messages if m.role == "system"]
+        messages = self.messages
+        system_messages = [m for m in messages if m.role == Role.SYSTEM]
+
         if len(system_messages) > 1:
             raise ConversationError(
                 "Multiple system messages found in the conversation."
             )
         elif len(system_messages) == 1:
-            self.ensure_system_message()
-        return values
+            self.ensure_system_message(system_messages[0].content)
+        return self
 
     # Helper properties
     def add(self, message: Message) -> None:
