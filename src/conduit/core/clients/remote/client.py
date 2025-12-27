@@ -223,10 +223,8 @@ class RemoteClient(Client):
         if isinstance(payload, str):
             text = payload
         elif isinstance(payload, list):
-            # Serialize list[Message] to a JSON string to pass to the text-only endpoint.
-            # TBD: Update to use new message conversion method once implemented
             # text = json.dumps([self._convert_message(m) for m in payload])
-            text = json.dumps([m.to_openai() for m in payload])
+            text = json.dumps([m.model_dump_json() for m in payload])
         else:
             raise ValueError("Payload must be string or Sequence[Message]")
 

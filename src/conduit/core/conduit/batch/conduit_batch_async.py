@@ -22,7 +22,7 @@ class ConduitBatchAsync:
         """
         Initialize with an optional prompt (required only for Template mode).
         """
-        self.prompt = prompt
+        self.prompt: Prompt | None = prompt
 
     async def run(
         self,
