@@ -27,6 +27,8 @@ class CLIQueryFunctionInputs:
     If not using a particular input, consider logging a warning to inform the user.
     """
 
+    # Project
+    project_name: str
     # Prompt inputs
     query_input: str
     printer: Printer
@@ -34,8 +36,7 @@ class CLIQueryFunctionInputs:
     append: str = ""
     system_message: str = ""
     # Configs
-    temperature: float = 0.7
-    name: str = "default"
+    temperature: float | None = None
     cache: bool = True
     local: bool = False
     preferred_model: str = settings.preferred_model
@@ -65,7 +66,7 @@ def default_query_function(
     """
     logger.debug("Running default_query_function...")
     # Extract inputs from dict
-    name: str = inputs.name
+    project_name = inputs.project_name
     query_input: str = inputs.query_input
     context: str = inputs.context
     append: str = inputs.append
@@ -87,17 +88,16 @@ def default_query_function(
         from conduit.core.conduit.conduit_sync import ConduitSync
 
         prompt = Prompt(combined_query)
-        if cache:
-            cache_string: str | None = name
-        else:
-            cache_string = None
         conduit = ConduitSync.create(
+            project_name=project_name,
             model=preferred_model,
             prompt=prompt,
             system_message=system,
-            cache=cache_string,
+            cache=cache,
+            persist=include_history,
             include_history=include_history,
             verbose=verbose,
+            debug_payload=True,
         )
         logger.info(f"Using model: {preferred_model}")
         response = conduit()

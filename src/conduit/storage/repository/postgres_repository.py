@@ -28,14 +28,16 @@ class PostgresConversationRepository:
     """
 
     def __init__(
-        self, name: str, conn_factory: Callable[[], AbstractContextManager[connection]]
+        self,
+        project_name: str,
+        conn_factory: Callable[[], AbstractContextManager[connection]],
     ):
         """
         Args:
             name: The project name (e.g., "summarizer", "chatbot-v1").
             conn_factory: DB connection factory.
         """
-        self.project_name: str = name
+        self.project_name: str = project_name
         self._conn_factory: Callable[[], AbstractContextManager[connection]] = (
             conn_factory
         )

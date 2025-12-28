@@ -145,7 +145,7 @@ def load_settings() -> Settings:
         )
         return default_params
 
-    def default_cache(name: str = default_project_name) -> ConduitCache:
+    def default_cache(project_name: str = default_project_name) -> ConduitCache:
         """
         Lazy loader for the default PostgresCache instance.
         """
@@ -155,7 +155,7 @@ def load_settings() -> Settings:
         conn_factory: Callable[[], AbstractContextManager[connection]] = (
             get_postgres_client(client_type="context_db", dbname="conduit")
         )
-        return PostgresCache(name=name, conn_factory=conn_factory)
+        return PostgresCache(project_name=name, conn_factory=conn_factory)
 
     def default_repository(name: str = default_project_name) -> ConversationRepository:
         """

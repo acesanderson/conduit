@@ -81,7 +81,7 @@ class BaseCommands(CommandCollection):
             # 2. Extract Config / State
             stdin = ctx.obj.get("stdin")
             system_message = ctx.obj.get("system_message")
-            user_name = ctx.obj.get("name")
+            project_name = ctx.obj.get("project_name")
             preferred_model = ctx.obj.get("preferred_model")
 
             # 3. Resolve Logic (Boundary Responsibility)
@@ -106,7 +106,7 @@ class BaseCommands(CommandCollection):
                 stdin=stdin,
                 system_message=system_message,
                 verbosity=verbosity,
-                user_name=user_name,
+                project_name=project_name,
             )
 
         @click.command()
@@ -162,7 +162,7 @@ class BaseCommands(CommandCollection):
         @click.pass_context
         def last(ctx: click.Context):
             """Get the last message."""
-            conversation: Conversation = ctx.obj["conversation"]
+            conversation: Conversation = ctx.obj["conversation"]()
             printer: Printer = ctx.obj["printer"]
 
             handlers.handle_last(printer, conversation)

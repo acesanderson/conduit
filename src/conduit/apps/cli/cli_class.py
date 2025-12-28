@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Defaults
-DEFAULT_NAME = settings.default_project_name
+DEFAULT_PROJECT_NAME = "conduit_cli"
 DEFAULT_DESCRIPTION = "Conduit: The LLM CLI"
 DEFAULT_QUERY_FUNCTION = default_query_function
 PREFERRED_MODEL = settings.preferred_model
@@ -45,7 +45,7 @@ class ConduitCLI:
     Main class for the Conduit CLI application.
     Combines argument parsing, configuration loading, and command handling.
     Attributes:
-        name (str): Name of the CLI application.
+        project_name (str): Name of the CLI application.
         description (str): Description of the CLI application.
         query_function (CLIQueryFunctionProtocol): Function to handle queries.
         verbosity (Verbosity): Verbosity level for LLM responses.
@@ -57,7 +57,7 @@ class ConduitCLI:
 
     def __init__(
         self,
-        name: str = "conduit",
+        project_name: str = DEFAULT_PROJECT_NAME,
         description: str = DEFAULT_DESCRIPTION,
         query_function: CLIQueryFunctionProtocol = DEFAULT_QUERY_FUNCTION,
         model: str = PREFERRED_MODEL,
@@ -65,7 +65,7 @@ class ConduitCLI:
         version: str = settings.version,
     ):
         # Parameters
-        self.name: str = name
+        self.project_name: str = project_name
         self.description: str = description
         self.query_function: CLIQueryFunctionProtocol = query_function
         self.version: str = version
@@ -87,10 +87,10 @@ class ConduitCLI:
             PostgresConversationRepository,
         )
 
-        conn_factory = get_postgres_client("context_db", dbname=self.name)
+        conn_factory = get_postgres_client("context_db", dbname="conduit")
 
         repository = PostgresConversationRepository(
-            conn_factory=conn_factory, name=self.name
+            conn_factory=conn_factory, project_name=self.project_name
         )
         return repository
 
@@ -123,7 +123,7 @@ class ConduitCLI:
         def cli(ctx, show_version, raw):
             ctx.ensure_object(dict)
             # Dependency Injection
-            ctx.obj["name"] = self.name
+            ctx.obj["project_name"] = self.project_name
             ctx.obj["stdin"] = stdin
             ctx.obj["printer"] = printer
             ctx.obj["repository"] = lambda: self.repository  # Lazy load
