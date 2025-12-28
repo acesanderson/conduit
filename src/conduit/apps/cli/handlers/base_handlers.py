@@ -164,7 +164,7 @@ class BaseHandlers:
         import sys
 
         # Get last message
-        last_message: Message = conversation.last()
+        last_message: Message = conversation.last
         # If no messages, inform user
         if not last_message:
             printer.print_pretty("[red]No messages in history.[/red]")
@@ -224,13 +224,13 @@ class BaseHandlers:
         temperature: float | None,
         chat: bool,
         append: str | None,
+        verbosity: Verbosity,
         # Injected Dependencies
         printer: Printer,
         query_function: CLIQueryFunctionProtocol,
         stdin: str | None,
-        system_message: str | None,
-        verbosity: Verbosity,
-        user_name: str | None,
+        system_message: str = "",
+        project_name: str = "",
     ) -> None:
         """
         Here we resolve all inputs for flat input to the query function.
@@ -249,7 +249,7 @@ class BaseHandlers:
             context=context_text,
             append=append or "",
             system_message=system_message,
-            name=user_name,
+            project_name=project_name,
             cache=not local,
             local=local,
             preferred_model=model,  # Model is already resolved by the Command layer

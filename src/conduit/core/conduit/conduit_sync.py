@@ -197,14 +197,16 @@ class ConduitSync:
             if not cached:
                 opts.cache = None
             elif opts.cache is None:
-                opts.cache = settings.default_cache(name=settings.default_project_name)
+                opts.cache = settings.default_cache(
+                    project_name=settings.default_project_name
+                )
 
         if persist is not None:
             if not persist:
                 opts.repository = None
             elif opts.repository is None:
                 opts.repository = settings.default_repository(
-                    name=settings.default_project_name
+                    project_name=settings.default_project_name
                 )
 
         return opts

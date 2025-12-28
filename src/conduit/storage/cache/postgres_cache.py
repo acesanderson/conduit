@@ -34,7 +34,7 @@ class PostgresCache:
 
     def __init__(
         self,
-        name: str,
+        project_name: str,
         conn_factory: Callable[[], AbstractContextManager[connection]],
     ):
         """
@@ -49,7 +49,7 @@ class PostgresCache:
                         ),
                     )
         """
-        self.name = name
+        self.project_name = project_name
         self._conn_factory = conn_factory
 
         self._hits = 0
@@ -70,7 +70,7 @@ class PostgresCache:
                 FROM conduit_cache_entries
                 WHERE cache_name = %s AND cache_key = %s
                 """,
-                (self.name, key),
+                (self.project_name, key),
             )
             row = cursor.fetchone()
             cursor.close()
@@ -100,7 +100,7 @@ class PostgresCache:
                     payload = EXCLUDED.payload,
                     updated_at = now()
                 """,
-                (self.name, key, payload),
+                (self.project_name, key, payload),
             )
             conn.commit()
             cursor.close()
@@ -113,7 +113,7 @@ class PostgresCache:
                 DELETE FROM conduit_cache_entries
                 WHERE cache_name = %s
                 """,
-                (self.name,),
+                (self.project_name,),
             )
             conn.commit()
             cursor.close()
@@ -131,7 +131,7 @@ class PostgresCache:
         created_at, updated_at = self._timestamp_bounds()
 
         return {
-            "cache_name": self.name,
+            "cache_name": self.project_name,
             "database_path": database_path,
             "total_entries": total_entries,
             "total_size_bytes": total_size_bytes,
@@ -207,7 +207,7 @@ class PostgresCache:
                 FROM conduit_cache_entries
                 WHERE cache_name = %s
                 """,
-                (self.name,),
+                (self.project_name,),
             )
             row = cursor.fetchone()
             cursor.close()
@@ -227,7 +227,7 @@ class PostgresCache:
                 FROM conduit_cache_entries
                 WHERE cache_name = %s
                 """,
-                (self.name,),
+                (self.project_name,),
             )
             row = cursor.fetchone()
             cursor.close()
@@ -245,7 +245,7 @@ class PostgresCache:
                 FROM conduit_cache_entries
                 WHERE cache_name = %s
                 """,
-                (self.name,),
+                (self.project_name,),
             )
             row = cursor.fetchone()
             cursor.close()
@@ -288,11 +288,13 @@ class PostgresCache:
                 FROM conduit_cache_entries
                 WHERE cache_name = %s
                 """,
-                (self.name,),
+                (self.project_name,),
             )
             rows = cursor.fetchall()
             cursor.close()
-        with open(f"{self.name}_cache_export.csv", mode="w", newline="") as file:
+        with open(
+            f"{self.project_name}_cache_export.csv", mode="w", newline=""
+        ) as file:
             writer = csv.writer(file)
             writer.writerow(["key", "response_content"])
             for row in rows:
@@ -301,11 +303,11 @@ class PostgresCache:
                 response = GenerationResponse.model_validate(payload)
                 writer.writerow([cache_key, response.content])
 
-        print(f"Cache exported to {self.name}_cache_export.csv")
+        print(f"Cache exported to {self.project_name}_cache_export.csv")
 
 
 def get_postgres_cache(
-    table_name: str,
+    project_name: str,
 ) -> PostgresCache:
     # Helper to create PostgresCache with default connection factory
     from dbclients.clients.postgres import get_postgres_client
@@ -314,4 +316,4 @@ def get_postgres_cache(
         "context_db",
         dbname="conduit",
     )
-    return PostgresCache(name=table_name, conn_factory=conn_factory)
+    return PostgresCache(project_name=project_name, conn_factory=conn_factory)
