@@ -208,14 +208,73 @@ class Conversation(BaseModel):
             yield from message.__rich_console__(console, options)
         return
 
+    def print_history(self, max_messages: int = 100) -> None:
+        """
+        Print the last `max_messages` messages to the console using rich.
+        Unlike __rich_console__, this pretty prints each message but ONLY the first 90 characters for each text block.
+        Generate a new Conversation with truncated messages and then use rich with __rich_console__ to print it.
+        """
+        from rich.console import Console
+
+        console = Console()
+        truncated_messages = []
+        for message in self.messages[-max_messages:]:
+            truncated_content = str(message.content)
+            # Remove multi spaces and newlines for truncation
+            truncated_content = " ".join(truncated_content.split())
+            # Remove more than one space in a sequence
+            truncated_content = " ".join(truncated_content.split("  "))
+            # Remove markdown formatting for truncation
+            truncated_content = truncated_content.replace("**", "").replace("*", "")
+            truncated_content = truncated_content.replace("`", "").replace("```", "")
+            truncated_content = truncated_content.replace("_", "")
+            truncated_content = truncated_content.replace("#", "")
+            if len(truncated_content) > 120:
+                truncated_content = truncated_content[:117] + "..."
+            truncated_message = message.model_copy(
+                update={"content": truncated_content}
+            )
+            truncated_messages.append(truncated_message)
+        truncated_conversation = Conversation(
+            topic=self.topic,
+            messages=truncated_messages,
+            conversation_id=self.conversation_id,
+            timestamp=self.timestamp,
+        )
+        console.print(truncated_conversation)
+
 
 if __name__ == "__main__":
     # Simple test of conversation display, first create a dummy conversation
     from conduit.domain.message.message import UserMessage, AssistantMessage
 
     conv = Conversation(topic="Test Conversation")
-    conv.ensure_system_message("You are a helpful assistant.")
-    conv.add(UserMessage(content="Hello, how are you?"))
+    conv.ensure_system_message("""You are a helpful assistant. Please assist the user with the following ten things:
+        1. Be concise.
+        2. Be accurate.
+        3. Be polite.
+        4. Provide examples when relevant.
+        5. Use proper grammar.
+        6. Avoid jargon.
+        7. Stay on topic.
+        8. Ask clarifying questions if needed.
+        9. Summarize key points.
+        10. End with a friendly closing.""")
+    conv.add(
+        UserMessage(
+            content="""Please answer these ten questions:
+        1. What is the capital of France?
+        2. Who wrote 'To Kill a Mockingbird'?
+        3. What is the largest planet in our solar system?
+        4. How many continents are there on Earth?
+        5. What is the boiling point of water?
+        6. Who painted the Mona Lisa?
+        7. What is the smallest prime number?
+        8. What year did the Titanic sink?
+        9. Who is known as the 'Father of Computers'?
+        10. What is the chemical symbol for gold?"""
+        )
+    )
     conv.add(
         AssistantMessage(
             content="I'm doing well, thank you! How can I assist you today?"
@@ -225,4 +284,4 @@ if __name__ == "__main__":
     from rich.console import Console
 
     console = Console()
-    console.print(conv)
+    conv.print_history()

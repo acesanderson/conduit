@@ -102,7 +102,9 @@ class BaseHandlers:
         """
         logger.info("Viewing message history...")
         conversation = repository.load_by_conversation_id(conversation_id)
-        printer.print_markdown(conversation)
+        if not conversation:
+            raise ValueError("Conversation not found.")
+        conversation.print_history()
         sys.exit()
 
     @staticmethod

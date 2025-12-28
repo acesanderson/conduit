@@ -81,26 +81,23 @@ def default_query_function(
 
     # ConduitCLI's default POSIX philosophy: embrace pipes and redirection
     combined_query = "\n\n".join([query_input, context, append]).strip()
+    logger.info("Combined query prepared.")
 
-    # Our chain
-    if local:
-        raise NotImplementedError("Local model querying is not implemented yet.")
-    else:
-        logger.info("Using cloud model.")
-        from conduit.core.conduit.conduit_sync import ConduitSync
+    from conduit.core.conduit.conduit_sync import ConduitSync
 
-        prompt = Prompt(combined_query)
-        conduit = ConduitSync.create(
-            project_name=project_name,
-            model=preferred_model,
-            prompt=prompt,
-            system_message=system,
-            cache=cache,
-            persist=not ephemeral,
-            verbose=verbose,
-            debug_payload=True,
-            include_history=include_history,
-        )
-        logger.info(f"Using model: {preferred_model}")
-        response = conduit()
+    prompt = Prompt(combined_query)
+    conduit = ConduitSync.create(
+        project_name=project_name,
+        model=preferred_model,
+        prompt=prompt,
+        system=system,
+        cache=cache,
+        persist=not ephemeral,
+        verbose=verbose,
+        debug_payload=False,  # Change to True to debug payloads
+        include_history=include_history,
+        use_remote=local,
+    )
+    logger.info(f"Using model: {preferred_model}")
+    response = conduit()
     return response

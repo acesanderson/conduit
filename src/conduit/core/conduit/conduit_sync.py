@@ -272,19 +272,3 @@ class ConduitSync:
             f"ConduitSync(prompt={self._impl.prompt!r}, "
             f"params={self.params!r}, options={self.options!r})"
         )
-
-
-if __name__ == "__main__":
-    # Simple usage example
-    conduit = ConduitSync.create(
-        model="gpt3",
-        prompt="Hello, {{name}}! How can I assist you today?",
-        persist=True,
-        cached=True,
-        temperature=0.7,
-        system="You will always response like an effete aristocrat.",
-        debug_payload=True,
-    )
-
-    conversation = conduit(name="Alice")
-    print(conversation.last.content)

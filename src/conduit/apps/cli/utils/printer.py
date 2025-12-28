@@ -5,10 +5,15 @@ Module for displaying data and UI elements conditionally based on TTY status.
 This mirrors best practice for POSIX-friendly CLIs.
 """
 
+from __future__ import annotations
 import sys
 from contextlib import nullcontext
 from signal import signal, SIGPIPE, SIG_DFL
 from rich.console import Console
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from rich.console import RenderableType
 
 # Treat broken pipes cleanly (avoid stack traces in pipelines)
 _ = signal(SIGPIPE, SIG_DFL)
@@ -59,7 +64,9 @@ class Printer:
             return self.ui.status(*args, **kwargs)
         return nullcontext()
 
-    def print_markdown(self, markdown_string: str, add_rule: bool = True):
+    def print_markdown(
+        self, markdown_string: str | RenderableType, add_rule: bool = True
+    ):
         """
         Unified Markdown printer:
         - If piping/redirecting (emit_data): write plain Markdown to stdout.
@@ -71,8 +78,11 @@ class Printer:
         if self.ui:
             from rich.markdown import Markdown
 
-            md = markdown_string
-            if add_rule:
-                border = "-" * 100
-                md = f"{border}\n{markdown_string}\n\n{border}"
-            self.ui.print(Markdown(md))
+            if isinstance(markdown_string, str):
+                md = markdown_string
+                if add_rule:
+                    border = "-" * 100
+                    md = f"{border}\n{markdown_string}\n\n{border}"
+                self.ui.print(Markdown(md))
+            else:
+                self.ui.print(markdown_string)  # assume renderable
