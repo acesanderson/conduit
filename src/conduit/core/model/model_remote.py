@@ -6,7 +6,7 @@ ping, status checks, and batch operations.
 """
 
 from __future__ import annotations
-from typing import Any, TYPE_CHECKING, override
+from typing import Any, TYPE_CHECKING
 import logging
 
 from conduit.core.model.model_sync import ModelSync
