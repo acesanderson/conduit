@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from conduit.chat.ui.ui_command import UICommand
+from conduit.apps.chat.ui.ui_command import UICommand
 from rich.console import RenderableType
 
 
@@ -9,7 +9,7 @@ class InputInterface(ABC):
     """
 
     @abstractmethod
-    def get_input(self, prompt: str = ">> ") -> str:
+    async def get_input(self, prompt: str = ">> ") -> str:
         """
         Get user input. May be single or multi-line.
         """

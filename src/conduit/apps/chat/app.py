@@ -1,119 +1,62 @@
-"""
-ChatApp orchestrates the core event loop and message flow for an interactive multi-turn chat session, serving as the bridge between user input, command execution, and language model interactions. It manages a REPL that distinguishes between slash-prefixed commands (parsed and executed via CommandRegistry) and natural language queries (sent to the Model with full MessageStore history), enabling seamless context-aware conversations.
+import logging
 
-Usage:
-
-```python
-registry = CommandRegistry()
-input_interface = BasicInput()
-app = ChatApp(
-    registry=registry,
-    input_interface=input_interface,
-    welcome_message="Welcome to the ChatApp!",
-)
-app.run()
-```
-"""
-
-from conduit.apps.chat.engine.engine import ConduitEngine
-from conduit.apps.chat.engine.exceptions import ConduitChatError
+from conduit.apps.chat.engine.async_engine import ChatEngine
 from conduit.apps.chat.ui.input_interface import InputInterface
-from conduit.apps.chat.ui.ui_command import UICommand
-from rich.console import RenderableType
+
+logger = logging.getLogger(__name__)
 
 
 class ChatApp:
     """
-    Interactive REPL for multi-turn chat sessions that bridges user input, command execution, and language model interactions.
+    The main chat application.
     """
 
-    def __init__(
-        self,
-        engine: ConduitEngine,
-        input_interface: InputInterface,
-        welcome_message: str,
-    ):
+    def __init__(self, engine: ChatEngine, input_interface: InputInterface, welcome_message: str = "", verbosity: "Verbosity" = "SILENT"):
+        self.engine = engine
+        self.input_interface = input_interface
+        self.is_running = True
+        self.welcome_message = welcome_message
+        self.verbosity = verbosity
+
+    async def run(self) -> None:
         """
-        Initialize all our dependencies.
+        Runs the main application loop.
         """
-        self.engine: ConduitEngine = engine
-        self.input_interface: InputInterface = input_interface
-        self.welcome_message: str = welcome_message
-        # Inject enginer into input interface if needed
-        if hasattr(input_interface, "set_engine"):
-            self.input_interface.set_engine(self.engine)
+        if self.welcome_message:
+            # Print welcome message before the prompt_toolkit session starts
+            # to avoid duplicate display when the session initializes
+            from rich.console import Console
+            Console().print(self.welcome_message)
 
-    def run(self) -> None:
+        while self.is_running:
+            await self.run_once()
+
+    async def run_once(self) -> None:
         """
-        Start the REPL loop.
+        Runs one iteration of the chat loop.
         """
-        self.input_interface.clear_screen()
-        self.input_interface.show_message(self.welcome_message)
+        user_input = await self.input_interface.get_input()
+        if user_input is None:  # Handle case where input can be cancelled (e.g., Ctrl+C)
+            self.is_running = False
+            return
 
-        while True:
-            try:
-                user_input = self.input_interface.get_input()
-
-                # Skip empty input
-                if not user_input:
-                    continue
-
-                # Handle commands
-                if user_input.startswith("/"):
-                    try:
-                        self._handle_command(user_input)
-                    except KeyboardInterrupt:
-                        self.input_interface.show_message(
-                            "\nCommand canceled.", style="green"
-                        )
-                else:
-                    # Handle chat query
-                    if len(user_input.strip()) == 0:
-                        continue
-                    try:
-                        response = self.engine.handle_query(user_input)
-                        self.input_interface.show_message(response)
-                    except KeyboardInterrupt:
-                        self.input_interface.show_message(
-                            "\nQuery canceled.", style="green"
-                        )
-
-            except ValueError as e:
-                self.input_interface.show_message(str(e), style="red")
-
-            except NotImplementedError:
-                self.input_interface.show_message(
-                    "Method not implemented yet.", style="red"
-                )
-
-            except KeyboardInterrupt:
-                # Ctrl+C at the prompt itself -> exit app
-                self.input_interface.show_message("\nGoodbye!", style="green")
-                break
-
-    def _handle_command(self, user_input: str) -> None:
-        """
-        Execute a command and display any output.
-        """
         try:
-            output = self.engine.execute_command(user_input)
-            if output:
-                if isinstance(output, RenderableType):
+            if user_input.startswith("/"):
+                output = await self.engine.execute_command(user_input, self)
+                if output:
                     self.input_interface.show_message(output)
-                elif isinstance(output, UICommand):
-                    self.input_interface.execute_ui_command(output)
+                # Commands may have side effects without returning output (e.g., /exit, /wipe)
+            else:
+                output = await self.engine.handle_query(user_input)
+                if output:
+                    self.input_interface.show_message(output)
                 else:
-                    raise ValueError(f"Invalid command output type: {type(output)}")
-        except ConduitChatError as e:
-            self.input_interface.show_message(str(e), style="red")
-        except NotImplementedError:
-            self.input_interface.show_message(
-                "Command not implemented yet.", style="deep-pink3"
-            )
-        except ValueError as e:
-            self.input_interface.show_message(
-                f"Unexpected value error: {e}", style="red"
-            )
-        except SystemExit:
-            self.input_interface.show_message("[bold cyan]Goodbye![/bold cyan]")
-            raise
+                    logger.warning(f"Query returned no output for: {user_input}")
+        except Exception as e:
+            logger.exception(f"Error processing input: {user_input}")
+            self.input_interface.show_message(f"[red]Error: {e}[/red]")
+
+
+
+
+

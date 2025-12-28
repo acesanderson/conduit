@@ -1,11 +1,13 @@
-from rich.console import Console
-from conduit.sync import ConduitCache, Model, Verbosity
-from conduit.domain.message.messagestore import MessageStore
-from conduit.apps.chat.create_app import create_chat_app
-from conduit.apps.chat.ui.basic_input import BasicInput
-from xdg_base_dirs import xdg_config_home
+import asyncio
 import logging
 import os
+
+from rich.console import Console
+
+from conduit.config import settings
+from conduit.apps.chat.create_app import create_chat_app
+from conduit.apps.chat.ui.async_input import AsyncInput
+from conduit.domain.config.conduit_options import ConduitOptions
 
 # Set up logging
 log_level = int(os.getenv("PYTHON_LOG_LEVEL", "1"))
@@ -16,32 +18,38 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Constants
-INPUT_INTERFACE = BasicInput(console=Console())
-PREFERRED_MODEL = "haiku"
+CONSOLE = Console()
+INPUT_INTERFACE = AsyncInput()
+PREFERRED_MODEL = settings.preferred_model
 WELCOME_MESSAGE = "[bold cyan]Conduit Chat. Type /exit to exit.[/bold cyan]"
-MESSAGE_STORE = MessageStore()
-SYSTEM_MESSAGE = (
-    (xdg_config_home() / "conduit" / "system_message.jinja2").read_text()
-    if (xdg_config_home() / "conduit" / "system_message.jinja2").exists()
-    else ""
-)
-VERBOSITY = Verbosity.PROGRESS
-# Attach our singletons
-CACHE = ConduitCache(name="conduit")
-Model.conduit_cache = CACHE
-Model.console = Console()
+SYSTEM_MESSAGE = settings.system_prompt
+VERBOSITY = settings.default_verbosity
+
+OPTIONS = ConduitOptions(project_name="conduit-chat", verbosity=VERBOSITY, console=CONSOLE)
 
 
-def main():
+async def async_main():
+    """
+    Initializes and runs the asynchronous chat application.
+    """
     app = create_chat_app(
         input_interface=INPUT_INTERFACE,
         preferred_model=PREFERRED_MODEL,
         welcome_message=WELCOME_MESSAGE,
         system_message=SYSTEM_MESSAGE,
-        message_store=MESSAGE_STORE,
-        verbosity=VERBOSITY,
+        options=OPTIONS,
     )
-    app.run()
+    
+    await app.run()
+
+def main():
+    """
+    Synchronous entry point to run the async main function.
+    """
+    try:
+        asyncio.run(async_main())
+    except KeyboardInterrupt:
+        print("\nExiting...")
 
 
 if __name__ == "__main__":

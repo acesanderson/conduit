@@ -1,5 +1,5 @@
-from conduit.chat.ui.input_interface import InputInterface
-from conduit.chat.ui.ui_command import UICommand
+from conduit.apps.chat.ui.input_interface import InputInterface
+from conduit.apps.chat.ui.ui_command import UICommand
 from rich.console import Console, RenderableType
 from rich.markdown import Markdown
 from typing import override
