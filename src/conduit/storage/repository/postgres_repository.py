@@ -364,6 +364,6 @@ def get_postgres_repository(table_name: str) -> PostgresConversationRepository:
     )
 
     return PostgresConversationRepository(
-        name=table_name,
+        project_name=table_name,
         conn_factory=conn_factory,
     )

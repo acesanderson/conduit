@@ -1,10 +1,11 @@
 from conduit.domain.message.message import Message, UserMessage
+from collections.abc import Sequence
 
 
-QueryInput = str | list[Message] | Message
+QueryInput = str | Sequence[Message] | Message
 
 
-def constrain_query_input(query_input: QueryInput) -> list[Message]:
+def constrain_query_input(query_input: QueryInput) -> Sequence[Message]:
     """
     Constrains the input to a list of Message objects.
     """

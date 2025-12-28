@@ -19,7 +19,9 @@ import logging
 from typing import TYPE_CHECKING, override
 
 if TYPE_CHECKING:
+    from conduit.domain.message.message import Message
     from conduit.domain.conversation.conversation import Conversation
+    from conduit.domain.request.query_input import QueryInput
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +112,23 @@ class GenerationRequest(BaseModel):
         """
         return cls(
             messages=conversation.messages,
+            params=params,
+            options=options,
+        )
+
+    @classmethod
+    def from_query_input(
+        cls, query_input: QueryInput, params: GenerationParams, options: ConduitOptions
+    ) -> GenerationRequest:
+        """
+        Create a GenerationRequest from a QueryInput object.
+        """
+        from conduit.domain.request.query_input import constrain_query_input
+
+        messages = constrain_query_input(query_input)
+
+        return cls(
+            messages=messages,
             params=params,
             options=options,
         )
