@@ -352,7 +352,7 @@ class PostgresConversationRepository:
             conn.commit()
 
 
-def get_postgres_repository(table_name: str) -> PostgresConversationRepository:
+def get_postgres_repository(project_name: str) -> PostgresConversationRepository:
     """
     Factory function to get a PostgresConversationRepository for a given project.
     """
@@ -364,6 +364,6 @@ def get_postgres_repository(table_name: str) -> PostgresConversationRepository:
     )
 
     return PostgresConversationRepository(
-        project_name=table_name,
+        project_name=project_name,
         conn_factory=conn_factory,
     )
