@@ -6,26 +6,27 @@ response = model.query(prompt_str)
 """
 
 # Orchestration classes
-from conduit.core.model.model_remote import RemoteModel
+from conduit.core.model.model_remote import RemoteModelSync, RemoteModelAsync
 from conduit.core.prompt.prompt import Prompt
-from conduit.core.conduit.conduit_sync import ConduitSync as Conduit
-
-# Cache
-from conduit.storage.cache.cache import ConduitCache
+from conduit.core.conduit.conduit_sync import ConduitSync
+from conduit.core.conduit.conduit_async import ConduitAsync
 
 # Primitives: dataclasses / enums
-from conduit.domain.result.response import Response
 from conduit.utils.progress.verbosity import Verbosity
 from conduit.domain.message.message import Message
-from conduit.domain.request.request import Request
+
+# Configs
+from conduit.domain.request.generation_params import GenerationParams
+from conduit.domain.config.conduit_options import ConduitOptions
 
 __all__ = [
-    "Conduit",
-    "ConduitCache",
+    "ConduitAsync",
+    "ConduitOptions",
+    "ConduitSync",
+    "GenerationParams",
     "Message",
     "Prompt",
-    "RemoteModel",
-    "Request",
-    "Response",
+    "RemoteModelAsync",
+    "RemoteModelSync",
     "Verbosity",
 ]
