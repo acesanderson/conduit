@@ -15,7 +15,9 @@ if TYPE_CHECKING:
 @runtime_checkable
 class ConduitCache(Protocol):
     def __init__(
-        self, name: str, conn_factory: Callable[[], AbstractContextManager[connection]]
+        self,
+        project_name: str,
+        conn_factory: Callable[[], AbstractContextManager[connection]],
     ) -> None:
         """
         Initialize a ConduitCache instance.

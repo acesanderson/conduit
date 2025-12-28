@@ -155,9 +155,11 @@ def load_settings() -> Settings:
         conn_factory: Callable[[], AbstractContextManager[connection]] = (
             get_postgres_client(client_type="context_db", dbname="conduit")
         )
-        return PostgresCache(project_name=name, conn_factory=conn_factory)
+        return PostgresCache(project_name=project_name, conn_factory=conn_factory)
 
-    def default_repository(name: str = default_project_name) -> ConversationRepository:
+    def default_repository(
+        project_name: str = default_project_name,
+    ) -> ConversationRepository:
         """
         Lazy loader for the default PostgresConversationRepository instance.
         """
@@ -169,7 +171,9 @@ def load_settings() -> Settings:
         conn_factory: Callable[[], AbstractContextManager[connection]] = (
             get_postgres_client(client_type="context_db", dbname="conduit")
         )
-        return PostgresConversationRepository(name=name, conn_factory=conn_factory)
+        return PostgresConversationRepository(
+            project_name=project_name, conn_factory=conn_factory
+        )
 
     def default_conduit_options(name: str = default_project_name) -> ConduitOptions:
         """

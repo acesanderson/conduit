@@ -113,7 +113,7 @@ class ConduitSync:
         *,
         project_name: str = settings.default_project_name,
         persist: bool | str = False,
-        cached: bool | str = False,
+        cache: bool | str = False,
         verbosity: Verbosity = settings.default_verbosity,
         console: Console | None = None,
         system: str | None = None,  # placeholder for future system-message wiring
@@ -127,7 +127,7 @@ class ConduitSync:
         - `model`: required model name/alias (used for GenerationParams.model).
         - `prompt`: str or Prompt.
         - `param_kwargs`: go directly into GenerationParams(...).
-        - `cached` / `persist` / `verbosity` / `console`:
+        - `cache` / `persist` / `verbosity` / `console`:
             baked into ConduitOptions as baseline behavior.
         """
         # Prompt coercion
@@ -151,14 +151,16 @@ class ConduitSync:
             opt_updates["console"] = console
 
         # Cache wiring
-        if cached:
-            cache_name = cached if isinstance(cached, str) else project_name
-            opt_updates["cache"] = settings.default_cache(name=cache_name)
+        if cache:
+            cache_name = cache if isinstance(cache, str) else project_name
+            opt_updates["cache"] = settings.default_cache(project_name=cache_name)
 
         # Persistence wiring
         if persist:
             repo_name = persist if isinstance(persist, str) else project_name
-            opt_updates["repository"] = settings.default_repository(name=repo_name)
+            opt_updates["repository"] = settings.default_repository(
+                project_name=repo_name
+            )
 
         # Debug
         if debug_payload:

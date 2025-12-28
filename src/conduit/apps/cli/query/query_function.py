@@ -41,7 +41,8 @@ class CLIQueryFunctionInputs:
     local: bool = False
     preferred_model: str = settings.preferred_model
     verbose: Verbosity = Verbosity.PROGRESS
-    include_history: bool = True
+    include_history: bool = True  # whether to include conversation history in messages
+    ephemeral: bool = False  # whether to avoid persisting this conversation
 
 
 # Our protocol
@@ -74,6 +75,7 @@ def default_query_function(
     preferred_model: str = inputs.preferred_model
     verbose: Verbosity = inputs.verbose
     include_history: bool = inputs.include_history
+    ephemeral: bool = False
     cache = inputs.cache
     system = inputs.system_message
 
@@ -94,10 +96,10 @@ def default_query_function(
             prompt=prompt,
             system_message=system,
             cache=cache,
-            persist=include_history,
-            include_history=include_history,
+            persist=not ephemeral,
             verbose=verbose,
             debug_payload=True,
+            include_history=include_history,
         )
         logger.info(f"Using model: {preferred_model}")
         response = conduit()
