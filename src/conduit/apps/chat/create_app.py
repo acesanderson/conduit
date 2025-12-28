@@ -1,54 +1,44 @@
-"""
-Chat interface factory and command registry combining user-facing conversation management with extensible command handling infrastructure. This module bridges three core components—CommandRegistry (command parsing and execution), Handlers (command implementations like `/help`, `/exit`), and ChatApp (REPL event loop)—into a unified ConduitChat class that powers interactive multi-turn conversations.
-
-The primary factory function `create_chat_app` instantiates a fully configured ChatApp by assembling dependencies (Model, MessageStore, InputInterface) and injecting them into a ConduitChat instance that serves as both command registry and handler provider. This design enables users to launch a complete chat session with a single function call while allowing command discovery and routing to happen automatically through mixin inheritance.
-"""
-
-from conduit.utils.progress.verbosity import Verbosity
 from conduit.apps.chat.app import ChatApp
-from conduit.apps.chat.engine.engine import ConduitEngine
+from conduit.apps.chat.engine.async_engine import ChatEngine
+from conduit.apps.chat.ui.async_input import AsyncInput
+from conduit.apps.chat.ui.enhanced_input import EnhancedInput
 from conduit.apps.chat.ui.input_interface import InputInterface
-from conduit.domain.message.messagestore import MessageStore
+from conduit.domain.request.generation_params import GenerationParams
+from conduit.domain.config.conduit_options import ConduitOptions
+from rich.console import Console
 
 
 def create_chat_app(
     preferred_model: str,
     welcome_message: str,
     system_message: str,
-    input_interface: InputInterface,
-    message_store: MessageStore | None = None,
-    verbosity: Verbosity = Verbosity.PROGRESS,
+    input_mode: str,
+    options: ConduitOptions,
 ) -> ChatApp:
     """
-    Factory function to create a fully configured ChatApp.
-
-    Args:
-        preferred_model: Model name to use (e.g., "claude-sonnet-4")
-        welcome_message: Message to display on startup
-        system_message: System prompt for the conversation
-        message_store: Optional message store (creates new if None)
-        console: Optional Rich console (creates new if None)
-
-    Returns:
-        Configured ChatApp ready to run
+    Factory function to create a fully configured async ChatApp.
     """
     # Create dependencies
-    ## Message_store
-    message_store = message_store or MessageStore()
-    ## Create dispatch with handlers
-    engine = ConduitEngine(
-        model=preferred_model,
-        message_store=message_store,
-        system_message=system_message,
-        verbosity=verbosity,
-    )
+    params = GenerationParams(model=preferred_model, system=system_message)
+    engine = ChatEngine(params=params, options=options)
+    
+    # Select and create input interface
+    if input_mode == "enhanced":
+        console = Console()
+        input_interface: InputInterface = EnhancedInput(console)
+    else:
+        input_interface = AsyncInput()
 
-    # Prompt toolkit based input interfaces need the registry
+
     # Create app with all dependencies
     app = ChatApp(
         engine=engine,
         input_interface=input_interface,
         welcome_message=welcome_message,
+        verbosity=options.verbosity, # Verbosity comes from options now
     )
+    
+    if isinstance(input_interface, EnhancedInput):
+        input_interface.set_engine(engine)
 
     return app

@@ -33,7 +33,7 @@ class KeyBindingsRepo:
             Start a new chat (wipe history)
             """
             if self.engine:
-                self.engine.message_store.clear()
+                self.engine.conversation.wipe()
                 self.console.print("[green]Message history cleared.[/green]")
 
         # <Esc>h → show keybindings help
@@ -67,7 +67,7 @@ class KeyBindingsRepo:
             from conduit.core.model.models.modelstore import ModelStore
 
             ms = ModelStore()
-            model_spec = ms.get_model(self.engine.model.model)
+            model_spec = ms.get_model(self.engine.params.model)
             model_spec.card
 
         # <Esc><Enter> → toggle multiline mode

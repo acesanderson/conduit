@@ -29,25 +29,11 @@ def format_response_rich(
 
 
 def _response_summary_rich(response: GenerationResponse) -> Panel:
-    content = Text()
-
-    # Truncate content
-    text = str(response.content or "No content")
-    if len(text) > 150:
-        text = text[:150] + "..."
-
-    content.append(text, style="blue")
-
-    # Add simple footer
-    content.append("\n")
-    content.append(f"Model: {response.request.params.model}", style="dim")
-
-    return Panel(
-        content,
-        title="[bold blue]GenerationResponse Summary[/bold blue]",
-        border_style="blue",
-        expand=False,
-    )
+    """
+    Returns a Panel containing the rich representation of the response message.
+    """
+    # The response.message object knows how to render itself via __rich_console__
+    return Panel(response.message, border_style="blue", expand=False)
 
 
 def _response_detailed_rich(response: GenerationResponse) -> Panel:
