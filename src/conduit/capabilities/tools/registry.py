@@ -1,112 +1,32 @@
-"""
-Central management system for registering, discovering, and executing external tools within the Conduit framework. This script provides the `ToolRegistry` class, which serves as the bridge between Large Language Model (LLM) outputs and executable Python functions, enabling the model to perform actions like file reading or web searching.
-
-The registry aggregates `Tool` objects, generating unified XML or JSON schemas that are injected into system prompts to inform the LLM of available capabilities. When the LLM requests a tool execution, the registry handles the lookup, parameter validation against the specific `Tool`'s schema, and dispatch to the underlying executable function.
-
-Usage:
-```python
-from conduit.capabilities.tools.registry import ToolRegistry
-from conduit.capabilities.tools.tools import FileReadTool
-
-# Initialize and register tools
-registry = ToolRegistry()
-registry.register(FileReadTool)
-
-# Generate schema for system prompt
-system_prompt_context = registry.xml_schema
-
-# Execute a tool call (typically parsed from LLM output)
-result = registry.parse_and_execute(
-    tool_name="file_read",
-    parameters={"path": "/path/to/file.txt"}
-)
-```
-"""
-
-from conduit.capabilities.tools.tool import ToolCall, Tool
-from pathlib import Path
-import logging
-import os
-
-# Set up logging
-log_level = int(os.getenv("PYTHON_LOG_LEVEL", "2"))  # Default to INFO
-levels = {1: logging.WARNING, 2: logging.INFO, 3: logging.DEBUG}
-logging.basicConfig(
-    level=levels.get(log_level, logging.INFO),
-    format="%(asctime)s [%(levelname)s] %(filename)s:%(lineno)d - %(message)s",
-)
-logger = logging.getLogger(__name__)
-
-TOOLS_DIR = Path(__file__).parent / "tools"
+from conduit.capabilities.tools.tool import Tool, ToolCallError
+from conduit.domain.message.message import ToolCall
 
 
 class ToolRegistry:
-    def __init__(self):
-        logger.info("Initializing ToolRegistry")
-        self._tools: list[Tool] = []
-        self._tool_map: dict[str, Tool] = {}  # Fast lookup
+    def __init__(self) -> None:
+        self._tools: dict[str, Tool] = {}
+
+    def register(self, tool: Tool) -> None:
+        if tool.name in self._tools:
+            raise ValueError(f"Tool with name '{tool.name}' is already registered.")
+        self._tools[tool.name] = tool
+
+    def get_tool(self, name: str) -> Tool:
+        if name not in self._tools:
+            raise KeyError(f"Tool with name '{name}' is not registered.")
+        return self._tools[name]
+
+    def call_tool(self, tool_call: ToolCall) -> str:
+        tool = self.get_tool(tool_call.function_name)
+        try:
+            result = tool.func(**tool_call.arguments)
+        except Exception as e:
+            raise ToolCallError(f"Error calling tool '{tool.name}': {e}") from e
+        return result if isinstance(result, str) else str(result)
+
+    def list_tools(self) -> list[str]:
+        return list(self._tools.keys())
 
     @property
     def tools(self) -> list[Tool]:
-        """Return a list of all registered tools."""
-        return self._tools
-
-    @property
-    def xml_schema(self) -> str:
-        """
-        The XML schema for all registered tools, for LLM system prompt.
-        """
-        return "\n".join(tool.xml_schema for tool in self._tools)
-
-    @property
-    def json_schema(self) -> str:
-        """
-        The JSON schema for all registered tools, for LLM system prompt.
-        """
-        return "\n".join(tool.json_schema for tool in self._tools)
-
-    def register(self, tool: Tool) -> None:
-        """
-        Register a callable executor function for a given tool name.
-        """
-        logger.debug(f"Registering tool: {tool.name}")
-        self._tools.append(tool)
-        self._tool_map[tool.name] = tool
-
-    def register_all(self) -> None:
-        """
-        Register all tools found in the tools directory.
-        NOTE: this will be get very large as more tools are added; consider specifically only
-        loading the tools you need.
-        """
-        logger.info("Registering all tools from conduit.capabilities.tools.tools")
-        from conduit.capabilities.tools.tools import AllTools
-
-        for tool in AllTools:
-            self.register(tool)
-
-    async def parse_and_execute(self, tool_name: str, parameters: dict) -> str:
-        """
-        Parse raw LLM output into a validated ToolCall, then execute it.
-
-        This is your main entry point from the stream parser.
-        """
-        logger.info(f"Parsing and executing tool call for tool: {tool_name}")
-        if tool_name not in self._tool_map:
-            raise ValueError(f"Tool '{tool_name}' is not registered.")
-
-        tool = self._tool_map[tool_name]
-
-        # Validate using the specific ToolCall class
-        validated_call = tool.tool_call_schema.from_xml(tool_name, parameters)
-
-        # Execute with the validated call
-        return await tool.execute(validated_call)
-
-    async def execute(self, call: ToolCall) -> str:
-        """Execute a tool call by looking up and invoking its registered handler function."""
-        for tool in self._tools:
-            if tool.name == call.tool_name:
-                return await tool.execute(call)
-
-        raise ValueError(f"Tool '{call.tool_name}' is not registered.")
+        return list(self._tools.values())

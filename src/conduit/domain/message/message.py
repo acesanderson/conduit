@@ -17,15 +17,11 @@ from pathlib import Path
 from typing import Literal, Any, Annotated, override, TYPE_CHECKING
 from pydantic import BaseModel, Field, model_validator
 from conduit.domain.message.role import Role
+from typing import Literal, Any
+from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
-    from rich.console import Console, ConsoleOptions, RenderResult, Group
-    from rich.panel import Panel
-    from rich.markdown import Markdown
-    from rich.text import Text
-    from rich.syntax import Syntax
-    from rich.rule import Rule
-    from rich.box import ROUNDED, HEAVY
+    from rich.console import Console, ConsoleOptions, RenderResult
 
 logger = logging.getLogger(__name__)
 
@@ -104,18 +100,25 @@ class ImageOutput(BaseModel):
 Content = str | dict | list[TextContent | ImageContent | AudioContent | str]
 
 
-# tool primitive
+# tool primitive -- see conduit.capabilities.tool.Tool for more its mirror
+type JsonPrimitive = str | int | float | bool | None
+type JsonValue = JsonPrimitive | list[JsonValue] | dict[str, JsonValue]
+
+
 class ToolCall(BaseModel):
     """
-    Represents a request from the Assistant to execute a function.
+    Canonical request from the assistant to execute a function tool.
     """
 
-    tool_call_id: uuid.UUID = Field(
-        default_factory=lambda: uuid.UUID(int=uuid.uuid4().int)
-    )
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     type: Literal["function"] = "function"
+
     function_name: str
-    arguments: dict[str, Any]
+    arguments: dict[str, JsonValue]
+
+    # Optional but very useful for adapters/debugging
+    provider: str | None = None  # "openai" | "anthropic" | "gemini" | "ollama" ...
+    raw: dict[str, JsonValue] | None = None
 
 
 # message types
