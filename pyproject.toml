@@ -43,6 +43,7 @@ dependencies = [
     "pytest-asyncio>=1.2.0",
     "markdownify>=1.2.2",
     "readabilipy>=0.3.0",
+    "pathspec>=0.12.1",
 ]
 
 [project.optional-dependencies]
