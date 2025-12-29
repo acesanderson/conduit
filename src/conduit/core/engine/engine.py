@@ -7,9 +7,9 @@ LLMs produce the next token; Conduit produces the next Message.
 from __future__ import annotations
 from conduit.domain.conversation.conversation import (
     Conversation,
-    ConversationError,
     ConversationState,
 )
+from conduit.domain.exceptions.exceptions import EngineError
 from typing import TYPE_CHECKING
 import logging
 
@@ -32,7 +32,7 @@ class Engine:
 
         while step_count < max_steps:
             if not conversation.last:
-                raise ConversationError("Conversation is empty.")
+                raise EngineError("Conversation is empty.")
 
             match conversation.state:
                 # 1. LLM Generation
@@ -48,7 +48,7 @@ class Engine:
                     return conversation
 
                 case ConversationState.INCOMPLETE:
-                    raise ConversationError("Conversation is incomplete.")
+                    raise EngineError("Conversation is incomplete.")
 
             step_count += 1
 

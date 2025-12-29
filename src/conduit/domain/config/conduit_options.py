@@ -40,6 +40,10 @@ class ConduitOptions(BaseModel):
         description="Registry of available tools for the LLM to use.",
         exclude=True,
     )
+    parallel_tool_calls: bool = Field(
+        default=True,
+        description="Enable parallel tool calls (multiple tools in one turn). Supported by OpenAI, Google, and Ollama.",
+    )
 
     # Overrides for request behavior
     use_cache: bool | None = True  # Technically: "if cache exists, use it"

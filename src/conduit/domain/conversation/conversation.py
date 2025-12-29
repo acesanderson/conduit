@@ -7,6 +7,8 @@ from __future__ import annotations
 from conduit.config import settings
 from conduit.domain.message.message import MessageUnion, Message
 from conduit.domain.message.role import Role
+from conduit.domain.exceptions.exceptions import ConversationError
+from conduit.domain.message.message import ToolCall
 from pydantic import BaseModel, Field, model_validator
 import time
 import uuid
@@ -42,10 +44,6 @@ class ConversationState(Enum):
     # --- Future: Safety & Human Interaction ---
     # CONFIRM = "confirm"      # Trigger: Sensitive tool call. Action: Pause flow, wait for user signal -> EXECUTE
     # AWAIT = "await"          # Trigger: Long-running async task. Action: Poll/Wait -> TERMINATE
-
-
-class ConversationError(Exception):
-    pass
 
 
 class Conversation(BaseModel):
@@ -141,6 +139,18 @@ class Conversation(BaseModel):
         return roles_string
 
     @property
+    def tool_calls(self) -> list[ToolCall]:
+        if self.last:
+            if self.last.tool_calls:
+                return self.last.tool_calls
+            else:
+                raise ConversationError("Last message has no tool calls.")
+        else:
+            raise ConversationError(
+                "No messages in conversation; cannot get tool calls."
+            )
+
+    @property
     def state(self) -> ConversationState:
         if not self.last:
             return ConversationState.INCOMPLETE
@@ -207,6 +217,15 @@ class Conversation(BaseModel):
         for message in self.messages:
             yield from message.__rich_console__(console, options)
         return
+
+    def pretty_print(self) -> None:
+        """
+        Pretty print the entire conversation to the console using rich.
+        """
+        from rich.console import Console
+
+        console = Console()
+        console.print(self)
 
     def print_history(self, max_messages: int = 100) -> None:
         """

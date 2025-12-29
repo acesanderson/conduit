@@ -81,6 +81,17 @@ class OpenAIClient(Client, ABC):
         dictionary parameters required by OpenAI's SDK.
         """
         converted_messages = self._convert_messages(request.messages)
+
+        # Convert tools and enable parallel tool calls if tools are present
+        tools = None
+        parallel_tool_calls = None
+        if request.options.tool_registry:
+            tools = [
+                convert_tool_to_openai(tool)
+                for tool in request.options.tool_registry.tools
+            ]
+            parallel_tool_calls = request.options.parallel_tool_calls
+
         openai_payload = OpenAIPayload(
             model=request.params.model,
             messages=converted_messages,
@@ -88,12 +99,8 @@ class OpenAIClient(Client, ABC):
             top_p=request.params.top_p,
             max_tokens=request.params.max_tokens,
             stream=request.params.stream,
-            tools=[
-                convert_tool_to_openai(tool)
-                for tool in request.options.tool_registry.tools
-            ]
-            if request.options.tool_registry
-            else None,
+            tools=tools,
+            parallel_tool_calls=parallel_tool_calls,
         )
         return openai_payload
 
@@ -266,29 +273,27 @@ class OpenAIClient(Client, ABC):
                 stop_reason = StopReason.CONTENT_FILTER
 
         if stop_reason == StopReason.TOOL_CALLS:
-            # Handle tool calls if present
-            tool_call_data = result.choices[0].message.tool_calls[0]
-            type = "function"
-            function_name = tool_call_data.function.name
-            arguments = tool_call_data.function.arguments
-            provider = "openai"
-            raw = tool_call_data.dict()
-            arguments_dict = json.loads(arguments)
+            # Handle tool calls - iterate through all parallel calls
+            tool_calls = []
+            for tool_call_data in result.choices[0].message.tool_calls:
+                arguments_dict = json.loads(tool_call_data.function.arguments)
 
-            tool_call = ToolCall(
-                type=type,
-                function_name=function_name,
-                arguments=arguments_dict,
-                provider=provider,
-                raw=raw,
-            )
+                tool_call = ToolCall(
+                    id=tool_call_data.id,  # Use provider-supplied ID
+                    type="function",
+                    function_name=tool_call_data.function.name,
+                    arguments=arguments_dict,
+                    provider="openai",
+                    raw=tool_call_data.dict(),
+                )
+                tool_calls.append(tool_call)
 
-            # Create AssistantMessage with tool call
+            # Create AssistantMessage with all tool calls
             assistant_message = AssistantMessage(
                 content=result.choices[0].message.content
                 if hasattr(result.choices[0].message, "content")
                 else "",
-                tool_calls=[tool_call],
+                tool_calls=tool_calls,
             )
         else:
             # Extract the text content

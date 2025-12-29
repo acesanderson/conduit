@@ -1,4 +1,5 @@
 from conduit.capabilities.tools.tool import Tool, ToolCallError
+from conduit.capabilities.tools.tool_function import ToolFunction
 from conduit.domain.message.message import ToolCall
 
 
@@ -16,10 +17,10 @@ class ToolRegistry:
             raise KeyError(f"Tool with name '{name}' is not registered.")
         return self._tools[name]
 
-    def call_tool(self, tool_call: ToolCall) -> str:
+    async def call_tool(self, tool_call: ToolCall) -> str:
         tool = self.get_tool(tool_call.function_name)
         try:
-            result = tool.func(**tool_call.arguments)
+            result = await tool.func(**tool_call.arguments)
         except Exception as e:
             raise ToolCallError(f"Error calling tool '{tool.name}': {e}") from e
         return result if isinstance(result, str) else str(result)
@@ -30,3 +31,11 @@ class ToolRegistry:
     @property
     def tools(self) -> list[Tool]:
         return list(self._tools.values())
+
+    def register_function(self, func: ToolFunction) -> None:
+        tool = Tool.from_function(func)
+        self.register(tool)
+
+    def register_functions(self, funcs: list[ToolFunction]) -> None:
+        for func in funcs:
+            self.register_function(func)
