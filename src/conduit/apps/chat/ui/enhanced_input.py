@@ -28,6 +28,8 @@ from typing import override, TYPE_CHECKING
 from collections.abc import Iterable
 import re
 from pathlib import Path
+import io
+import shutil
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
@@ -35,6 +37,11 @@ from prompt_toolkit.styles import Style
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition
+from prompt_toolkit.application import run_in_terminal
+from prompt_toolkit.formatted_text import ANSI
+from prompt_toolkit.shortcuts import print_formatted_text
+from prompt_toolkit.patch_stdout import patch_stdout
+
 from conduit.core.model.models.modelstore import ModelStore
 
 if TYPE_CHECKING:
@@ -102,6 +109,11 @@ class CommandCompleter(Completer):
 class EnhancedInput(InputInterface, KeyBindingsRepo):
     """
     Enhanced input using Prompt Toolkit for features like persistent history.
+
+    Output strategy ("boring and stable"):
+    - While the prompt is active, prompt_toolkit owns terminal output.
+    - Rich renderables are rendered to ANSI strings in-memory (no stdout side effects).
+    - ANSI strings are printed via prompt_toolkit's safe printing mechanism (run_in_terminal).
     """
 
     def __init__(self, console: Console):
@@ -138,12 +150,11 @@ class EnhancedInput(InputInterface, KeyBindingsRepo):
         self.style = Style.from_dict(
             {
                 "prompt": "bold #ffaf00",
-                # --- NEW: Style for completion menu ---
+                # --- completion menu ---
                 "completion-menu.completion": "bg:#005f5f #ffffff",
                 "completion-menu.completion.current": "bg:#008787 #ffffff",
                 "scrollbar.background": "bg:#005f5f",
                 "scrollbar.button": "bg:#008787",
-                # --- End New ---
             }
         )
 
@@ -185,38 +196,97 @@ class EnhancedInput(InputInterface, KeyBindingsRepo):
     async def get_input(self, prompt: str = ">> ") -> str:
         """
         Get user input using Prompt Toolkit.
+        Use patch_stdout to prevent stray prints/logging from corrupting the prompt.
         """
         styled_prompt_message = [("class:prompt", prompt)]
-        return await self.session.prompt_async(styled_prompt_message, style=self.style)
+        with patch_stdout():
+            return await self.session.prompt_async(
+                styled_prompt_message, style=self.style
+            )
+
+    def _get_render_width(self) -> int:
+        """
+        Determine a stable width for Rich rendering.
+
+        Prefer prompt_toolkit's notion of terminal width when the app exists,
+        otherwise fall back to the current terminal size / rich console width.
+        """
+        try:
+            if self.session.app:
+                size = self.session.app.output.get_size()
+                if size and getattr(size, "columns", None):
+                    return max(20, int(size.columns))
+        except Exception:
+            pass
+
+        try:
+            cols = shutil.get_terminal_size().columns
+            return max(20, int(cols))
+        except Exception:
+            return max(20, int(getattr(self.console, "width", 80)))
+
+    def _render_to_ansi(self, renderable: RenderableType) -> str:
+        """
+        Render a Rich renderable to an ANSI-escaped string in memory.
+        No stdout side effects.
+        """
+        buf = io.StringIO()
+        width = self._get_render_width()
+
+        render_console = Console(
+            file=buf,
+            force_terminal=True,
+            color_system="truecolor",
+            width=width,
+            markup=True,
+            emoji=True,
+            highlight=False,
+        )
+        render_console.print(renderable)
+        return buf.getvalue()
+
+    def _print_ansi_safely(self, ansi_text: str) -> None:
+        """
+        Print ANSI text above the current prompt without corrupting the UI.
+        """
+
+        def _do_print() -> None:
+            # ANSI() parses escape sequences into prompt_toolkit formatted text.
+            print_formatted_text(ANSI(ansi_text), end="")
+
+        run_in_terminal(_do_print)
 
     @override
     def show_message(self, message: RenderableType, style: str = "info") -> None:
         """
-        Display a message using the prompt_toolkit session to avoid being overwritten.
+        Display a message without breaking the prompt.
+
+        Behavior:
+        - If prompt_toolkit app is running: render (Rich) -> ANSI string -> print safely.
+        - Otherwise: fallback to direct Rich printing for startup / non-interactive output.
         """
-        # Print the captured text through the running prompt_toolkit app.
-        # This is the key step to prevent output from being erased.
         if self.session.app:
-            # For prompt_toolkit, just print the raw string to avoid rendering issues
-            # The string may contain markdown-like formatting but we display it as-is
-            if isinstance(message, str):
-                self.session.app.print_text(message + "\n")
-            else:
-                # For rich renderables (tables, panels, etc.), render to text first
-                capture_console = Console(record=True)
-                capture_console.print(message)
-                output_text = capture_console.export_text()
-                self.session.app.print_text(output_text.rstrip() + "\n")
-        else:
-            # Fallback for initial messages before prompt_toolkit app is fully running
-            # Use rich rendering with markdown support
+            # Normalize strings into Rich renderables so we keep styling consistent.
             if isinstance(message, str):
                 if style_pattern.search(message):
-                    self.console.print(message)  # It's already rich markup
+                    renderable: RenderableType = message  # rich markup string
                 else:
-                    self.console.print(Markdown(message))  # Plain text as markdown
+                    renderable = Markdown(message)
             else:
+                renderable = message
+
+            ansi_text = self._render_to_ansi(renderable)
+            self._print_ansi_safely(ansi_text)
+            return
+
+        # Fallback for initial messages before prompt_toolkit app is fully running.
+        if isinstance(message, str):
+            if style_pattern.search(message):
                 self.console.print(message)
+            else:
+                self.console.print(Markdown(message))
+        else:
+            self.console.print(message)
 
     # UI commands
     @override
@@ -235,7 +305,7 @@ class EnhancedInput(InputInterface, KeyBindingsRepo):
     @override
     def clear_screen(self) -> None:
         """
-        Clear the screen (Copied from BasicInput)
+        Clear the screen.
         """
         self.console.clear()
 
@@ -246,11 +316,9 @@ class EnhancedInput(InputInterface, KeyBindingsRepo):
         """
         try:
             HISTORY_FILE.unlink()
-            self.console.print(
-                f"[green]Cleared history file at {HISTORY_FILE}.[/green]"
-            )
+            self.show_message(f"[green]Cleared history file at {HISTORY_FILE}.[/green]")
         except FileNotFoundError:
-            self.console.print(
+            self.show_message(
                 f"[yellow]No history file found at {HISTORY_FILE}.[/yellow]"
             )
 
@@ -260,7 +328,7 @@ class EnhancedInput(InputInterface, KeyBindingsRepo):
     @override
     def exit(self) -> None:
         """
-        Exit the application (Copied from BasicInput)
+        Exit the application
         """
         import sys
 

@@ -36,8 +36,8 @@ class ChatEngine:
         """
         from conduit.core.model.models.modelstore import ModelStore
 
-        ms = ModelStore()
-        return ms._generate_renderable_model_list()
+        model_store = ModelStore()
+        return model_store._generate_renderable_model_list()
 
     async def model(self, app: ChatApp) -> str:
         """
