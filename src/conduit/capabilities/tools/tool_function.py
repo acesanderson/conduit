@@ -1,13 +1,9 @@
 from __future__ import annotations
+
 import inspect
 from dataclasses import dataclass
-from collections.abc import Callable
-from typing import Any
-from typing import Annotated
-from typing import Protocol
-from typing import get_args
-from typing import get_origin
-from typing import runtime_checkable
+from collections.abc import Awaitable, Callable
+from typing import Any, Annotated, Protocol, get_args, get_origin, runtime_checkable
 
 
 @runtime_checkable
@@ -16,17 +12,22 @@ class ToolFunction(Protocol):
     A function eligible for Tool generation.
 
     Hard requirements:
+    - Async (not sync!)
     - Stable name (not a lambda; has __name__)
     - Non-empty docstring
     - No *args or **kwargs
     - Every parameter MUST be typing.Annotated[T, <non-empty str description>, ...]
       (Type must be present as the first Annotated arg; description must be a str metadata item.)
+
+    Best practices (not enforced):
+    - Use standard types (str, int, float, bool, list, dict)
+    - Return type should render as meaningful json (so a dict or BaseModel)
     """
 
     __name__: str
     __doc__: str
 
-    def __call__(self, *args: Any, **kwargs: Any) -> Any: ...
+    def __call__(self, *args: Any, **kwargs: Any) -> Any | Awaitable[Any]: ...
 
 
 @dataclass(frozen=True)
@@ -172,7 +173,7 @@ def validate_tool_function(func: Callable[..., Any]) -> list[ToolFunctionError]:
 def assert_tool_function(func: Callable[..., Any]) -> ToolFunction:
     errs = validate_tool_function(func)
     if errs:
-        lines = []
+        lines: list[str] = []
         for e in errs:
             tail = f" {e.details}" if e.details else ""
             lines.append(f"- {e.code}: {e.message}{tail}")

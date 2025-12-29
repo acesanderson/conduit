@@ -1,25 +1,51 @@
-from conduit.capabilities.tools.tool import Tool
 from conduit.capabilities.tools.registry import ToolRegistry
 from conduit.domain.config.conduit_options import ConduitOptions
 from conduit.domain.request.generation_params import GenerationParams
-from conduit.sync import Model
+from conduit.sync import Model, Conduit, Prompt, Verbosity
 from typing import Annotated
 
 
-def get_weather(location: Annotated[str, "The location to get the weather for"]) -> str:
+async def get_weather(
+    location: Annotated[str, "The location to get the weather for"],
+) -> dict[str, str]:
     """
     Get the current weather for a given location.
     """
     # For demonstration purposes, we'll return a mock weather report.
-    return f"The current weather in {location} is sunny with a temperature of 75°F."
+    return {
+        "location": location,
+        "temperature": "72°F",
+        "condition": "Partly Cloudy",
+    }
+
+
+async def get_timezone(
+    location: Annotated[str, "The location to get the timezone for"],
+) -> dict[str, str]:
+    """
+    Get the current timezone for a given location.
+    """
+    # For demonstration purposes, we'll return a mock timezone.
+    return {
+        "location": location,
+        "timezone": "Eastern Standard Time (EST)",
+        "utc_offset": "-5:00",
+    }
 
 
 registry = ToolRegistry()
-tool = Tool.from_function(get_weather)
-tool.register(registry)
-options = ConduitOptions(project_name="test", tool_registry=registry)
-# params = GenerationParams(model="gpt-4o")
-params = GenerationParams(model="flash")
+registry.register_functions([get_weather, get_timezone])
+options = ConduitOptions(
+    project_name="test", tool_registry=registry, verbosity=Verbosity.COMPLETE
+)
+params = GenerationParams(model="gpt-4o")
+# params = GenerationParams(model="flash")
+# params = GenerationParams(model="llama3.1:latest")
+# params = GenerationParams(model="haiku")
 
-m = Model(options=options, params=params)
-response = m.query("What's the weather like in New York?")
+# m = Model(options=options, params=params)
+# response = m.query("What's the weather like in New York and what time zone is it?")
+prompt = Prompt("What's the weather like in New York and what time zone is it?")
+c = Conduit(prompt=prompt, options=options, params=params)
+response = c.run()
+response.pretty_print()

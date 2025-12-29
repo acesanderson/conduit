@@ -8,7 +8,7 @@ from __future__ import annotations
 from conduit.core.clients.client_base import Client
 from conduit.core.clients.payload_base import Payload
 from conduit.core.clients.perplexity.payload import PerplexityPayload
-from conduit.core.clients.perplexity.adapter import convert_message_to_perplexity
+from conduit.core.clients.perplexity.message_adapter import convert_message_to_perplexity
 from conduit.domain.result.response import GenerationResponse
 from conduit.domain.result.response_metadata import ResponseMetadata, StopReason
 from conduit.domain.message.message import AssistantMessage

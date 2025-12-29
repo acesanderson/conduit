@@ -2,14 +2,16 @@ from __future__ import annotations
 from conduit.core.clients.client_base import Client
 from conduit.core.clients.payload_base import Payload
 from conduit.core.clients.anthropic.payload import AnthropicPayload
-from conduit.core.clients.anthropic.adapter import convert_message_to_anthropic
+from conduit.core.clients.anthropic.message_adapter import convert_message_to_anthropic
+from conduit.core.clients.anthropic.tool_adapter import convert_tool_to_anthropic
 from conduit.domain.result.response import GenerationResponse
 from conduit.domain.result.response_metadata import ResponseMetadata, StopReason
-from conduit.domain.message.message import AssistantMessage
+from conduit.domain.message.message import AssistantMessage, ToolCall
 from functools import cached_property
 from typing import TYPE_CHECKING, override, Any
 import os
 import time
+import json
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -96,6 +98,14 @@ class AnthropicClient(Client):
         # Combine system messages into a single system parameter
         system_content = "\n\n".join(system_messages) if system_messages else None
 
+        # Convert tools if present
+        tools = None
+        if request.options.tool_registry:
+            tools = [
+                convert_tool_to_anthropic(tool)
+                for tool in request.options.tool_registry.tools
+            ]
+
         anthropic_payload = AnthropicPayload(
             model=request.params.model,
             messages=converted_messages,
@@ -104,6 +114,7 @@ class AnthropicClient(Client):
             temperature=request.params.temperature,
             top_p=request.params.top_p,
             stream=request.params.stream,
+            tools=tools,
         )
         return anthropic_payload
 
@@ -207,12 +218,35 @@ class AnthropicClient(Client):
                     stop_reason = StopReason.LENGTH
                 case "stop_sequence":
                     stop_reason = StopReason.STOP
+                case "tool_use":
+                    stop_reason = StopReason.TOOL_CALLS
 
-        # Extract the text content (Anthropic-specific path)
-        content = result.content[
-            0
-        ].text  # Different from OpenAI: content[0].text not choices[0].message.content
-        assistant_message = AssistantMessage(content=content)
+        # Parse content blocks - Anthropic returns a list of content blocks
+        text_content = None
+        tool_calls = []
+
+        for block in result.content:
+            if hasattr(block, "type"):
+                if block.type == "text":
+                    # Extract text content
+                    text_content = block.text
+                elif block.type == "tool_use":
+                    # Extract tool call
+                    tool_call = ToolCall(
+                        id=block.id,
+                        type="function",
+                        function_name=block.name,
+                        arguments=block.input,  # Anthropic provides dict directly
+                        provider="anthropic",
+                        raw={"type": "tool_use", "id": block.id, "name": block.name, "input": block.input},
+                    )
+                    tool_calls.append(tool_call)
+
+        # Create AssistantMessage with content and/or tool calls
+        assistant_message = AssistantMessage(
+            content=text_content,
+            tool_calls=tool_calls if tool_calls else None,
+        )
 
         # Create ResponseMetadata
         metadata = ResponseMetadata(

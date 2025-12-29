@@ -157,26 +157,15 @@ class RemoteClient(Client):
     async def _generate_text(self, request: GenerationRequest) -> GenerationResponse:
         """
         Generate text via remote server.
-        TBD: Update HeadwaterClient API call to match new async pattern.
+        Server returns a complete GenerationResponse including tool calls.
         """
-        start_time = time.time()
-
         response = await self._client.conduit.query_generate(request)
 
-        duration = (time.time() - start_time) * 1000
-        assistant_message = AssistantMessage(content=str(response.content))
-        metadata = ResponseMetadata(
-            duration=duration,
-            model_slug=request.params.model,
-            input_tokens=response.metadata.input_tokens,
-            output_tokens=response.metadata.output_tokens,
-            stop_reason=StopReason.STOP,
-        )
-        return GenerationResponse(
-            message=assistant_message,
-            request=request,
-            metadata=metadata,
-        )
+        # Server returns complete GenerationResponse with:
+        # - message (AssistantMessage with tool_calls)
+        # - request (original GenerationRequest)
+        # - metadata (ResponseMetadata with stop_reason, tokens, etc.)
+        return response
 
     async def _generate_image(self, request: GenerationRequest) -> GenerationResponse:
         """

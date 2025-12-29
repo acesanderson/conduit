@@ -11,10 +11,11 @@ from conduit.config import settings
 from conduit.core.clients.client_base import Client
 from conduit.core.clients.payload_base import Payload
 from conduit.core.clients.ollama.payload import OllamaPayload
-from conduit.core.clients.ollama.adapter import convert_message_to_ollama
+from conduit.core.clients.ollama.message_adapter import convert_message_to_ollama
+from conduit.core.clients.ollama.tool_adapter import convert_tool_to_ollama
 from conduit.domain.result.response import GenerationResponse
 from conduit.domain.result.response_metadata import ResponseMetadata, StopReason
-from conduit.domain.message.message import AssistantMessage
+from conduit.domain.message.message import AssistantMessage, ToolCall
 from openai import AsyncOpenAI, AsyncStream
 from collections import defaultdict
 from typing import TYPE_CHECKING, override, Any
@@ -108,6 +109,17 @@ class OllamaClient(Client):
                 raise ValueError(f"Ollama does not support client param: {param}")
         # convert messages
         converted_messages = self._convert_messages(request.messages)
+
+        # Convert tools and enable parallel tool calls if tools are present
+        tools = None
+        parallel_tool_calls = None
+        if request.options.tool_registry:
+            tools = [
+                convert_tool_to_ollama(tool)
+                for tool in request.options.tool_registry.tools
+            ]
+            parallel_tool_calls = request.options.parallel_tool_calls
+
         # build payload
         ollama_payload = OllamaPayload(
             model=request.params.model,
@@ -116,6 +128,8 @@ class OllamaClient(Client):
             top_p=request.params.top_p,
             max_tokens=request.params.max_tokens,
             stream=request.params.stream,
+            tools=tools,
+            parallel_tool_calls=parallel_tool_calls,
             # ollama specific params (nested under extra_body)
             extra_body={**client_params} if client_params else None,
         )
@@ -216,12 +230,39 @@ class OllamaClient(Client):
             finish_reason = result.choices[0].finish_reason
             if finish_reason == "length":
                 stop_reason = StopReason.LENGTH
+            if finish_reason == "tool_calls":
+                stop_reason = StopReason.TOOL_CALLS
             elif finish_reason == "content_filter":
                 stop_reason = StopReason.CONTENT_FILTER
 
-        # Extract the text content
-        content = result.choices[0].message.content
-        assistant_message = AssistantMessage(content=content)
+        # Process tool calls if present
+        if stop_reason == StopReason.TOOL_CALLS:
+            # Handle tool calls - iterate through all parallel calls
+            tool_calls = []
+            for tool_call_data in result.choices[0].message.tool_calls:
+                arguments_dict = json.loads(tool_call_data.function.arguments)
+
+                tool_call = ToolCall(
+                    id=tool_call_data.id,  # Use provider-supplied ID
+                    type="function",
+                    function_name=tool_call_data.function.name,
+                    arguments=arguments_dict,
+                    provider="ollama",  # Fixed: was incorrectly set to "google"
+                    raw=tool_call_data.dict(),
+                )
+                tool_calls.append(tool_call)
+
+            # Create AssistantMessage with all tool calls
+            assistant_message = AssistantMessage(
+                content=result.choices[0].message.content
+                if hasattr(result.choices[0].message, "content")
+                else "",
+                tool_calls=tool_calls,
+            )
+        else:
+            # Extract the text content
+            content = result.choices[0].message.content
+            assistant_message = AssistantMessage(content=content)
 
         # Create ResponseMetadata
         metadata = ResponseMetadata(

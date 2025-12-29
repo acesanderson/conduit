@@ -435,20 +435,56 @@ class ToolMessage(Message):
 
     role: Role = Role.TOOL
     role_str: Literal["tool"] = "tool"
-    content: str  # The output of the tool (usually JSON stringified)
+    content: str  # The output of the tool (stringified)
     tool_call_id: str  # Links this result to the Assistant's ToolCall.id
     name: str | None = None  # Optional: name of the tool function
+
+    @classmethod
+    def from_result(
+        cls, result: Any, tool_call_id: str, name: str | None = None
+    ) -> ToolMessage:
+        """
+        Factory to create a ToolMessage from any raw Python result (dict, list, pydantic model).
+        This handles the serialization so your tool functions don't have to.
+        """
+        import json
+
+        if isinstance(result, (dict, list, int, float, bool, type(None))):
+            # Standard JSON serialization
+            content = json.dumps(result, default=str)
+        elif isinstance(result, BaseModel):
+            # Pydantic serialization
+            content = result.model_dump_json()
+        else:
+            # Fallback for strings or unknown objects
+            content = str(result)
+
+        return cls(content=content, tool_call_id=tool_call_id, name=name)
 
     @override
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> RenderResult:
+        import json
         from rich.panel import Panel
         from rich.syntax import Syntax
+        from rich.markdown import Markdown
         from rich.box import ROUNDED
 
+        # Attempt to parse strictly for display purposes
+        try:
+            # Check if it's valid JSON
+            json.loads(self.content)
+            # It is JSON: use Syntax highlighting
+            content_renderable = Syntax(
+                self.content, "json", theme="monokai", word_wrap=True
+            )
+        except (ValueError, TypeError):
+            # It is NOT JSON: treat as plain text/markdown
+            content_renderable = Markdown(self.content)
+
         yield Panel(
-            Syntax(self.content, "json", theme="monokai", word_wrap=True),
+            content_renderable,
             title=f"Tool Output: {self.name or 'Unknown'} • [dim]{self.time}[/dim]",
             title_align="left",
             border_style="yellow",
