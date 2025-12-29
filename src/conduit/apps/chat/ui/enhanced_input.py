@@ -18,31 +18,16 @@ Our existing REPL application uses a basic input prompt. We want to enhance it w
 - [ ] 8.1 Split Layout
 """
 
+from __future__ import annotations
 from conduit.apps.chat.ui.input_interface import InputInterface
-
 from conduit.apps.chat.ui.ui_command import UICommand
-
 from conduit.apps.chat.ui.keybindings import KeyBindingsRepo
-
 from rich.console import Console, RenderableType
-
 from rich.markdown import Markdown
-
-from rich.table import Table
-
-from rich.columns import Columns
-
-from rich.errors import MarkupError
-
 from typing import override, TYPE_CHECKING
-
 from collections.abc import Iterable
-
 import re
-
 from pathlib import Path
-
-
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
@@ -50,33 +35,16 @@ from prompt_toolkit.styles import Style
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition
-
-
-
-if TYPE_CHECKING:
-
-    from conduit.apps.chat.engine.async_engine import ChatEngine
-
-    
-
 from conduit.core.model.models.modelstore import ModelStore
 
-
-
-
+if TYPE_CHECKING:
+    from conduit.apps.chat.engine.async_engine import ChatEngine
 
 # Precompile regex pattern (copied from BasicInput)
-
 style_pattern = re.compile(r"\[/?[a-zA-Z0-9_ ]+\]")
 
-
-
 # 1.1: Define a path for the persistent history file
-
 HISTORY_FILE = Path.home() / ".conduit_chat_history"
-
-
-
 
 
 class CommandCompleter(Completer):
@@ -84,9 +52,9 @@ class CommandCompleter(Completer):
     A prompt_toolkit completer that suggests commands from the ChatEngine.
     """
 
-    def __init__(self, engine: "ChatEngine"):
-        self.engine = engine
-        self._all_commands = None
+    def __init__(self, engine: ChatEngine):
+        self.engine: ChatEngine = engine
+        self._all_commands: dict[str, str] | None = None
 
     def _get_commands(self):
         """Cache command and alias names."""
@@ -131,9 +99,6 @@ class CommandCompleter(Completer):
                 )
 
 
-
-
-
 class EnhancedInput(InputInterface, KeyBindingsRepo):
     """
     Enhanced input using Prompt Toolkit for features like persistent history.
@@ -145,7 +110,7 @@ class EnhancedInput(InputInterface, KeyBindingsRepo):
         self._model_store = ModelStore()
 
         # We need extra context about commands for tab completion, as well as the model name.
-        self.engine: "ChatEngine | None" = None
+        self.engine: ChatEngine | None = None
 
         # Track multiline mode state
         self.multiline_mode = False
@@ -184,9 +149,7 @@ class EnhancedInput(InputInterface, KeyBindingsRepo):
 
     def _get_model_spec(self, model_name: str):
         if model_name not in self._model_spec_cache:
-            self._model_spec_cache[model_name] = self._model_store.get_model(
-                model_name
-            )
+            self._model_spec_cache[model_name] = self._model_store.get_model(model_name)
         return self._model_spec_cache[model_name]
 
     def get_toolbar_text(self):
@@ -211,7 +174,7 @@ class EnhancedInput(InputInterface, KeyBindingsRepo):
             )
         ]
 
-    def set_engine(self, engine: "ChatEngine") -> None:
+    def set_engine(self, engine: ChatEngine) -> None:
         """
         Set the engine to enable tab completion.
         This is called by the factory after the engine is created.
@@ -302,5 +265,3 @@ class EnhancedInput(InputInterface, KeyBindingsRepo):
         import sys
 
         sys.exit(0)
-
-
