@@ -36,7 +36,7 @@ class ModelSync:
 
     def __init__(
         self,
-        model: str,
+        model: str | None = None,
         params: GenerationParams | None = None,
         options: ConduitOptions | None = None,
         client: Client | None = None,
@@ -53,6 +53,11 @@ class ModelSync:
             client: Optional client injection for advanced use cases (e.g., remote models)
             **kwargs: Additional parameters merged into GenerationParams (e.g., temperature=0.7).
         """
+        # Quick validation: we need either model or params with model
+        if model is None:
+            if params is None or params.model is None:
+                raise ValueError("Either 'model' or 'params.model' must be provided.")
+            model = params.model
         # 1. Instantiate the async implementation (dumb pipe - only needs model identity)
         self._impl = ModelAsync(model, client=client)
 

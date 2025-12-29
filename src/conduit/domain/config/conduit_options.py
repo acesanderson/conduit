@@ -1,10 +1,10 @@
+from __future__ import annotations
 from conduit.utils.progress.verbosity import Verbosity
-from conduit.storage.cache.protocol import ConduitCache
-from conduit.storage.repository.protocol import (
-    ConversationRepository,
-)
 from conduit.storage.repository.persistence_mode import PersistenceMode
 from pydantic import BaseModel, Field, ConfigDict, field_validator
+from conduit.storage.cache.protocol import ConduitCache
+from conduit.storage.repository.protocol import ConversationRepository
+from conduit.capabilities.tools.registry import ToolRegistry
 from rich.console import Console
 
 
@@ -31,8 +31,13 @@ class ConduitOptions(BaseModel):
         exclude=True,
     )
     console: Console | None = Field(
-        default=None,
+        default_factory=lambda: Console(),
         description="Rich console for enhanced logging/UI.",
+        exclude=True,
+    )
+    tool_registry: ToolRegistry | None = Field(
+        default=None,
+        description="Registry of available tools for the LLM to use.",
         exclude=True,
     )
 

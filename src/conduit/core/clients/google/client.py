@@ -7,20 +7,22 @@ from functools import cached_property
 from conduit.core.clients.client_base import Client
 from conduit.core.clients.payload_base import Payload
 from conduit.core.clients.google.payload import GooglePayload
-from conduit.core.clients.google.adapter import convert_message_to_google
+from conduit.core.clients.google.message_adapter import convert_message_to_google
+from conduit.core.clients.google.tool_adapter import convert_tool_to_google
 from conduit.core.clients.google.image_params import GoogleImageParams
 from conduit.core.clients.google.audio_params import GoogleAudioParams
 from conduit.domain.result.response import GenerationResponse
 from conduit.domain.result.response_metadata import ResponseMetadata, StopReason
-from conduit.domain.message.message import AssistantMessage, ImageOutput
+from conduit.domain.message.message import AssistantMessage, ImageOutput, ToolCall
 from typing import TYPE_CHECKING, override, Any
+import json
 import os
 import time
 import base64
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from openai import AsyncOpenAI, AsyncStream
+    from openai import AsyncOpenAI
     from instructor import Instructor
     from conduit.domain.result.result import GenerationResult
     from conduit.domain.request.request import GenerationRequest
@@ -95,6 +97,12 @@ class GoogleClient(Client):
             top_p=request.params.top_p,
             max_tokens=request.params.max_tokens,
             stream=request.params.stream,
+            tools=[
+                convert_tool_to_google(tool)
+                for tool in request.options.tool_registry.tools
+            ]
+            if request.options.tool_registry
+            else None,
             # Google-specific params
             **client_params,
         )
@@ -204,12 +212,41 @@ class GoogleClient(Client):
             finish_reason = result.choices[0].finish_reason
             if finish_reason == "length":
                 stop_reason = StopReason.LENGTH
+            if finish_reason == "tool_calls":
+                stop_reason = StopReason.TOOL_CALLS
             elif finish_reason == "content_filter":
                 stop_reason = StopReason.CONTENT_FILTER
 
-        # Extract the text content
-        content = result.choices[0].message.content
-        assistant_message = AssistantMessage(content=content)
+        # Process tool calls if present
+        if stop_reason == StopReason.TOOL_CALLS:
+            # Handle tool calls if present
+            tool_call_data = result.choices[0].message.tool_calls[0]
+            type = "function"
+            function_name = tool_call_data.function.name
+            arguments = tool_call_data.function.arguments
+            provider = "google"
+            raw = tool_call_data.dict()
+            arguments_dict = json.loads(arguments)
+
+            tool_call = ToolCall(
+                type=type,
+                function_name=function_name,
+                arguments=arguments_dict,
+                provider=provider,
+                raw=raw,
+            )
+
+            # Create AssistantMessage with tool call
+            assistant_message = AssistantMessage(
+                content=result.choices[0].message.content
+                if hasattr(result.choices[0].message, "content")
+                else "",
+                tool_calls=[tool_call],
+            )
+        else:
+            # Extract the text content
+            content = result.choices[0].message.content
+            assistant_message = AssistantMessage(content=content)
 
         # Create ResponseMetadata
         metadata = ResponseMetadata(

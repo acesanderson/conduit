@@ -6,6 +6,7 @@ TO IMPLEMENT:
 from __future__ import annotations
 from pydantic import BaseModel, Field, model_validator, field_validator
 from conduit.domain.request.output_type import OutputType
+from typing import Any
 import logging
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,7 @@ class GenerationParams(BaseModel):
     stream: bool = False
     client_params: dict | None = None
     system: str | None = None
+    tools: list[dict[str, Any]] | None = None
 
     # For structured responses; excluded from serialization, trust me
     response_model: type[BaseModel] | None = Field(default=None, exclude=True)

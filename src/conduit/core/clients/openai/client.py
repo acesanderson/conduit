@@ -2,7 +2,8 @@ from __future__ import annotations
 from conduit.core.clients.client_base import Client
 from conduit.core.clients.payload_base import Payload
 from conduit.core.clients.openai.payload import OpenAIPayload
-from conduit.core.clients.openai.adapter import convert_message_to_openai
+from conduit.core.clients.openai.message_adapter import convert_message_to_openai
+from conduit.core.clients.openai.tool_adapter import convert_tool_to_openai
 from conduit.core.clients.openai.audio_params import OpenAIAudioParams
 from conduit.core.clients.openai.image_params import OpenAIImageParams
 from conduit.core.clients.openai.transcription_params import OpenAITranscriptionParams
@@ -87,6 +88,12 @@ class OpenAIClient(Client, ABC):
             top_p=request.params.top_p,
             max_tokens=request.params.max_tokens,
             stream=request.params.stream,
+            tools=[
+                convert_tool_to_openai(tool)
+                for tool in request.options.tool_registry.tools
+            ]
+            if request.options.tool_registry
+            else None,
         )
         return openai_payload
 
@@ -222,6 +229,8 @@ class OpenAIClient(Client, ABC):
         Returns:
             - Response object for successful non-streaming requests
             - AsyncStream object for streaming requests
+
+        Also handles tooling calls if specified in the request.
         """
         payload = self._convert_request(request)
         payload_dict = payload.model_dump(exclude_none=True)
@@ -256,9 +265,35 @@ class OpenAIClient(Client, ABC):
             elif finish_reason == "content_filter":
                 stop_reason = StopReason.CONTENT_FILTER
 
-        # Extract the text content
-        content = result.choices[0].message.content
-        assistant_message = AssistantMessage(content=content)
+        if stop_reason == StopReason.TOOL_CALLS:
+            # Handle tool calls if present
+            tool_call_data = result.choices[0].message.tool_calls[0]
+            type = "function"
+            function_name = tool_call_data.function.name
+            arguments = tool_call_data.function.arguments
+            provider = "openai"
+            raw = tool_call_data.dict()
+            arguments_dict = json.loads(arguments)
+
+            tool_call = ToolCall(
+                type=type,
+                function_name=function_name,
+                arguments=arguments_dict,
+                provider=provider,
+                raw=raw,
+            )
+
+            # Create AssistantMessage with tool call
+            assistant_message = AssistantMessage(
+                content=result.choices[0].message.content
+                if hasattr(result.choices[0].message, "content")
+                else "",
+                tool_calls=[tool_call],
+            )
+        else:
+            # Extract the text content
+            content = result.choices[0].message.content
+            assistant_message = AssistantMessage(content=content)
 
         # Create ResponseMetadata
         metadata = ResponseMetadata(
