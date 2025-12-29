@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # Constants
 CONSOLE = Console()
 PREFERRED_MODEL = settings.preferred_model
-WELCOME_MESSAGE = "[bold cyan]Conduit Chat (Enhanced). Type /exit to exit.[/bold cyan]"
+WELCOME_MESSAGE = "[bold cyan]Conduit Chat. Type /exit to exit.[/bold cyan]"
 SYSTEM_MESSAGE = settings.system_prompt
 VERBOSITY = settings.default_verbosity
 
@@ -34,6 +34,7 @@ OPTIONS = ConduitOptions(
     console=CONSOLE,
     cache=settings.default_cache("conduit-fchat"),
 )
+
 
 async def async_main():
     """
@@ -46,8 +47,9 @@ async def async_main():
         system_message=SYSTEM_MESSAGE,
         options=OPTIONS,
     )
-    
+
     await app.run()
+
 
 def main():
     """
@@ -61,3 +63,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

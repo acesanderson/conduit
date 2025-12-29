@@ -9,10 +9,9 @@ class KeyBindingsRepo:
     """
     Mixin providing Escape-key keybindings for EnhancedInput terminal UI.
 
-    Defines a repository of keyboard shortcuts using Escape as the leader key,
-    enabling quick access to common chat operations (exit, clear history, toggle
-    multiline mode, etc.) without interrupting natural text input. Requires mixed-in
-    class to provide `console`, `engine`, `multiline_mode`, and `exit()` method.
+    IMPORTANT OUTPUT RULE:
+    In EnhancedInput mode, do not call self.console.print() directly from keybindings.
+    Route all output through self.show_message() so prompt_toolkit can print safely.
     """
 
     def _create_key_bindings(self) -> KeyBindings:
@@ -34,7 +33,7 @@ class KeyBindingsRepo:
             """
             if self.engine:
                 self.engine.conversation.wipe()
-                self.console.print("[green]Message history cleared.[/green]")
+                self.show_message("[green]Message history cleared.[/green]")
 
         # <Esc>h → show keybindings help
         @kb.add("escape", "h")
@@ -56,7 +55,7 @@ class KeyBindingsRepo:
             table.add_row("<Esc>m", "Show model card")
             table.add_row("<Esc><Enter>", "Toggle multiline mode")
 
-            self.console.print(table)
+            self.show_message(table)
 
         # <Esc>m → show model card
         @kb.add("escape", "m")
@@ -64,11 +63,25 @@ class KeyBindingsRepo:
             """
             Display current model information
             """
+            if not self.engine:
+                self.show_message("[yellow]Engine not ready yet.[/yellow]")
+                return
+
             from conduit.core.model.models.modelstore import ModelStore
 
             ms = ModelStore()
             model_spec = ms.get_model(self.engine.params.model)
-            model_spec.card
+
+            # Best effort: show something useful.
+            # If model_spec.card is a rich renderable or string, show_message can handle it.
+            try:
+                card = getattr(model_spec, "card", None)
+                if card:
+                    self.show_message(card)
+                else:
+                    self.show_message(f"[cyan]Model:[/cyan] {self.engine.params.model}")
+            except Exception as e:
+                self.show_message(f"[red]Error showing model card: {e}[/red]")
 
         # <Esc><Enter> → toggle multiline mode
         @kb.add("escape", "enter")
@@ -78,6 +91,6 @@ class KeyBindingsRepo:
             """
             self.multiline_mode = not self.multiline_mode
             mode_status = "enabled" if self.multiline_mode else "disabled"
-            self.console.print(f"[cyan]Multiline mode {mode_status}[/cyan]")
+            self.show_message(f"[cyan]Multiline mode {mode_status}[/cyan]")
 
         return kb

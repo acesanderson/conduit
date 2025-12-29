@@ -37,10 +37,15 @@ class ChatApp:
         """
         # Clear the screen at the start of the chat session
         self.input_interface.clear_screen()
-        if self.welcome_message:
-            from rich.console import Console
 
-            Console().print(self.welcome_message)
+        # IMPORTANT: Route all startup output through the input interface so EnhancedInput
+        # can print safely without corrupting the prompt UI.
+        from conduit.apps.chat.ui.logo import get_logo
+
+        self.input_interface.show_message(get_logo())
+
+        if self.welcome_message:
+            self.input_interface.show_message(self.welcome_message)
 
         while self.is_running:
             await self.run_once()
