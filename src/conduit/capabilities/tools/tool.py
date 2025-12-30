@@ -125,6 +125,7 @@ class Tool(BaseModel):
         - docstring required
         - Annotated required for each parameter (with per-param description)
         """
+        # Validate the function first
         errors = validate_tool_function(func)
         if errors:
             lines = []
