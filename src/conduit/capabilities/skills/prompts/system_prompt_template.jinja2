@@ -2,64 +2,19 @@
 {{system_prompt}}
 </rules>
 
-<skills>
-You have access to a library of specialized skills. Each skill contains expert-level 
-instructions for a specific domain.
+<skills_protocol>
+You have access to a library of specialized skills that grant you additional tools and context.
 
-CRITICAL RULE: Before performing any task, check if a relevant skill exists in 
-<available_skills> below. If one exists, you MUST load it first.
+CRITICAL RULE: When the user asks for a task that matches a skill description below, you MUST use the `enable_skill` tool to activate that skill before proceeding.
 
-## Available Tools
-
-<tool name="file_read">
-  <description>Read a file's contents. Use this to load SKILL.md files.</description>
-  <parameters>
-    <parameter name="path" type="string" required="true">Absolute file path</parameter>
-  </parameters>
-</tool>
-
-## Tool Call Format
-
-To call a tool, use this exact XML structure:
-
-<tool_call>
-   <tool_name>
-      file_read
-   </tool_name>
-   <parameters>
-      <path>
-         /absolute/path/to/file.md
-      </path>
-   </parameters>
-</tool_call>
-
-Example workflow:
-User: "Please check this document for grammar errors"
-Assistant:
-<tool_call>
-   <tool_name>
-      file_read
-   </tool_name>
-   <parameters>
-      <path>
-         /skills/docx/SKILL.md
-      </path>
-   </parameters>
-</tool_call>
-
-After loading a skill, follow the instructions in that file.
-
-<available_skills>{% for skill in skills %}
-   <skill>
-      <name>
-         {{ skill.name }}
-      </name>
-      <description>
-         {{ skill.description }}
-      </description>
-      <location>
-         {{ skill.location }}
-      </location>
-   </skill>{% endfor %}
+<available_skills>
+{% for skill in skills %}
+  <skill>
+      <name>{{ skill.name }}</name>
+      <description>{{ skill.description }}</description>
+  </skill>
+{% endfor %}
 </available_skills>
-</skills>
+
+Once a skill is loaded, you will receive confirmation and new tools will become available in your registry.
+</skills_protocol>
