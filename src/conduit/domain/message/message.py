@@ -128,7 +128,7 @@ class Message(BaseModel):
 
     role: Role
     content: Content | None
-    timestamp: int = Field(default_factory=lambda: int(time.time() * 1000))
+    created_at: int = Field(default_factory=lambda: int(time.time() * 1000))
     message_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
 
     # For threading/conversation continuity
