@@ -17,8 +17,6 @@ from pathlib import Path
 from typing import Literal, Any, Annotated, override, TYPE_CHECKING
 from pydantic import BaseModel, Field, model_validator
 from conduit.domain.message.role import Role
-from typing import Literal, Any
-from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
     from rich.console import Console, ConsoleOptions, RenderResult
@@ -131,9 +129,31 @@ class Message(BaseModel):
     role: Role
     content: Content | None
     timestamp: int = Field(default_factory=lambda: int(time.time() * 1000))
-    message_id: uuid.UUID = Field(
-        default_factory=lambda: uuid.UUID(int=uuid.uuid4().int)
-    )
+    message_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+
+    # For threading/conversation continuity
+    predecessor_id: str | None = None
+    session_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+
+    @model_validator(mode="after")
+    def _validate_session_continuity(self):
+        """
+        Validate that child messages explicitly specify their session context.
+
+        Ensures that if a message references a predecessor (forming a child node in a
+        conversation tree), the session_id must be explicitly provided rather than
+        auto-generated. This prevents orphaned child messages that lack proper session
+        continuity context.
+        """
+        # We only care if a predecessor exists (it's a child node)
+        if (
+            self.predecessor_id is not None
+            and "session_id" not in self.model_fields_set
+        ):
+            raise ValueError(
+                "Orphaned Child: If 'predecessor_id' is supplied, you must explicitly provide the existing 'session_id'."
+            )
+        return self
 
     @model_validator(mode="before")
     @classmethod
