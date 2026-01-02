@@ -1,369 +1,340 @@
-from __future__ import annotations
-from typing import TYPE_CHECKING
 import json
 import logging
-import hashlib
-from uuid import UUID
+from typing import Any
 from pydantic import TypeAdapter
-from conduit.domain.conversation.conversation import Conversation
-from conduit.domain.message.message import Message, MessageUnion
 
-if TYPE_CHECKING:
-    from psycopg2.extensions import connection
-    from contextlib import AbstractContextManager
-    from collections.abc import Callable
+from conduit.domain.conversation.session import Session
+from conduit.domain.conversation.conversation import Conversation
+from conduit.domain.message.message import MessageUnion, Message
 
 logger = logging.getLogger(__name__)
-adapter = TypeAdapter(MessageUnion)  # For rehydration from JSONB
 
 
-class PostgresConversationRepository:
+class AsyncPostgresSessionRepository:
     """
-    Project-Scoped Conversation Repository with Message Deduplication.
+    Async Project-Scoped Session Repository (DAG Architecture).
 
     Architecture:
-    - conversations: Partitioned by 'project_name'.
-    - messages: Global, deduplicated by content hash (CAS).
-    - playlist: Maps conversation order to message IDs.
+    - conduit_sessions: Partitioned by 'project_name'.
+    - conduit_messages: Stored as a Graph (DAG) linked to sessions.
     """
 
-    def __init__(
-        self,
-        project_name: str,
-        conn_factory: Callable[[], AbstractContextManager[connection]],
-    ):
+    def __init__(self, project_name: str, pool: Any):
         """
-        Args:
-            name: The project name (e.g., "summarizer", "chatbot-v1").
-            conn_factory: DB connection factory.
+        :param project_name: The scoping key (e.g., "summarizer", "chatbot-v1").
+        :param pool: An initialized asyncpg.Pool instance.
         """
-        self.project_name: str = project_name
-        self._conn_factory: Callable[[], AbstractContextManager[connection]] = (
-            conn_factory
-        )
-        self._ensure_schema()
+        self.project_name = project_name
+        self.pool = pool
+        self._message_adapter = TypeAdapter(MessageUnion)
 
-    def _ensure_schema(self) -> None:
-        with self._conn_factory() as conn, conn.cursor() as cursor:
-            cursor.execute("""
-                -- 1. Global Messages (Content Addressable)
-                CREATE TABLE IF NOT EXISTS conduit_messages (
-                    id UUID PRIMARY KEY,
-                    content_hash TEXT UNIQUE NOT NULL, -- The De-Dupe Key
-                    payload JSONB NOT NULL,
-                    created_at TIMESTAMPTZ DEFAULT NOW()
-                );
-
-                -- 2. Scoped Conversations
-                CREATE TABLE IF NOT EXISTS conduit_conversations (
-                    id UUID PRIMARY KEY,
-                    project_name TEXT NOT NULL, -- Scoping field
-                    name TEXT,
-                    metadata JSONB,
+    async def initialize(self) -> None:
+        """Idempotent schema creation."""
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                -- 1. Scoped Sessions
+                CREATE TABLE IF NOT EXISTS conduit_sessions (
+                    session_id TEXT PRIMARY KEY,
+                    project_name TEXT NOT NULL,
+                    leaf_message_id TEXT,
+                    title TEXT,
+                    metadata JSONB DEFAULT '{}',
+                    created_at BIGINT,
                     last_updated TIMESTAMPTZ DEFAULT NOW()
                 );
-                CREATE INDEX IF NOT EXISTS idx_conv_project ON conduit_conversations(project_name);
+                CREATE INDEX IF NOT EXISTS idx_sessions_project ON conduit_sessions(project_name);
+                CREATE INDEX IF NOT EXISTS idx_sessions_updated ON conduit_sessions(last_updated);
 
-                -- 3. The Playlist (Edges)
-                CREATE TABLE IF NOT EXISTS conduit_playlist (
-                    conversation_id UUID NOT NULL REFERENCES conduit_conversations(id) ON DELETE CASCADE,
-                    message_id UUID NOT NULL REFERENCES conduit_messages(id),
-                    seq_index INTEGER NOT NULL,
-                    PRIMARY KEY (conversation_id, seq_index)
+                -- 2. DAG Messages (Graph Storage)
+                CREATE TABLE IF NOT EXISTS conduit_messages (
+                    message_id TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL REFERENCES conduit_sessions(session_id) ON DELETE CASCADE,
+                    predecessor_id TEXT REFERENCES conduit_messages(message_id),
+                    role TEXT NOT NULL,
+                    content JSONB,
+                    created_at BIGINT,
+                    
+                    -- Specialized columns for query ease/indexing
+                    metadata JSONB DEFAULT '{}',
+                    tool_calls JSONB,
+                    images JSONB,
+                    audio JSONB,
+                    parsed JSONB
                 );
-                """)
-            conn.commit()
+                CREATE INDEX IF NOT EXISTS idx_messages_session ON conduit_messages(session_id);
+                CREATE INDEX IF NOT EXISTS idx_messages_predecessor ON conduit_messages(predecessor_id);
+            """)
 
-    def _generate_message_hash(self, message: Message) -> str:
+    # --- Read Operations ---
+
+    async def get_session(self, session_id: str) -> Session | None:
         """
-        Generate a deterministic hash based on semantic content.
-        Excludes volatile fields like UUIDs and timestamps.
+        Loads a Session and its full message graph.
+        Enforces project ownership.
         """
-        # We assume standard Pydantic serialization
-        # We explicitly exclude 'id', 'timestamp' to match on CONTENT ONLY.
-        data = message.model_dump(
-            mode="json", exclude={"id", "timestamp", "tool_call_id"}
+        q_session = """
+            SELECT session_id, leaf_message_id, title, metadata, created_at
+            FROM conduit_sessions 
+            WHERE session_id = $1 AND project_name = $2
+        """
+        q_messages = """
+            SELECT * FROM conduit_messages WHERE session_id = $1
+        """
+
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(q_session, session_id, self.project_name)
+            if not row:
+                return None
+
+            # Fetch all messages for this session
+            msg_rows = await conn.fetch(q_messages, session_id)
+
+        # Rehydrate Messages
+        message_dict = {}
+        for r in msg_rows:
+            try:
+                msg_obj = self._row_to_message(r)
+                message_dict[msg_obj.message_id] = msg_obj
+            except Exception as e:
+                logger.error(f"Failed to hydrate message {r['message_id']}: {e}")
+                continue
+
+        # We construct the session using the data from DB
+        session = Session(
+            session_id=row["session_id"],
+            leaf=row["leaf_message_id"],
+            created_at=row["created_at"],
+            message_dict=message_dict,
         )
-        json_str = json.dumps(data, sort_keys=True)
-        return hashlib.sha256(json_str.encode("utf-8")).hexdigest()
+        return session
 
-    def load_by_conversation_id(
-        self,
-        conversation_id: str | UUID,
-    ) -> Conversation | None:
+    async def get_conversation(self, leaf_message_id: str) -> Conversation | None:
         """
-        Need to add name logic.
+        Rehydrates a linear Conversation view by walking backwards from a leaf.
         """
-        with self._conn_factory() as conn, conn.cursor() as cursor:
-            # ... (check conversation existence logic) ...
-
-            # Fetch messages
-            cursor.execute(
-                """
-                    SELECT m.payload
-                    FROM conduit_playlist p
-                    JOIN conduit_messages m ON p.message_id = m.id
-                    WHERE p.conversation_id = %s
-                    ORDER BY p.seq_index ASC
-                """,
-                (str(conversation_id),),
-            )
-
-            rows = cursor.fetchall()
-
-        # Rehydrate using the adapter
-        # validate_python takes a dict (which psycopg2 returns for JSONB columns)
-        messages = [adapter.validate_python(row[0]) for row in rows]
-
-        return Conversation(conversation_id=str(conversation_id), messages=messages)
-
-    def remove_by_conversation_id(self, conversation_id: str | UUID) -> None:
-        """Removes conversation by ID within the current project."""
-        with self._conn_factory() as conn, conn.cursor() as cursor:
-            cursor.execute(
-                """
-                    DELETE FROM conduit_conversations
-                    WHERE project_name = %s AND id = %s
-                """,
-                (self.project_name, str(conversation_id)),
-            )
-            conn.commit()
-
-    def load_by_name(self, name: str) -> Conversation | None:
-        """Load conversation by name within the current project."""
-        with self._conn_factory() as conn, conn.cursor() as cursor:
-            cursor.execute(
-                """
-                    SELECT id
-                    FROM conduit_conversations
-                    WHERE project_name = %s AND name = %s
-                    LIMIT 1
-                """,
-                (self.project_name, name),
-            )
-            row = cursor.fetchone()
-            if not row:
-                return None
-            conv_id = row[0]
-        return self.load_by_conversation_id(conv_id)
-
-    def list_conversations(self, limit: int = 10) -> list[dict[str, str]]:
-        """List conversations ONLY for the current project."""
-        with self._conn_factory() as conn, conn.cursor() as cursor:
-            cursor.execute(
-                """
-                    SELECT id, name, last_updated, 
-                           (SELECT COUNT(*) FROM conduit_playlist WHERE conversation_id = c.id) as msg_count
-                    FROM conduit_conversations c
-                    WHERE project_name = %s
-                    ORDER BY last_updated DESC 
-                    LIMIT %s
-                """,
-                (self.project_name, limit),
-            )
-            # Rehydrate rows
-            rows = cursor.fetchall()
-        conversations = [
-            {
-                "conversation_id": row[0],
-                "name": row[1],
-                "last_updated": row[2],
-                "message_count": row[3],
-            }
-            for row in rows
-        ]
-        return conversations
-
-    def load_all(self) -> list[Conversation]:
-        """Load all conversations for the current project."""
-        with self._conn_factory() as conn, conn.cursor() as cursor:
-            cursor.execute(
-                """
-                    SELECT id
-                    FROM conduit_conversations
-                    WHERE project_name = %s
-                """,
-                (self.project_name,),
-            )
-            rows = cursor.fetchall()
-            conv_ids = [row[0] for row in rows]
-
-        conversations = []
-        for conv_id in conv_ids:
-            conv = self.load_by_conversation_id(conv_id)
-            if conv:
-                conversations.append(conv)
-        return conversations
-
-    @property
-    def last(self) -> Conversation | None:
-        """Returns the most recently updated conversation for the project."""
-        with self._conn_factory() as conn, conn.cursor() as cursor:
-            cursor.execute(
-                """
-                    SELECT id
-                    FROM conduit_conversations
-                    WHERE project_name = %s
-                    ORDER BY last_updated DESC
-                    LIMIT 1
-                """,
-                (self.project_name,),
-            )
-            row = cursor.fetchone()
-            if not row:
-                return None
-            conv_id = row[0]
-        return self.load_by_conversation_id(conv_id)
-
-    def save(self, conversation: Conversation, name: str | None = None) -> None:
+        # Recursive CTE to walk up the tree
+        # We join on sessions to ensure project scoping logic applies
+        query = """
+        WITH RECURSIVE conversation_tree AS (
+            -- Base Case: The Leaf
+            SELECT m.*, 1 as depth
+            FROM conduit_messages m
+            JOIN conduit_sessions s ON m.session_id = s.session_id
+            WHERE m.message_id = $1 AND s.project_name = $2
+            
+            UNION ALL
+            
+            -- Recursive Step: The Predecessor
+            SELECT p.*, ct.depth + 1
+            FROM conduit_messages p
+            INNER JOIN conversation_tree ct ON p.message_id = ct.predecessor_id
+        )
+        SELECT * FROM conversation_tree ORDER BY depth DESC;
         """
-        Saves conversation and performs Message Deduplication.
-        """
-        conv_id = conversation.conversation_id
 
-        with self._conn_factory() as conn, conn.cursor() as cursor:
-            # 1. Upsert Conversation Metadata
-            cursor.execute(
-                """
-                    INSERT INTO conduit_conversations (id, project_name, name, last_updated)
-                    VALUES (%s, %s, %s, NOW())
-                    ON CONFLICT (id) DO UPDATE 
-                    SET last_updated = NOW(),
-                        name = COALESCE(EXCLUDED.name, conduit_conversations.name),
-                        project_name = EXCLUDED.project_name
-                """,
-                # FIX: Cast conv_id to str()
-                (str(conv_id), self.project_name, name),
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(query, leaf_message_id, self.project_name)
+
+        if not rows:
+            return None
+
+        messages = [self._row_to_message(r) for r in rows]
+        return Conversation(messages=messages)
+
+    async def get_message(self, message_id: str) -> Message | None:
+        """
+        Fetch a single specific message by ID.
+        Enforces project ownership via JOIN.
+        """
+        query = """
+            SELECT m.*
+            FROM conduit_messages m
+            JOIN conduit_sessions s ON m.session_id = s.session_id
+            WHERE m.message_id = $1 AND s.project_name = $2
+        """
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(query, message_id, self.project_name)
+
+        if not row:
+            return None
+
+        return self._row_to_message(row)
+
+    async def list_sessions(self, limit: int = 20) -> list[dict[str, Any]]:
+        """Lists sessions for the current project."""
+        query = """
+            SELECT session_id, title, created_at, leaf_message_id, last_updated
+            FROM conduit_sessions
+            WHERE project_name = $1
+            ORDER BY last_updated DESC
+            LIMIT $2
+        """
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(query, self.project_name, limit)
+
+            return [
+                {
+                    "session_id": r["session_id"],
+                    "title": r["title"] or "Untitled Session",
+                    "created_at": r["created_at"],
+                    "last_updated": r["last_updated"],
+                    "leaf_id": r["leaf_message_id"],
+                }
+                for r in rows
+            ]
+
+    # --- Write Operations ---
+
+    async def save_session(self, session: Session, name: str | None = None) -> None:
+        """
+        Upserts Session (scoped to Project) and its Messages.
+        """
+        # 1. Topological Sort for FK validity (Parent before Child)
+        sorted_msgs = self._topological_sort(session.message_dict)
+
+        # 2. Serialize Messages for Batch Insert
+        msg_records = []
+        for msg in sorted_msgs:
+            d = msg.model_dump(mode="json")
+            msg_records.append(
+                (
+                    d["message_id"],
+                    d["session_id"],
+                    d.get("predecessor_id"),
+                    d["role"],
+                    json.dumps(d.get("content")),
+                    d["created_at"],
+                    json.dumps(d.get("metadata") or {}),
+                    json.dumps(d.get("tool_calls")),
+                    json.dumps(d.get("images")),
+                    json.dumps(d.get("audio")),
+                    json.dumps(d.get("parsed")),
+                )
             )
 
-            # 2. Process Messages
-            final_message_ids = []
+        upsert_session_sql = """
+            INSERT INTO conduit_sessions (session_id, project_name, leaf_message_id, title, created_at, last_updated)
+            VALUES ($1, $2, $3, $4, $5, NOW())
+            ON CONFLICT (session_id) DO UPDATE SET
+                leaf_message_id = EXCLUDED.leaf_message_id,
+                title = COALESCE($4, conduit_sessions.title),
+                last_updated = NOW(),
+                project_name = EXCLUDED.project_name;
+        """
 
-            for msg in conversation.messages:
-                msg_hash = self._generate_message_hash(msg)
-                msg_payload = msg.model_dump(mode="json")
+        upsert_message_sql = """
+            INSERT INTO conduit_messages (
+                message_id, session_id, predecessor_id, role, content, 
+                created_at, metadata, tool_calls, images, audio, parsed
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            ON CONFLICT (message_id) DO NOTHING;
+        """
 
-                cursor.execute(
-                    """
-                        INSERT INTO conduit_messages (id, content_hash, payload)
-                        VALUES (%s, %s, %s::jsonb)
-                        ON CONFLICT (content_hash) 
-                        DO UPDATE SET content_hash = EXCLUDED.content_hash
-                        RETURNING id
-                    """,
-                    # FIX: Cast msg.id to str()
-                    (str(msg.message_id), msg_hash, json.dumps(msg_payload)),
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                # A. Upsert Session first (Must exist for Message FKs)
+                await conn.execute(
+                    upsert_session_sql,
+                    session.session_id,
+                    self.project_name,
+                    session.leaf,
+                    name,
+                    session.created_at,
                 )
 
-                authoritative_id = cursor.fetchone()[0]
-                final_message_ids.append(authoritative_id)
+                # B. Batch Upsert Messages
+                if msg_records:
+                    await conn.executemany(upsert_message_sql, msg_records)
 
-            # 3. Rewrite Playlist
-            cursor.execute(
-                "DELETE FROM conduit_playlist WHERE conversation_id = %s",
-                (str(conv_id),),  # FIX: Cast to str()
+    # --- Maintenance Operations ---
+
+    async def delete_session(self, session_id: str) -> None:
+        """Delete specific session."""
+        async with self.pool.acquire() as conn:
+            # Enforce project ownership
+            await conn.execute(
+                "DELETE FROM conduit_sessions WHERE session_id = $1 AND project_name = $2",
+                session_id,
+                self.project_name,
             )
 
-            if final_message_ids:
-                playlist_args = [
-                    (str(conv_id), str(msg_id), idx)  # FIX: Cast both to str()
-                    for idx, msg_id in enumerate(final_message_ids)
-                ]
-                cursor.executemany(
-                    """
-                        INSERT INTO conduit_playlist (conversation_id, message_id, seq_index)
-                        VALUES (%s, %s, %s)
-                    """,
-                    playlist_args,
-                )
-
-            conn.commit()
-
-    def wipe(self) -> None:
-        """Wipes all conversations and messages for the current project."""
-        with self._conn_factory() as conn, conn.cursor() as cursor:
-            # Delete conversations for the project
-            cursor.execute(
-                """
-                    DELETE FROM conduit_conversations
-                    WHERE project_name = %s
-                """,
-                (self.project_name,),
+    async def wipe(self) -> None:
+        """Delete ALL sessions for this project."""
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                "DELETE FROM conduit_sessions WHERE project_name = $1",
+                self.project_name,
             )
-            conn.commit()
 
-    # Global methods
-    def list_all_projects(self) -> list[str]:
-        """
-        Lists all distinct project names in the conversations table.
-        """
-        with self._conn_factory() as conn, conn.cursor() as cursor:
-            cursor.execute(
-                """
-                    SELECT DISTINCT project_name
-                    FROM conduit_conversations
-                """
-            )
-            rows = cursor.fetchall()
-        return [row[0] for row in rows]
+    # --- Helpers ---
 
-    def prune(self, keep: int = 5) -> None:
-        """
-        Prunes old conversations, keeping only the most recent 'keep' conversations.
-        """
-        with self._conn_factory() as conn, conn.cursor() as cursor:
-            # Find conversations to delete
-            cursor.execute(
-                """
-                    SELECT id
-                    FROM conduit_conversations
-                    WHERE project_name = %s
-                    ORDER BY last_updated DESC
-                    OFFSET %s
-                """,
-                (self.project_name, keep),
-            )
-            rows = cursor.fetchall()
-            conv_ids_to_delete = [row[0] for row in rows]
+    def _row_to_message(self, row: Any) -> Message:
+        """Helper to rehydrate a Message object from a DB row."""
+        msg_data = dict(row)
 
-            if conv_ids_to_delete:
-                cursor.execute(
-                    """
-                        DELETE FROM conduit_conversations
-                        WHERE id = ANY(%s)
-                    """,
-                    (conv_ids_to_delete,),
-                )
-                conn.commit()
+        # Deserialize JSONB fields
+        for field in ["content", "tool_calls", "images", "audio", "parsed", "metadata"]:
+            if isinstance(msg_data.get(field), str):
+                try:
+                    msg_data[field] = json.loads(msg_data[field])
+                except (json.JSONDecodeError, TypeError):
+                    pass  # Keep as is if decode fails
 
-    def delete_orphaned_messages(self) -> None:
+        # Inject discriminator if needed by Pydantic
+        if "role" in msg_data:
+            msg_data["role_str"] = msg_data["role"]
+
+        return self._message_adapter.validate_python(msg_data)
+
+    def _topological_sort(self, message_dict: dict[str, Message]) -> list[Message]:
         """
-        Deletes messages that are not referenced by any conversation.
+        Sorts messages Root -> Leaf to satisfy Foreign Key constraints.
+        Simple BFS approach.
         """
-        with self._conn_factory() as conn, conn.cursor() as cursor:
-            cursor.execute(
-                """
-                    DELETE FROM conduit_messages
-                    WHERE id NOT IN (
-                        SELECT DISTINCT message_id FROM conduit_playlist
-                    )
-                """
-            )
-            conn.commit()
+        present_ids = set(message_dict.keys())
+        children_map = {mid: [] for mid in present_ids}
+        roots = []
+
+        # Build graph
+        for mid, msg in message_dict.items():
+            pid = msg.predecessor_id
+            if pid and pid in present_ids:
+                children_map[pid].append(mid)
+            else:
+                # No predecessor in this batch -> Root
+                roots.append(mid)
+
+        # Traverse
+        sorted_list = []
+        queue = roots[:]
+
+        while queue:
+            current_id = queue.pop(0)
+            if current_id in message_dict:
+                sorted_list.append(message_dict[current_id])
+                queue.extend(children_map.get(current_id, []))
+
+        # Fallback: append disconnected nodes (shouldn't happen in valid DAG)
+        if len(sorted_list) < len(message_dict):
+            visited = set(m.message_id for m in sorted_list)
+            for m in message_dict.values():
+                if m.message_id not in visited:
+                    sorted_list.append(m)
+
+        return sorted_list
 
 
-def get_postgres_repository(project_name: str) -> PostgresConversationRepository:
+async def get_async_repository(project_name: str) -> AsyncPostgresSessionRepository:
     """
-    Factory function to get a PostgresConversationRepository for a given project.
+    Factory function to get an initialized AsyncPostgresSessionRepository.
+    Requires 'asyncpg' installed and configured in dbclients.
     """
     from dbclients.clients.postgres import get_postgres_client
 
-    conn_factory = get_postgres_client(
-        client_type="context_db",
-        dbname="conduit",
-    )
+    # Must await the async factory to get the pool
+    pool = await get_postgres_client(client_type="async", dbname="conduit")
 
-    return PostgresConversationRepository(
-        project_name=project_name,
-        conn_factory=conn_factory,
-    )
+    repo = AsyncPostgresSessionRepository(project_name=project_name, pool=pool)
+    await repo.initialize()
+    return repo

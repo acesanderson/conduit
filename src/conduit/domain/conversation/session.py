@@ -1,6 +1,11 @@
+from __future__ import annotations
 from pydantic import BaseModel, Field
 from conduit.domain.message.message import Message
 import time
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from conduit.domain.conversation.conversation import Conversation
 
 
 class Session(BaseModel):
@@ -29,3 +34,69 @@ class Session(BaseModel):
         # 2. Update Cursor
         # In a strict tree append, the new message is always the new leaf.
         self.leaf = message.message_id
+
+    def to_conversation(
+        self, message_id: str, ensure_leaf: bool = True
+    ) -> Conversation:
+        """
+        Reconstruct a conversation for a given leaf (by message_id).
+        """
+        from conduit.domain.conversation.conversation import Conversation
+
+        if message_id not in self.message_dict:
+            raise KeyError(f"Message ID {message_id} not found in session.")
+
+        # If ensure_leaf, verify that the requested message_id is a TERMINATING message (no children).
+        if ensure_leaf:
+            is_leaf = all(
+                msg.predecessor_id != message_id for msg in self.message_dict.values()
+            )
+            if not is_leaf:
+                raise ValueError(f"Message ID {message_id} is not a leaf message.")
+
+        # Reconstruct the message chain
+        messages = []
+        current_id = message_id
+        while current_id:
+            msg = self.message_dict[current_id]
+            messages.append(msg)
+            current_id = msg.predecessor_id
+            if current_id == message_id:
+                raise ValueError(
+                    "Conversation is an infinite loop due to circular reference."
+                )
+        messages.reverse()  # Reverse to get chronological order
+        return Conversation(messages=messages)
+
+    @property
+    def conversation(self) -> Conversation:
+        """
+        Get the conversation for the current leaf message.
+        """
+        return self.to_conversation(self.leaf, ensure_leaf=True)
+
+    @property
+    def leaves(self) -> list[Message]:
+        """
+        Get all leaf messages in the session.
+        """
+        leaf_messages = []
+        for msg in self.message_dict.values():
+            is_leaf = all(
+                other_msg.predecessor_id != msg.message_id
+                for other_msg in self.message_dict.values()
+            )
+            if is_leaf:
+                leaf_messages.append(msg)
+        return leaf_messages
+
+    @property
+    def conversations(self) -> list[Conversation]:
+        """
+        Get all conversations for each leaf in the session.
+        """
+        convos = []
+        for leaf_msg in self.leaves:
+            convo = self.to_conversation(leaf_msg.message_id, ensure_leaf=True)
+            convos.append(convo)
+        return convos
