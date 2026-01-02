@@ -21,21 +21,18 @@ class Odometer(BaseModel):
 
     # Provider-level aggregation
     provider_totals: dict[str, dict[str, int]] = Field(default_factory=dict)
-    # {"openai": {"input": 1000, "output": 500, "total": 1500}}
 
     # Model-level aggregation
     model_totals: dict[str, dict[str, int]] = Field(default_factory=dict)
-    # {"gpt-4o": {"input": 800, "output": 300, "total": 1100}}
 
     # Time-based aggregation (by date string YYYY-MM-DD)
     daily_totals: dict[str, dict[str, int]] = Field(default_factory=dict)
-    # {"2025-01-15": {"input": 500, "output": 200, "total": 700}}
 
     # Session metadata
     session_start: datetime = Field(default_factory=datetime.now)
     last_updated: datetime = Field(default_factory=datetime.now)
 
-    # Host tracking (for multi-machine scenarios)
+    # Host tracking
     hosts: set[str] = Field(default_factory=set)
 
     def record(self, token_event: TokenEvent) -> None:
@@ -45,43 +42,52 @@ class Odometer(BaseModel):
         logger.debug(f"Recording TokenEvent: {token_event}")
         self.events.append(token_event)
 
+        # Update Aggregates (Keep running totals in memory)
         self.total_input_tokens += token_event.input_tokens
         self.total_output_tokens += token_event.output_tokens
         self.total_tokens += token_event.input_tokens + token_event.output_tokens
 
         # Provider totals
         provider_key = str(token_event.provider)
-        provider_entry = self.provider_totals.setdefault(
-            provider_key, {"input": 0, "output": 0, "total": 0}
-        )
-        provider_entry["input"] += token_event.input_tokens
-        provider_entry["output"] += token_event.output_tokens
-        provider_entry["total"] += token_event.input_tokens + token_event.output_tokens
+        self._update_aggregate(self.provider_totals, provider_key, token_event)
 
         # Model totals
-        model_entry = self.model_totals.setdefault(
-            token_event.model, {"input": 0, "output": 0, "total": 0}
-        )
-        model_entry["input"] += token_event.input_tokens
-        model_entry["output"] += token_event.output_tokens
-        model_entry["total"] += token_event.input_tokens + token_event.output_tokens
+        self._update_aggregate(self.model_totals, token_event.model, token_event)
 
-        # Daily totals (assuming timestamp in seconds)
-        date_str = datetime.fromtimestamp(token_event.timestamp).strftime("%Y-%m-%d")  # type: ignore[arg-type]
-        daily_entry = self.daily_totals.setdefault(
-            date_str, {"input": 0, "output": 0, "total": 0}
-        )
-        daily_entry["input"] += token_event.input_tokens
-        daily_entry["output"] += token_event.output_tokens
-        daily_entry["total"] += token_event.input_tokens + token_event.output_tokens
+        # Daily totals
+        date_str = datetime.fromtimestamp(token_event.timestamp).strftime("%Y-%m-%d")
+        self._update_aggregate(self.daily_totals, date_str, token_event)
 
-        # Hosts
-        self.hosts.add(token_event.host)  # type: ignore[arg-type]
-
+        self.hosts.add(token_event.host)
         self.last_updated = datetime.now()
 
-    # Simple query helpers
+    def _update_aggregate(self, target_dict: dict, key: str, event: TokenEvent):
+        entry = target_dict.setdefault(key, {"input": 0, "output": 0, "total": 0})
+        entry["input"] += event.input_tokens
+        entry["output"] += event.output_tokens
+        entry["total"] += event.input_tokens + event.output_tokens
 
+    def pop_events(self) -> list[TokenEvent]:
+        """
+        Atomic retrieval: Return all current events and clear the internal buffer.
+        Used by flusher/rescue to ensure no data is duplicated or left behind.
+        """
+        if not self.events:
+            return []
+
+        # Atomic swap
+        current_batch = self.events
+        self.events = []
+        return current_batch
+
+    def requeue_events(self, failed_events: list[TokenEvent]) -> None:
+        """
+        Safety valve: If a DB write fails, put the events back at the front of the queue
+        so they can be rescued by the file dump on exit.
+        """
+        self.events = failed_events + self.events
+
+    # Simple query helpers
     def get_provider_breakdown(self) -> dict[str, dict[str, int]]:
         """Return aggregate totals by provider."""
         return self.provider_totals

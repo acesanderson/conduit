@@ -6,23 +6,24 @@ Usage:
     python snapshot.py
 """
 
-from conduit.storage.odometer.pgres.postgres_backend import PostgresBackend
+import asyncio
+import sys
 from datetime import date
 from rich.console import Console
 from rich.table import Table
-import sys
+from conduit.storage.odometer.pgres.postgres_backend_async import AsyncPostgresOdometer
 
 
 def format_large_number(num):
     """Format large numbers with commas"""
+    if num is None:
+        return "0"
     return f"{num:,}"
 
 
-def print_usage_stats(console, backend):
+def print_usage_stats(console, stats):
     """Print usage statistics as a single line"""
-    stats = backend.get_overall_stats()
-
-    if not stats:
+    if not stats or stats.get("requests", 0) == 0:
         console.print("[red]No usage data found[/red]")
         return
 
@@ -37,10 +38,8 @@ def print_usage_stats(console, backend):
     )
 
 
-def print_provider_table(console, backend):
+def print_provider_table(console, provider_stats):
     """Print clean provider table"""
-    provider_stats = backend.get_aggregates("provider")
-
     if not provider_stats:
         return
 
@@ -100,28 +99,34 @@ def print_models_table(console, model_stats, limit=10, title="Top 10 Models"):
     console.print(table)
 
 
-def main():
+async def async_main():
     """Main function to generate the snapshot"""
     console = Console()
 
     try:
         with console.status("Connecting...", spinner="dots"):
-            backend = PostgresBackend()
+            backend = AsyncPostgresOdometer()
 
-            if not backend.health_check():
-                console.print("❌ [red]Database connection failed[/red]")
-                sys.exit(1)
+            # Fetch all data concurrently
+            overall_task = backend.get_overall_stats()
+            provider_task = backend.get_aggregates("provider")
+            all_time_task = backend.get_aggregates("model")
 
-        print_usage_stats(console, backend)
-        print_provider_table(console, backend)
+            today = date.today()
+            daily_task = backend.get_aggregates(
+                "model", start_date=today, end_date=today
+            )
 
-        # All-time models
-        all_time_stats = backend.get_aggregates("model")
+            # Await all results
+            stats = await overall_task
+            provider_stats = await provider_task
+            all_time_stats = await all_time_task
+            daily_stats = await daily_task
+
+        print_usage_stats(console, stats)
+        print_provider_table(console, provider_stats)
         print_models_table(console, all_time_stats)
 
-        # Today's models
-        today = date.today()
-        daily_stats = backend.get_aggregates("model", start_date=today, end_date=today)
         if daily_stats:
             print_models_table(console, daily_stats, title="Top 10 Models (Today)")
         else:
@@ -129,10 +134,15 @@ def main():
 
     except KeyboardInterrupt:
         console.print("\n[yellow]Cancelled[/yellow]")
-        sys.exit(0)
     except Exception as e:
         console.print(f"❌ [red]Error: {e}[/red]")
+        # import traceback
+        # traceback.print_exc()
         sys.exit(1)
+
+
+def main():
+    asyncio.run(async_main())
 
 
 if __name__ == "__main__":
