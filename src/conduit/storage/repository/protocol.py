@@ -1,50 +1,65 @@
 from __future__ import annotations
-from typing import Protocol, runtime_checkable
-from uuid import UUID
-from typing import TYPE_CHECKING
+from typing import Protocol, runtime_checkable, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from conduit.domain.conversation.session import Session
     from conduit.domain.conversation.conversation import Conversation
+    from conduit.domain.message.message import Message
 
 
 @runtime_checkable
-class ConversationRepository(Protocol):
+class AsyncSessionRepository(Protocol):
     """
-    The Playlist Manager.
-    Saves and Loads Conversations as sequences of Message IDs.
+    Async interface for persisting Conduit sessions (DAGs) and conversations (Linear Views).
+    Strictly scoped to a specific 'project_name'.
     """
 
-    def load_by_conversation_id(
-        self, conversation_id: str | UUID
-    ) -> Conversation | None:
-        """Rehydrates a Conversation object from the DB."""
+    async def initialize(self) -> None:
+        """
+        Ensure the underlying storage schema exists.
+        """
         ...
 
-    def load_by_name(self, name: str) -> Conversation | None:
-        """Loads a Conversation by its given name, if any."""
+    async def get_session(self, session_id: str) -> Session | None:
+        """
+        Rehydrates a full Session object, including the entire message graph
+        (message_dict) associated with it.
+        """
         ...
 
-    def list_conversations(self, limit: int = 10) -> list[dict[str, str]]:
-        """Lists Conversations with metadata only."""
+    async def get_conversation(self, leaf_message_id: str) -> Conversation | None:
+        """
+        Rehydrates a linear Conversation view by walking backwards from a specific leaf.
+        """
         ...
 
-    def load_all(self) -> list[Conversation]:
-        """Loads all Conversations in the repository."""
+    async def get_message(self, message_id: str) -> Message | None:
+        """
+        Fetch a single specific message by ID.
+        """
         ...
 
-    def save(self, conversation: Conversation, name: str | None = None) -> None:
-        """Upserts Conversation metadata and message links."""
+    async def save_session(self, session: Session, name: str | None = None) -> None:
+        """
+        Upserts the Session metadata and *all* messages currently in the session.
+        Uses topological sorting to ensure referential integrity.
+        """
         ...
 
-    def remove_by_conversation_id(self, conversation_id: str | UUID) -> None:
-        """Removes a Conversation and its links from the repository."""
+    async def list_sessions(self, limit: int = 20) -> list[dict[str, Any]]:
+        """
+        Returns lightweight metadata for recent sessions in this project.
+        """
         ...
 
-    def wipe(self) -> None:
-        """Wipes all Conversations from the repository."""
+    async def delete_session(self, session_id: str) -> None:
+        """
+        Hard deletes a session and all its associated messages.
+        """
         ...
 
-    @property
-    def last(self) -> Conversation | None:
-        """Returns the most recently used Conversation, if any."""
+    async def wipe(self) -> None:
+        """
+        Hard deletes ALL sessions for the current project.
+        """
         ...

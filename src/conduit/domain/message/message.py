@@ -126,10 +126,16 @@ class Message(BaseModel):
     Use this for isinstance checks.
     """
 
+    # Content -- quite simple.
     role: Role
     content: Content | None
+
+    # Metadata
     created_at: int = Field(default_factory=lambda: int(time.time() * 1000))
     message_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+
+    # Optional metadata for extensibility (like conversation tags like title)
+    metadata: dict[str, Any] | None = None
 
     # For threading/conversation continuity
     predecessor_id: str | None = None
