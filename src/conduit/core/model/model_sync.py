@@ -214,12 +214,14 @@ class ModelSync:
         # Cache wiring
         if cached:
             cache_name = cached if isinstance(cached, str) else project_name
-            opt_updates["cache"] = settings.default_cache(name=cache_name)
+            opt_updates["cache"] = settings.default_cache(project_name=cache_name)
 
         # Persistence wiring
         if persist:
             repo_name = persist if isinstance(persist, str) else project_name
-            opt_updates["repository"] = settings.default_repository(name=repo_name)
+            opt_updates["repository"] = settings.default_repository(
+                project_name=repo_name
+            )
 
         # Debug
         if debug_payload:

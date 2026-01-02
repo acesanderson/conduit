@@ -3,7 +3,7 @@ from conduit.utils.progress.verbosity import Verbosity
 from conduit.storage.repository.persistence_mode import PersistenceMode
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from conduit.storage.cache.protocol import ConduitCache
-from conduit.storage.repository.protocol import ConversationRepository
+from conduit.storage.repository.protocol import AsyncSessionRepository
 from conduit.capabilities.tools.registry import ToolRegistry
 from rich.console import Console
 
@@ -25,7 +25,7 @@ class ConduitOptions(BaseModel):
         description="Cache backend for storing/retrieving generations.",
         exclude=True,
     )
-    repository: ConversationRepository | None = Field(
+    repository: AsyncSessionRepository | None = Field(
         default=None,
         description="Repository backend for persisting conversations.",
         exclude=True,
