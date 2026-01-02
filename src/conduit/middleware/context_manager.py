@@ -92,15 +92,28 @@ async def middleware_context_manager(request: GenerationRequest):
             # AWAIT HERE
             await request.options.cache.set(request, result)
 
-        # Telemetry (Sync - Keep synchronous for Odometer)
+        # Telemetry (Async Flush)
         if not ctx["cache_hit"] and result.metadata.output_tokens > 0:
             from conduit.config import settings
             from conduit.storage.odometer.token_event import TokenEvent
 
             telemetry = settings.odometer_registry()
+
+            # 1. Record to memory (Sync)
             event = TokenEvent(
                 model=model_name,
                 input_tokens=result.metadata.input_tokens,
                 output_tokens=result.metadata.output_tokens,
             )
             telemetry.emit_token_event(event)
+
+            # 2. Trigger Async Flush
+            # We trigger the flush here to ensure near-realtime persistence
+            # without blocking the user response (since it's async).
+            # We also check for recovery (one-time check usually handles itself,
+            # but we can optionally call recover here if we want to be aggressive).
+            await telemetry.flush()
+
+            # Optional: If this is the very first run, try to recover old files
+            # Ideally this is done at app startup, but doing it here is safe/lazy.
+            await telemetry.recover()
