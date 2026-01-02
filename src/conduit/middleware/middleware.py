@@ -4,10 +4,10 @@ from conduit.domain.request.request import GenerationRequest
 import functools
 import logging
 from typing import TYPE_CHECKING
+from collections.abc import Callable, Awaitable
 
 if TYPE_CHECKING:
     from conduit.domain.result.result import GenerationResult
-    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 def get_request(*args, **kwargs) -> GenerationRequest:
     """
     Common logic to extract request from args and kwargs.
+    The wrapped function is expected to have 'request' as the 2nd arg or a kwarg.
     """
     if len(args) > 1 and isinstance(args[1], GenerationRequest):
         request = args[1]
@@ -28,14 +29,19 @@ def get_request(*args, **kwargs) -> GenerationRequest:
 
 
 def middleware(
-    func: Callable[[GenerationRequest], GenerationResult],
-) -> Callable[[GenerationRequest], GenerationResult]:
+    func: Callable[..., Awaitable[GenerationResult]],
+) -> Callable[..., Awaitable[GenerationResult]]:
+    """
+    Decorator that wraps Model execution with the middleware context manager.
+    Handles caching, UI spinners, logging, and telemetry via `middleware_context_manager`.
+    """
+
     @functools.wraps(func)
     async def async_wrapper(*args: object, **kwargs: object) -> GenerationResult:
         request = get_request(*args, **kwargs)
 
-        # All the magic is in here
-        with middleware_context_manager(request) as ctx:
+        # Use async with for the context manager (allows awaitable cache ops)
+        async with middleware_context_manager(request) as ctx:
             # Check for cache hit (passed back from context manager)
             if ctx["cache_hit"] is True:
                 result = ctx["result"]
