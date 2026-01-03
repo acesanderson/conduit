@@ -173,34 +173,6 @@ class Conversation(BaseModel):
         self.topic = topic
         self.leaf.metadata["topic"] = topic
 
-    def branch(self, pointer: int | str) -> Conversation:
-        """
-        Create a new Conversation branch from a given message index or message ID.
-        The new Conversation will share the same Session but have its own message list starting from the specified pointer.
-        """
-        if isinstance(pointer, int):
-            if pointer < 0 or pointer >= len(self.messages):
-                raise ConversationError("Pointer index out of range.")
-            branch_messages = self.messages[: pointer + 1]
-        elif isinstance(pointer, str):
-            index = next(
-                (i for i, m in enumerate(self.messages) if m.message_id == pointer), -1
-            )
-            if index == -1:
-                raise ConversationError("Message ID not found in conversation.")
-            branch_messages = self.messages[: index + 1]
-        else:
-            raise ConversationError(
-                "Pointer must be an integer index or a message ID string."
-            )
-
-        branch_conversation = Conversation(
-            topic=self.topic,
-            messages=branch_messages,
-            session=self.session,
-        )
-        return branch_conversation
-
     # Properties
     @property
     def last(self) -> Message | None:

@@ -68,6 +68,23 @@ class Session(BaseModel):
         messages.reverse()  # Reverse to get chronological order
         return Conversation(messages=messages)
 
+    def branch(self, from_message_id: str) -> Conversation:
+        """
+        Create a new conversation branch from an existing message in the session.
+        """
+        if from_message_id not in self.message_dict:
+            raise KeyError(f"Message ID {from_message_id} not found in session.")
+
+        message = self.message_dict[from_message_id]
+        if message.predecessor_id is None:
+            raise ValueError("Cannot branch from a root message.")
+        if message.predecessor_id not in self.message_dict:
+            raise ValueError(
+                "Cannot branch from a message whose predecessor is not in the session."
+            )
+
+        return self.to_conversation(from_message_id, ensure_leaf=False)
+
     @property
     def conversation(self) -> Conversation:
         """
