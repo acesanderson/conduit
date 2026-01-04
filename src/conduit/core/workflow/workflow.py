@@ -97,42 +97,47 @@ def get_param(key: str, default: Any = None, scope: str | None = None) -> Any:
     return default
 
 
+import functools
+import inspect
+import time
+
+
 def step(func):
+    if not inspect.iscoroutinefunction(func):
+        raise TypeError(
+            f"@step requires async functions. {func.__name__} must be defined with `async def`."
+        )
+
     @functools.wraps(func)
-    def wrapper(*args, **kwargs):
+    async def wrapper(*args, **kwargs):
         start = time.time()
 
-        # Create a fresh scratchpad for this step
         current_meta = {}
         token_meta = _step_meta_ctx.set(current_meta)
 
         try:
-            # Run the function (which might call add_metadata)
-            result = func(*args, **kwargs)
+            result = await func(*args, **kwargs)
             status = "success"
         except Exception as e:
             result = str(e)
             status = "error"
-            raise e
+            raise
         finally:
             duration = time.time() - start
 
-            # Save to the global Trace Log
             trace_list = _trace_ctx.get()
             if trace_list is not None:
                 trace_list.append(
                     {
-                        "step": func.__name__,
-                        "inputs": {"args": args, "kwargs": kwargs},  # Simplify for prod
+                        "step": f"{func.__qualname__.replace('.__call__', '')}",
+                        "inputs": {"args": args, "kwargs": kwargs},
                         "output": result,
                         "duration": round(duration, 4),
                         "status": status,
-                        # HERE IS YOUR METADATA (Tokens, etc.)
                         "metadata": current_meta,
                     }
                 )
 
-            # Clean up the scratchpad (ContextVars handles nesting automatically!)
             _step_meta_ctx.reset(token_meta)
 
         return result
@@ -151,12 +156,13 @@ class Step(Protocol):
 
 
 @runtime_checkable
-class Strategy(Protocol):
+class Strategy(Step, Protocol):
     """
-    A Step with a standardized signature for interchangeability.
+    A Step that adheres to a strict interface.
+    Inherit this for plugins like Summarizer, Researcher, etc.
     """
 
-    def __call__(self, input_data: Any) -> Any: ...
+    pass
 
 
 @runtime_checkable
@@ -177,7 +183,7 @@ class ConduitHarness:
         self.config = config or {}
         self.trace_log: list = []
 
-    def run(self, workflow: Workflow, *args, **kwargs) -> Any:
+    async def run(self, workflow: Workflow, *args, **kwargs) -> Any:
         """
         Executes a workflow within the managed context.
         """
@@ -186,7 +192,7 @@ class ConduitHarness:
         token_trace = _trace_ctx.set(self.trace_log)
 
         try:
-            return workflow(*args, **kwargs)
+            return await workflow(*args, **kwargs)
         finally:
             # Unmount Context
             _config_ctx.reset(token_conf)
@@ -196,39 +202,34 @@ class ConduitHarness:
     def trace(self) -> list:
         return self.trace_log
 
+    def view_trace(self):
+        """
+        Simple pretty-printer for the trace log.
+        Truncate long outputs to this many characters: 50
+        Pretty print with rich.console.
+        """
+        from rich.console import Console
+        from rich.table import Table
 
-if __name__ == "__main__":
-    # --- EXAMPLE USAGE ---
-    @step
-    def DraftEmail(topic: str) -> str:
-        model = get_param("model", default="gpt-3.5")
-        # result = Model(model).query(f"Draft an email about {topic}")
-        add_metadata("model_used", model)
-        add_metadata("input_tokens", 50)
-        add_metadata("output_tokens", 150)
-        return f"Drafted email about '{topic}' using model {model}."
+        console = Console()
+        table = Table(show_header=True, header_style="bold magenta")
+        table.add_column("Step")
+        table.add_column("Duration (s)", justify="right")
+        table.add_column("Status")
+        table.add_column("Metadata")
+        table.add_column("Output", overflow="fold")
 
-    @step
-    def SummarizeEmail(draft: str) -> str:
-        model = get_param("model", default="gpt-3.5")
-        length = get_param("length", default="short")
-        # result = Model(model).query(f"Summarize this email in a {length} format: {draft}")
-        add_metadata("model_used", model)
-        add_metadata("input_tokens", 150)
-        add_metadata("output_tokens", 50)
-        return f"Summarized ({length}): {draft}"
+        for entry in self.trace_log:
+            output = str(entry["output"])
+            if len(output) > 50:
+                output = output[:47] + "..."
+            metadata = ", ".join(f"{k}: {v}" for k, v in entry["metadata"].items())
+            table.add_row(
+                entry["step"],
+                str(entry["duration"]),
+                entry["status"],
+                metadata,
+                output,
+            )
 
-    def EmailWorkflow(topic: str) -> str:
-        draft = DraftEmail(topic)
-        summary = SummarizeEmail(draft)
-        return summary
-
-    harness = ConduitHarness(
-        config={
-            "DraftEmail.model": "gpt-4",
-            "SummarizeEmail.model": "gp3",
-            "length": "detailed",
-        }
-    )
-
-    result = harness.run(EmailWorkflow, topic="AI in Healthcare")
+        console.print(table)
