@@ -21,3 +21,4 @@ multimodal/tts/asset/*
 multimodal/tts/audio_files/*
 uv.lock
 src/conduit/summarize/essays/*
+*.txt
