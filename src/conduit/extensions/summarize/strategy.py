@@ -27,7 +27,7 @@ class ChunkingStrategy(ABC):
 
     @step
     @abstractmethod
-    async def chunk(self, text: str, **kwargs) -> list[str]:
+    async def __call__(self, text: str, **kwargs) -> list[str]:
         """
         Execute the chunking workflow.
         Return type should be LLM-ready list of strings (i.e. any necessary metadata should be injected here).

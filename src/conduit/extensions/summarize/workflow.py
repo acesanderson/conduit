@@ -2,7 +2,7 @@ from __future__ import annotations
 from conduit.core.workflow.workflow import ConduitHarness
 from conduit.extensions.summarize.summarizers.one_shot import OneShotSummarizer
 from conduit.extensions.summarize.summarizers.map_reduce import MapReduceSummarizer
-from conduit.extensions.summarize.summarizers.hierarchal import HierarchalSummarizer
+# from conduit.extensions.summarize.summarizers.hierarchal import HierarchalSummarizer
 
 from typing import TYPE_CHECKING
 from pathlib import Path
