@@ -1,5 +1,6 @@
 """
 Generate raw embeddings for a list of texts using a specified embedding model.
+We delegate the actual embedding generation to the Headwater API, so this is just client code.
 """
 
 from headwater_client.client.headwater_client import HeadwaterClient

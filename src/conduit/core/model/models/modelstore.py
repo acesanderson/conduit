@@ -326,6 +326,8 @@ class ModelStore:
         """
         Get the model name, validating against aliases and supported models.
         """
+        from conduit.core.model.models.modelspecs_CRUD import get_modelspec_by_name
+
         model = cls.validate_model(model)
         try:
             return get_modelspec_by_name(model)
@@ -489,3 +491,13 @@ class ModelStore:
         return [
             modelspec for modelspec in cls.get_all_models() if modelspec.text_completion
         ]
+
+    # Model metadata
+    @classmethod
+    def get_context_window(cls, model_name: str) -> int:
+        """
+        Get the context window size for a given model.
+        """
+
+        modelspec = cls.get_model(model_name)
+        return modelspec.context_window
