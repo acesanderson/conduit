@@ -8,6 +8,12 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+"""
+EFFECTIVE_CONTEXT_WINDOW = .5 # Portion of context window to use for input
+CHUNK_SIZE  # input tokens per chunk, leaving room for output + system prompt
+TARGET_COMPRESSION  # rough ratio (10:1? configurable per source type?)
+"""
+
 chunk_summarization_prompt = """
 Summarize the following content. This is section {{ chunk_index }} of {{ total_chunks}}.
 Preserve key facts, entities, and relationships.
@@ -27,6 +33,7 @@ class MapReduceSummarizer(SummarizationStrategy):
         # Grab llm params
         model = get_param("model", default="gpt-3.5")
         prompt = get_param("prompt", default=chunk_summarization_prompt)
+        concurrency_limit = get_param("concurrency_limit", default=5)
 
         # Chunk that shit
         chunker = Chunker()
@@ -38,6 +45,7 @@ class MapReduceSummarizer(SummarizationStrategy):
         from conduit.core.prompt.prompt import Prompt
         from conduit.domain.request.generation_params import GenerationParams
         from conduit.domain.config.conduit_options import ConduitOptions
+        from conduit.utils.progress.verbosity import Verbosity
         import asyncio
 
         generation_params = GenerationParams(
@@ -47,7 +55,8 @@ class MapReduceSummarizer(SummarizationStrategy):
             top_p=get_param("top_p", default=None),
         )
         options = ConduitOptions(
-            project_name=get_param("project_name", default="conduit")
+            project_name=get_param("project_name", default="conduit"),
+            verbosity=Verbosity.SILENT,
         )
         model_instance = ModelAsync(model=model)
 
@@ -60,7 +69,6 @@ class MapReduceSummarizer(SummarizationStrategy):
                     "chunk_index": str(i + 1),
                     "total_chunks": str(len(chunks)),
                     "target_tokens": get_param("target_tokens", default=150),
-                    "text": text,
                 }
             )
             coroutine = model_instance.query(
@@ -70,11 +78,15 @@ class MapReduceSummarizer(SummarizationStrategy):
             )
             coroutines.append(coroutine)
 
+        # Create a semaphore to limit concurrent requests
+        semaphore = asyncio.Semaphore(concurrency_limit)  # From config
         logger.debug("Awaiting all chunk summarization coroutines")
-        responses: list[GenerationResponse] = await asyncio.gather(*coroutines)
+        async with semaphore:
+            responses: list[GenerationResponse] = await asyncio.gather(*coroutines)
         # REDUCE: Join structured summaries
         response_strings = [str(r.content) for r in responses]
         combined = "\n\n".join(response_strings)
+
         one_shot_summarizer = OneShotSummarizer()
         logger.debug("Starting final summarization step")
         final_summary = await one_shot_summarizer(combined)
@@ -95,8 +107,11 @@ async def main():
     ESSAYS_DIR = Path(__file__).parent.parent / "essays"
     text = (ESSAYS_DIR / "conduit.txt").read_text()
     config = {
+        "MapReduceSummarizer.prompt": chunk_summarization_prompt,
         "model": "gpt3",
-        "prompt": "Summarize the key speakers in this text:\n\n{{text}}",
+        "OneShotSummarizer.prompt": "Summarize the key speakers in this text:\n\n{{text}}",
+        "chunk_size": 8000,
+        "concurrency_limit": 5,
     }
     workflow = MapReduceSummarizer()
     harness = ConduitHarness(config=config)

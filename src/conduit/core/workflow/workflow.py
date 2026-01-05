@@ -18,7 +18,7 @@ CORE CONCEPTS
    - It pulls configuration via `get_param()` for runtime tuning.
 
 3. STRATEGY (The Interchangeable Unit)
-   - A Step that adheres to a strict interface (Protocol).
+   - A pre-baked Step that wraps a specific behavior behind a common interface.
    - Used when a slot in a workflow can be filled by multiple implementations
      (e.g., 'Summarizer' can be 'FastSummarizer' or 'DeepSummarizer').
 
