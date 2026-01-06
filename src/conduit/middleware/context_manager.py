@@ -6,11 +6,11 @@ from conduit.domain.result.response import GenerationResponse
 from conduit.domain.request.request import GenerationRequest
 from conduit.utils.progress.verbosity import Verbosity
 from conduit.utils.progress.utils import extract_query_preview
+from conduit.core.workflow.context import context
 
 logger = logging.getLogger(__name__)
 
 
-# _get_progress_handler helper stays the same...
 def _get_progress_handler(request: GenerationRequest):
     if request.options.console is not None:
         from conduit.utils.progress.rich_handler import RichProgressHandler
@@ -49,11 +49,8 @@ async def middleware_context_manager(request: GenerationRequest):
             verbosity=verbosity,
         )
 
-    # Debug print block stays same...
-
     # --- 3. CACHE READ (Async) ---
     if request.options.cache is not None and request.options.use_cache:
-        # AWAIT HERE
         cached_result = await request.options.cache.get(request)
         if isinstance(cached_result, GenerationResponse):
             ctx["cache_hit"] = True
@@ -84,22 +81,21 @@ async def middleware_context_manager(request: GenerationRequest):
                 response_obj=result if isinstance(result, GenerationResponse) else None,
             )
 
-    # --- 6. TEARDOWN (IO) ---
+    # --- 6. TEARDOWN (IO & TELEMETRY) ---
     if isinstance(result, GenerationResponse):
-        # Cache Write (Async)
+        # A. Cache Write (Async)
         if not ctx["cache_hit"] and request.options.cache is not None:
             logger.debug("Persisting result to cache.")
-            # AWAIT HERE
             await request.options.cache.set(request, result)
 
-        # Telemetry (Async Flush)
+        # B. Odometer Telemetry (Async Flush)
         if not ctx["cache_hit"] and result.metadata.output_tokens > 0:
             from conduit.config import settings
             from conduit.storage.odometer.token_event import TokenEvent
 
             telemetry = settings.odometer_registry()
 
-            # 1. Record to memory (Sync)
+            # Record to memory (Sync)
             event = TokenEvent(
                 model=model_name,
                 input_tokens=result.metadata.input_tokens,
@@ -107,13 +103,27 @@ async def middleware_context_manager(request: GenerationRequest):
             )
             telemetry.emit_token_event(event)
 
-            # 2. Trigger Async Flush
-            # We trigger the flush here to ensure near-realtime persistence
-            # without blocking the user response (since it's async).
-            # We also check for recovery (one-time check usually handles itself,
-            # but we can optionally call recover here if we want to be aggressive).
+            # Trigger Async Flush
             await telemetry.flush()
-
-            # Optional: If this is the very first run, try to recover old files
-            # Ideally this is done at app startup, but doing it here is safe/lazy.
             await telemetry.recover()
+
+        # C. Workflow Trace Injection (The "Telemetric Middleware")
+        # If we are currently running inside a @step, auto-log the token usage.
+        if context.is_active:
+            meta = context.step_meta.get()
+            if meta is not None:
+                # Initialize counters if this step makes multiple model calls
+                meta.setdefault("input_tokens", 0)
+                meta.setdefault("output_tokens", 0)
+                meta.setdefault("model_calls", 0)
+
+                # Accumulate tokens
+                meta["input_tokens"] += result.metadata.input_tokens
+                meta["output_tokens"] += result.metadata.output_tokens
+                meta["model_calls"] += 1
+
+                # Track unique models used in this step
+                current_models = meta.get("models_used", [])
+                if model_name not in current_models:
+                    current_models.append(model_name)
+                meta["models_used"] = current_models

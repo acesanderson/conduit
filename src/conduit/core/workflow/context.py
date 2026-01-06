@@ -34,7 +34,19 @@ class WorkflowContext:
         default_factory=lambda: ContextVar("step_meta", default=None)
     )
 
+    # NEW: Active Step Arguments (Read-Only)
+    # Captures the unified dictionary of args/kwargs passed to the current @step
+    args: ContextVar[dict | None] = field(
+        default_factory=lambda: ContextVar("step_args", default=None)
+    )
+
+    @property
+    def is_active(self) -> bool:
+        """
+        Returns True if we are currently executing inside a @step.
+        """
+        return self.step_meta.get() is not None
+
 
 # The Singleton Instance
-# Import THIS object in your other files.
 context = WorkflowContext()
