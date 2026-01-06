@@ -1,4 +1,4 @@
-from conduit.extensions.summarize.strategy import SummarizationStrategy
+from conduit.strategies.summarize.strategy import SummarizationStrategy
 from conduit.domain.result.response import GenerationResponse
 from conduit.core.workflow.workflow import step, get_param, add_metadata
 from typing import override
