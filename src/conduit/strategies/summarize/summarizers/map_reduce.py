@@ -1,6 +1,6 @@
-from conduit.extensions.summarize.strategy import SummarizationStrategy
-from conduit.extensions.summarize.summarizers.one_shot import OneShotSummarizer
-from conduit.extensions.summarize.summarizers.chunker import Chunker
+from conduit.strategies.summarize.strategy import SummarizationStrategy
+from conduit.strategies.summarize.summarizers.one_shot import OneShotSummarizer
+from conduit.strategies.summarize.summarizers.chunker import Chunker
 from conduit.domain.result.response import GenerationResponse
 from conduit.core.workflow.workflow import step, get_param, add_metadata
 from typing import override

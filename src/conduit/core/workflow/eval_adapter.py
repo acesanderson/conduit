@@ -30,7 +30,7 @@ import importlib
 from collections.abc import Callable
 
 # Use your actual imports here
-from conduit.core.workflow.workflow import ConduitHarness
+from conduit.core.workflow.harness import ConduitHarness
 
 
 def load_workflow_target(target_path: str, method_name: str = None) -> Callable:
