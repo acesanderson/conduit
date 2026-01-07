@@ -21,6 +21,7 @@ class ConversationState(Enum):
     EXECUTE = "execute"
     TERMINATE = "terminate"
     INCOMPLETE = "incomplete"
+    # PREDICT_USER = "fake_user" # For future use, when we have bots simulating users. Within chat this would be interesting.
 
 
 class Conversation(BaseModel):
