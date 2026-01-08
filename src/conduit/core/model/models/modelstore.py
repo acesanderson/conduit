@@ -14,14 +14,14 @@ from typing import Literal, TYPE_CHECKING
 import json
 import itertools
 import logging
+from conduit.core.model.models.modelspecs_CRUD import (
+    get_modelspec_by_name,
+    get_all_modelspecs,
+)
 from rich.console import RenderableType
 
 if TYPE_CHECKING:
     from conduit.core.model.models.modelspec import ModelSpec
-    from conduit.core.model.models.modelspecs_CRUD import (
-        get_modelspec_by_name,
-        get_all_modelspecs,
-    )
 
 logger = logging.getLogger(__name__)
 
