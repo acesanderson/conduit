@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from conduit.domain.conversation.conversation import Conversation
     from conduit.apps.cli.utils.printer import Printer
     from conduit.domain.message.message import UserMessage, Message
-    from conduit.storage.repository.protocol import ConversationRepository
+    from conduit.storage.repository.sync_wrapper import SyncSessionRepositoryWrapper
     from uuid import UUID
 
 logger = logging.getLogger(__name__)
@@ -93,7 +93,7 @@ class BaseHandlers:
     # Handlers
     @staticmethod
     def handle_history(
-        repository: ConversationRepository,
+        repository: SyncSessionRepositoryWrapper,
         conversation_id: str | UUID,
         printer: Printer,
     ) -> None:
@@ -101,7 +101,7 @@ class BaseHandlers:
         View message history and exit.
         """
         logger.info("Viewing message history...")
-        conversation = repository.load_by_conversation_id(conversation_id)
+        conversation = repository.load_by_conversation_id(str(conversation_id))
         if not conversation:
             raise ValueError("Conversation not found.")
         conversation.print_history()
@@ -110,7 +110,7 @@ class BaseHandlers:
     @staticmethod
     def handle_wipe(
         printer: Printer,
-        repository: ConversationRepository,
+        repository: SyncSessionRepositoryWrapper,
         conversation_id: str,
     ):
         """

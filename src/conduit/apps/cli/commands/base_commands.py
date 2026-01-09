@@ -13,7 +13,7 @@ from typing import override, TYPE_CHECKING
 if TYPE_CHECKING:
     from conduit.utils.progress.verbosity import Verbosity
     from conduit.domain.conversation.conversation import Conversation
-    from conduit.storage.repository.protocol import ConversationRepository
+    from conduit.storage.repository.sync_wrapper import SyncSessionRepositoryWrapper
     from conduit.apps.cli.utils.printer import Printer
 
 handlers = BaseHandlers()
@@ -113,7 +113,7 @@ class BaseCommands(CommandCollection):
         @click.pass_context
         def history(ctx: click.Context):
             """View message history."""
-            repository: ConversationRepository = ctx.obj["repository"]()  # Lazy load
+            repository: SyncSessionRepositoryWrapper = ctx.obj["repository"]()  # Lazy load
             conversation: Conversation = ctx.obj["conversation"]()  # Lazy load
             conversation_id: str = conversation.conversation_id
             printer: Printer = ctx.obj["printer"]
@@ -124,7 +124,7 @@ class BaseCommands(CommandCollection):
         @click.pass_context
         def wipe(ctx: click.Context):
             """Wipe message history."""
-            repository: ConversationRepository = ctx.obj["repository"]()  # Lazy load
+            repository: SyncSessionRepositoryWrapper = ctx.obj["repository"]()  # Lazy load
             conversation = ctx.obj["conversation"]()  # Lazy load
             conversation_id: str = conversation.conversation_id
             printer: Printer = ctx.obj["printer"]
@@ -133,8 +133,9 @@ class BaseCommands(CommandCollection):
             # Reset conversation in context
             from conduit.domain.conversation.conversation import Conversation
 
-            ctx.obj["conversation"] = Conversation()
-            repository.save(ctx.obj["conversation"], name="Untitled")
+            new_conversation = Conversation()
+            ctx.obj["conversation"] = lambda: new_conversation
+            repository.save(new_conversation, name="Untitled")
 
         @click.command()
         @click.pass_context

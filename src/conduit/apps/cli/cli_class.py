@@ -17,7 +17,7 @@ from conduit.apps.cli.query.query_function import (
     CLIQueryFunctionProtocol,
     default_query_function,
 )
-from conduit.storage.repository.protocol import ConversationRepository
+from conduit.storage.repository.protocol import AsyncSessionRepository
 from conduit.apps.cli.commands.commands import CommandCollection
 from conduit.apps.cli.utils.printer import Printer
 from functools import cached_property
@@ -76,23 +76,22 @@ class ConduitCLI:
         self.cli: click.Group = self._build_cli()
 
     @cached_property
-    def repository(self) -> ConversationRepository:
+    def repository(self) -> SyncSessionRepositoryWrapper:
         """
         Load the conversation repository.
         Returns:
-            ConversationRepository: The loaded repository.
+            SyncSessionRepositoryWrapper: The sync wrapper around the async repository.
         """
-        from dbclients.clients.postgres import get_postgres_client
-        from conduit.storage.repository.postgres_repository import (
-            PostgresConversationRepository,
-        )
-
-        conn_factory = get_postgres_client("context_db", dbname="conduit")
-
-        repository = PostgresConversationRepository(
-            conn_factory=conn_factory, project_name=self.project_name
-        )
-        return repository
+        from conduit.storage.repository.postgres_repository import get_async_repository
+        from conduit.storage.repository.sync_wrapper import SyncSessionRepositoryWrapper
+        import asyncio
+        
+        # Get the async repository and wrap it in a sync interface
+        async def _get_repo():
+            return await get_async_repository(self.project_name)
+        
+        async_repo = asyncio.run(_get_repo())
+        return SyncSessionRepositoryWrapper(async_repo)
 
     @cached_property
     def conversation(self) -> Conversation:
