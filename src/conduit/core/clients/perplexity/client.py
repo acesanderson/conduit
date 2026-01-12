@@ -8,7 +8,9 @@ from __future__ import annotations
 from conduit.core.clients.client_base import Client
 from conduit.core.clients.payload_base import Payload
 from conduit.core.clients.perplexity.payload import PerplexityPayload
-from conduit.core.clients.perplexity.message_adapter import convert_message_to_perplexity
+from conduit.core.clients.perplexity.message_adapter import (
+    convert_message_to_perplexity,
+)
 from conduit.domain.result.response import GenerationResponse
 from conduit.domain.result.response_metadata import ResponseMetadata, StopReason
 from conduit.domain.message.message import AssistantMessage
@@ -103,7 +105,7 @@ class PerplexityClient(Client):
         return perplexity_payload
 
     @override
-    def tokenize(self, model: str, payload: str | Sequence[Message]) -> int:
+    async def tokenize(self, model: str, payload: str | Sequence[Message]) -> int:
         """
         Return the token count for a string, per model's tokenization function.
         cl100k_base is good enough for Perplexity approximation.
