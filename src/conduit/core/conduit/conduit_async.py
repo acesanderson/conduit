@@ -40,7 +40,7 @@ class ConduitAsync(ConduitBase):
         rendered = self._render_prompt(input_variables)
 
         # 2. Prepare conversation (may load from repository)
-        conversation = self._prepare_conversation(rendered, params, options)
+        conversation = await self._prepare_conversation(rendered, params, options)
 
         # 3. Execute via Engine
         updated_conversation = await self.pipe(conversation, params, options)
@@ -48,6 +48,13 @@ class ConduitAsync(ConduitBase):
         # 4. Save if repository is configured
         if options.repository:
             logger.info("Saving conversation to repository.")
-            options.repository.save(updated_conversation)
+            if updated_conversation.session:
+                await options.repository.save_session(
+                    updated_conversation.session, name=updated_conversation.topic
+                )
+            else:
+                logger.warning(
+                    "Conversation has no session initialized; skipping persistence."
+                )
 
         return updated_conversation
