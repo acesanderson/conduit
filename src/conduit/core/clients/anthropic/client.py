@@ -119,7 +119,7 @@ class AnthropicClient(Client):
         return anthropic_payload
 
     @override
-    def tokenize(self, model: str, payload: str | Sequence[Message]) -> int:
+    async def tokenize(self, model: str, payload: str | Sequence[Message]) -> int:
         """
         Get token count per official Anthropic api endpoint.
         """
@@ -238,7 +238,12 @@ class AnthropicClient(Client):
                         function_name=block.name,
                         arguments=block.input,  # Anthropic provides dict directly
                         provider="anthropic",
-                        raw={"type": "tool_use", "id": block.id, "name": block.name, "input": block.input},
+                        raw={
+                            "type": "tool_use",
+                            "id": block.id,
+                            "name": block.name,
+                            "input": block.input,
+                        },
                     )
                     tool_calls.append(tool_call)
 

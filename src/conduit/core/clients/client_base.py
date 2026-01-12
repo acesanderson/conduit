@@ -31,7 +31,7 @@ class Client:
     async def query(self, request: GenerationRequest) -> GenerationResult:
         raise NotImplementedError("Should be implemented in subclass.")
 
-    def tokenize(self, model: str, payload: str | Sequence[Message]) -> int:
+    async def tokenize(self, model: str, payload: str | Sequence[Message]) -> int:
         raise NotImplementedError("Should be implemented in subclass.")
 
     @override
