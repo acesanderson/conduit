@@ -3,6 +3,7 @@ from conduit.domain.request.generation_params import GenerationParams
 from conduit.domain.conversation.conversation import Conversation
 from conduit.domain.config.conduit_options import ConduitOptions
 from conduit.domain.message.message import UserMessage
+from conduit.domain.message.role import Role
 from conduit.core.prompt.prompt import Prompt
 from typing import Any, override
 import logging
@@ -50,27 +51,56 @@ class ConduitBase:
             return self.prompt.render(input_variables=input_variables)
         return self.prompt.prompt_string
 
-    def _prepare_conversation(
+    async def _prepare_conversation(
         self, rendered_prompt: str, params: GenerationParams, options: ConduitOptions
     ) -> Conversation:
         """
         PURE CPU: Build initial conversation object.
         Load from repository if enabled and last conversation exists.
+        Handles recovery from interrupted sessions (dangling User messages).
         """
         from conduit.storage.repository.persistence_mode import PersistenceMode
 
+        conversation = None
+
         # Load from repository if persistence is enabled
-        if options.repository and options.repository.last:
-            logger.info("Loading last conversation from repository.")
-            conversation = options.repository.last
-            if options.persistence_mode == PersistenceMode.OVERWRITE:
-                logger.info("Overwriting conversation as per persistence_mode.")
-                conversation.messages = []
-            if params.system:
-                conversation.ensure_system_message(params.system)
-        else:
+        if options.repository:
+            # We await the property once.
+            conversation = await options.repository.last
+
+            if conversation:
+                logger.info("Loading last conversation from repository.")
+                if options.persistence_mode == PersistenceMode.OVERWRITE:
+                    logger.info("Overwriting conversation as per persistence_mode.")
+                    conversation.messages = []
+
+                # Ensure system prompt is consistent if we loaded a conversation
+                if params.system:
+                    conversation.ensure_system_message(params.system)
+            else:
+                logger.info("No previous conversation found in repository.")
+
+        # If no repository or no last conversation found, create new
+        if conversation is None:
             logger.info("Creating new conversation.")
             conversation = Conversation()
+            if params.system:
+                conversation.ensure_system_message(params.system)
+
+        # --- RECOVERY LOGIC ---
+        # If the last message was a User message, it means the previous run crashed
+        # or was interrupted before the Assistant could reply.
+        # We drop that message to allow the new prompt to take its place.
+        if conversation.messages and conversation.messages[-1].role == Role.USER:
+            logger.warning(
+                "Found dangling User message (previous incomplete run). Overwriting last turn."
+            )
+            conversation.messages.pop()
+            # Update leaf to point to the new last message (or None)
+            if conversation.messages:
+                conversation.leaf = conversation.messages[-1].message_id
+            else:
+                conversation.leaf = None
 
         # Add rendered prompt as UserMessage
         conversation.add(UserMessage(content=rendered_prompt))

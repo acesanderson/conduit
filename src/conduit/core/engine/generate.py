@@ -1,8 +1,3 @@
-"""
-We need request params.
-How does request params differ from request class?
-"""
-
 from conduit.domain.conversation.conversation import Conversation
 from conduit.domain.result.response import GenerationResponse
 from conduit.domain.request.request import GenerationRequest
@@ -18,30 +13,30 @@ if TYPE_CHECKING:
 async def generate(
     conversation: Conversation, params: GenerationParams, options: ConduitOptions
 ) -> Conversation:
-    # 1. Create a mutable copy of the messages to avoid side effects.
-    messages = list(conversation.messages)
+    # 1. Clone the conversation to work on it safely
+    working_conversation = conversation.model_copy(deep=True)
 
     # 2. Ensure system prompt is correctly placed.
-    has_system_message = any(msg.role == "system" for msg in messages)
+    messages = working_conversation.messages
+    has_system_message = any(msg.role.value == "system" for msg in messages)
     if not has_system_message and params.system:
-        # Prepend a new SystemMessage if one doesn't exist and is provided in params.
-        from conduit.domain.message.message import SystemMessage
-        messages.insert(0, SystemMessage(content=params.system))
+        working_conversation.ensure_system_message(params.system)
 
     # 3. Prepare and execute the request.
-    # We create a temporary request object with the potentially modified message list.
-    request = GenerationRequest(messages=messages, params=params, options=options)
-    
+    request = GenerationRequest(
+        messages=working_conversation.messages, params=params, options=options
+    )
+
     model = ModelAsync(params.model)
     response = await model.pipe(request)
-    
+
     assert isinstance(response, GenerationResponse), (
         "Expected response to be of type Response"
     )
 
-    # 4. Append the new assistant message to our copied list.
+    # 4. Add the new assistant message
     new_message: Message = response.message
-    messages.append(new_message)
-    
-    # 5. Return a new Conversation object, preserving the original's topic/id.
-    return conversation.model_copy(update={"messages": messages})
+    working_conversation.add(new_message)
+
+    # 5. Return the updated conversation
+    return working_conversation

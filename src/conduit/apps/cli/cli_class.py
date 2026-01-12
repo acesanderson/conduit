@@ -12,19 +12,21 @@ This allows you to tailor the behavior of ConduitCLI while leveraging its existi
 """
 
 from __future__ import annotations
+import asyncio
+import sys
+import click
+import logging
+from functools import cached_property
+from typing import TYPE_CHECKING
+
 from conduit.config import settings
 from conduit.apps.cli.query.query_function import (
     CLIQueryFunctionProtocol,
     default_query_function,
 )
-from conduit.storage.repository.protocol import ConversationRepository
+from conduit.storage.repository.protocol import AsyncSessionRepository
 from conduit.apps.cli.commands.commands import CommandCollection
 from conduit.apps.cli.utils.printer import Printer
-from functools import cached_property
-import sys
-import click
-import logging
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from conduit.domain.conversation.conversation import Conversation
@@ -71,37 +73,37 @@ class ConduitCLI:
         self.version: str = version
         self.preferred_model: str = model
         self.system_message: str = system_message
+
         # Components
         self.printer: Printer = Printer()
+
+        # --- Lifecycle Management ---
+        # Create a persistent Event Loop for this CLI instance.
+        # This bridges the synchronous CLI commands (Click) with the
+        # asynchronous backend (Postgres/LLM).
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+
         self.cli: click.Group = self._build_cli()
 
     @cached_property
-    def repository(self) -> ConversationRepository:
+    def repository(self) -> AsyncSessionRepository:
         """
-        Load the conversation repository.
-        Returns:
-            ConversationRepository: The loaded repository.
+        Synchronously resolve the async repository.
         """
-        from dbclients.clients.postgres import get_postgres_client
         from conduit.storage.repository.postgres_repository import (
-            PostgresConversationRepository,
+            get_async_repository,
         )
 
-        conn_factory = get_postgres_client("context_db", dbname="conduit")
-
-        repository = PostgresConversationRepository(
-            conn_factory=conn_factory, project_name=self.project_name
-        )
-        return repository
+        return get_async_repository(project_name=self.project_name)
 
     @cached_property
     def conversation(self) -> Conversation:
         """
         Load the last conversation or create a new one.
-        Returns:
-            Conversation: The loaded or new conversation.
         """
-        last_conversation = self.repository.last
+        last_conversation = self.loop.run_until_complete(self.repository.last)
+
         if last_conversation is not None:
             return last_conversation
         else:
@@ -126,6 +128,10 @@ class ConduitCLI:
             ctx.obj["project_name"] = self.project_name
             ctx.obj["stdin"] = stdin
             ctx.obj["printer"] = printer
+
+            # Pass the loop in case commands need to run async tasks
+            ctx.obj["loop"] = self.loop
+
             ctx.obj["repository"] = lambda: self.repository  # Lazy load
             ctx.obj["conversation"] = lambda: self.conversation  # Lazy load
             ctx.obj["query_function"] = self.query_function
@@ -158,7 +164,12 @@ class ConduitCLI:
         _ = command_collection.attach(self.cli)
 
     def run(self) -> None:
-        self.cli()
+        try:
+            self.cli()
+        finally:
+            # Clean up the event loop when the CLI exits
+            if self.loop.is_running():
+                self.loop.close()
 
     def _get_stdin(self) -> str:
         """

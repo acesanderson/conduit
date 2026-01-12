@@ -10,13 +10,14 @@ from conduit.config import settings
 from typing import TYPE_CHECKING
 import logging
 import sys
+import asyncio
 
 if TYPE_CHECKING:
     from conduit.utils.progress.verbosity import Verbosity
     from conduit.domain.conversation.conversation import Conversation
     from conduit.apps.cli.utils.printer import Printer
     from conduit.domain.message.message import UserMessage, Message
-    from conduit.storage.repository.protocol import ConversationRepository
+    from conduit.storage.repository.protocol import AsyncSessionRepository
     from uuid import UUID
 
 logger = logging.getLogger(__name__)
@@ -93,25 +94,33 @@ class BaseHandlers:
     # Handlers
     @staticmethod
     def handle_history(
-        repository: ConversationRepository,
-        conversation_id: str | UUID,
+        repository: AsyncSessionRepository,
+        session_id: str,
         printer: Printer,
+        loop: asyncio.AbstractEventLoop,
     ) -> None:
         """
         View message history and exit.
         """
         logger.info("Viewing message history...")
-        conversation = repository.load_by_conversation_id(conversation_id)
-        if not conversation:
-            raise ValueError("Conversation not found.")
+
+        # Async fetch via the passed loop
+        session = loop.run_until_complete(repository.get_session(session_id))
+
+        if not session:
+            printer.print_pretty("[yellow]Conversation not found.[/yellow]")
+            sys.exit(1)
+
+        conversation = session.conversation
         conversation.print_history()
         sys.exit()
 
     @staticmethod
     def handle_wipe(
         printer: Printer,
-        repository: ConversationRepository,
-        conversation_id: str,
+        repository: AsyncSessionRepository,
+        session_id: str,
+        loop: asyncio.AbstractEventLoop,
     ):
         """
         Clear the message history after user confirmation.
@@ -124,7 +133,8 @@ class BaseHandlers:
             default=False,
         )
         if confirm:
-            repository.remove_by_conversation_id(conversation_id)
+            # Async delete via the passed loop
+            loop.run_until_complete(repository.delete_session(session_id))
             printer.print_pretty("[green]Message history wiped.[/green]")
         else:
             printer.print_pretty("[yellow]Wipe cancelled.[/yellow]")

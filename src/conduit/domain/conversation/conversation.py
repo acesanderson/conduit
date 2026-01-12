@@ -129,14 +129,18 @@ class Conversation(BaseModel):
         # --- 4. Message metadata
         ## Lots of assertions to ensure integrity
         if self.last:
-            assert self.last.predecessor_id == self.leaf
+            # FIX: Ensure the leaf pointer actually matches the last message in the list
+            assert self.last.message_id == self.leaf, (
+                f"Conversation integrity error: Leaf ({self.leaf}) does not match last message ID ({self.last.message_id})"
+            )
+
         predecessor_id = self.leaf
         assert self.session.session_id is not None, (
             "Session ID should be set after initialization."
         )
         if self.last:
             assert self.session.session_id == self.last.session_id, (
-                "Session ID mismatch between Conversation and last Message."
+                f"Session ID mismatch between Conversation ({self.session.session_id}) and last Message ({self.last.session_id})."
             )
         session_id = self.session.session_id
         # Populate message metadata
@@ -149,6 +153,9 @@ class Conversation(BaseModel):
 
     def wipe(self) -> None:
         self.messages = []
+        self.leaf = (
+            None  # Reset leaf so next message is a new root or handles it gracefully
+        )
 
     def prune(self, keep: int = 10) -> None:
         if len(self.messages) > keep:
@@ -198,6 +205,16 @@ class Conversation(BaseModel):
         if message.role != Role.SYSTEM:
             raise ConversationError("Only system messages can be assigned to system.")
 
+        # --- Fix: Bootstrap Session if missing (Lazy Load) ---
+        if self.session is None:
+            seed_id = getattr(message, "session_id", None)
+            self.initialize_session(
+                leaf=message.message_id, session_id=seed_id, initial_messages=[message]
+            )
+
+        # Ensure the new system message adopts the current session ID
+        message.session_id = self.session.session_id
+
         existing_system = self.system
         if existing_system:
             index = self.messages.index(existing_system)
@@ -208,6 +225,9 @@ class Conversation(BaseModel):
         # Sync to session
         if self.session:
             self.session.register(message)
+            # If the messages list was empty or just this message, update leaf
+            if len(self.messages) == 1:
+                self.leaf = message.message_id
 
     @property
     def content(self) -> str:
