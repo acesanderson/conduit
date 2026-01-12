@@ -1,5 +1,7 @@
+from __future__ import annotations
 import json
 import logging
+import asyncio
 from typing import Any
 from pydantic import TypeAdapter
 
@@ -7,30 +9,67 @@ from conduit.domain.conversation.session import Session
 from conduit.domain.conversation.conversation import Conversation
 from conduit.domain.message.message import MessageUnion, Message
 
+# Type checking import
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from asyncpg import Pool
+
 logger = logging.getLogger(__name__)
 
 
 class AsyncPostgresSessionRepository:
     """
     Async Project-Scoped Session Repository (DAG Architecture).
-
-    Architecture:
-    - conduit_sessions: Partitioned by 'project_name'.
-    - conduit_messages: Stored as a Graph (DAG) linked to sessions.
+    Manages its own lazy connection pool to support restarts/different loops.
     """
 
-    def __init__(self, project_name: str, pool: Any):
-        """
-        :param project_name: The scoping key (e.g., "summarizer", "chatbot-v1").
-        :param pool: An initialized asyncpg.Pool instance.
-        """
+    def __init__(self, project_name: str, db_name: str = "conduit"):
         self.project_name = project_name
-        self.pool = pool
+        self.db_name = db_name
         self._message_adapter = TypeAdapter(MessageUnion)
+
+        # Lazy pool management
+        self._pool: Pool | None = None
+        self._pool_loop: asyncio.AbstractEventLoop | None = None
+
+    async def _get_pool(self) -> Pool:
+        """
+        Get or create a connection pool attached to the current event loop.
+        """
+        current_loop = asyncio.get_running_loop()
+
+        # If we have a pool and the loop hasn't changed, reuse it
+        if (
+            self._pool
+            and self._pool_loop is current_loop
+            and not current_loop.is_closed()
+        ):
+            return self._pool
+
+        # Otherwise (re)initialize
+        logger.debug(f"Initializing asyncpg pool for repository '{self.project_name}'")
+        from dbclients.clients.postgres import get_postgres_client
+
+        # get_postgres_client("async", ...) returns a coroutine factory for the pool
+        pool_factory = await get_postgres_client(
+            client_type="async", dbname=self.db_name
+        )
+
+        self._pool = pool_factory
+        self._pool_loop = current_loop
+
+        # Ensure schema exists on new connection
+        await self.initialize()
+        return self._pool
 
     async def initialize(self) -> None:
         """Idempotent schema creation."""
-        async with self.pool.acquire() as conn:
+        # Use the pool directly if it exists, or just return (it's called by _get_pool anyway)
+        if not self._pool:
+            return
+
+        async with self._pool.acquire() as conn:
             await conn.execute("""
                 -- 1. Scoped Sessions
                 CREATE TABLE IF NOT EXISTS conduit_sessions (
@@ -65,13 +104,32 @@ class AsyncPostgresSessionRepository:
                 CREATE INDEX IF NOT EXISTS idx_messages_predecessor ON conduit_messages(predecessor_id);
             """)
 
+    @property
+    async def last(self) -> Conversation | None:
+        """
+        Fetches the most recently updated session.
+        """
+        pool = await self._get_pool()
+        query = """
+            SELECT session_id 
+            FROM conduit_sessions 
+            WHERE project_name = $1 
+            ORDER BY last_updated DESC 
+            LIMIT 1
+        """
+        async with pool.acquire() as conn:
+            session_id = await conn.fetchval(query, self.project_name)
+
+        if not session_id:
+            return None
+
+        session = await self.get_session(session_id)
+        return session.conversation if session else None
+
     # --- Read Operations ---
 
     async def get_session(self, session_id: str) -> Session | None:
-        """
-        Loads a Session and its full message graph.
-        Enforces project ownership.
-        """
+        pool = await self._get_pool()
         q_session = """
             SELECT session_id, leaf_message_id, title, metadata, created_at
             FROM conduit_sessions 
@@ -81,15 +139,12 @@ class AsyncPostgresSessionRepository:
             SELECT * FROM conduit_messages WHERE session_id = $1
         """
 
-        async with self.pool.acquire() as conn:
+        async with pool.acquire() as conn:
             row = await conn.fetchrow(q_session, session_id, self.project_name)
             if not row:
                 return None
-
-            # Fetch all messages for this session
             msg_rows = await conn.fetch(q_messages, session_id)
 
-        # Rehydrate Messages
         message_dict = {}
         for r in msg_rows:
             try:
@@ -99,7 +154,6 @@ class AsyncPostgresSessionRepository:
                 logger.error(f"Failed to hydrate message {r['message_id']}: {e}")
                 continue
 
-        # We construct the session using the data from DB
         session = Session(
             session_id=row["session_id"],
             leaf=row["leaf_message_id"],
@@ -109,14 +163,9 @@ class AsyncPostgresSessionRepository:
         return session
 
     async def get_conversation(self, leaf_message_id: str) -> Conversation | None:
-        """
-        Rehydrates a linear Conversation view by walking backwards from a leaf.
-        """
-        # Recursive CTE to walk up the tree
-        # We join on sessions to ensure project scoping logic applies
+        pool = await self._get_pool()
         query = """
         WITH RECURSIVE conversation_tree AS (
-            -- Base Case: The Leaf
             SELECT m.*, 1 as depth
             FROM conduit_messages m
             JOIN conduit_sessions s ON m.session_id = s.session_id
@@ -124,7 +173,6 @@ class AsyncPostgresSessionRepository:
             
             UNION ALL
             
-            -- Recursive Step: The Predecessor
             SELECT p.*, ct.depth + 1
             FROM conduit_messages p
             INNER JOIN conversation_tree ct ON p.message_id = ct.predecessor_id
@@ -132,7 +180,7 @@ class AsyncPostgresSessionRepository:
         SELECT * FROM conversation_tree ORDER BY depth DESC;
         """
 
-        async with self.pool.acquire() as conn:
+        async with pool.acquire() as conn:
             rows = await conn.fetch(query, leaf_message_id, self.project_name)
 
         if not rows:
@@ -142,17 +190,14 @@ class AsyncPostgresSessionRepository:
         return Conversation(messages=messages)
 
     async def get_message(self, message_id: str) -> Message | None:
-        """
-        Fetch a single specific message by ID.
-        Enforces project ownership via JOIN.
-        """
+        pool = await self._get_pool()
         query = """
             SELECT m.*
             FROM conduit_messages m
             JOIN conduit_sessions s ON m.session_id = s.session_id
             WHERE m.message_id = $1 AND s.project_name = $2
         """
-        async with self.pool.acquire() as conn:
+        async with pool.acquire() as conn:
             row = await conn.fetchrow(query, message_id, self.project_name)
 
         if not row:
@@ -161,7 +206,7 @@ class AsyncPostgresSessionRepository:
         return self._row_to_message(row)
 
     async def list_sessions(self, limit: int = 20) -> list[dict[str, Any]]:
-        """Lists sessions for the current project."""
+        pool = await self._get_pool()
         query = """
             SELECT session_id, title, created_at, leaf_message_id, last_updated
             FROM conduit_sessions
@@ -169,7 +214,7 @@ class AsyncPostgresSessionRepository:
             ORDER BY last_updated DESC
             LIMIT $2
         """
-        async with self.pool.acquire() as conn:
+        async with pool.acquire() as conn:
             rows = await conn.fetch(query, self.project_name, limit)
 
             return [
@@ -186,13 +231,12 @@ class AsyncPostgresSessionRepository:
     # --- Write Operations ---
 
     async def save_session(self, session: Session, name: str | None = None) -> None:
-        """
-        Upserts Session (scoped to Project) and its Messages.
-        """
-        # 1. Topological Sort for FK validity (Parent before Child)
+        pool = await self._get_pool()
+
+        # 1. Topological Sort
         sorted_msgs = self._topological_sort(session.message_dict)
 
-        # 2. Serialize Messages for Batch Insert
+        # 2. Serialize
         msg_records = []
         for msg in sorted_msgs:
             d = msg.model_dump(mode="json")
@@ -231,9 +275,8 @@ class AsyncPostgresSessionRepository:
             ON CONFLICT (message_id) DO NOTHING;
         """
 
-        async with self.pool.acquire() as conn:
+        async with pool.acquire() as conn:
             async with conn.transaction():
-                # A. Upsert Session first (Must exist for Message FKs)
                 await conn.execute(
                     upsert_session_sql,
                     session.session_id,
@@ -243,16 +286,14 @@ class AsyncPostgresSessionRepository:
                     session.created_at,
                 )
 
-                # B. Batch Upsert Messages
                 if msg_records:
                     await conn.executemany(upsert_message_sql, msg_records)
 
     # --- Maintenance Operations ---
 
     async def delete_session(self, session_id: str) -> None:
-        """Delete specific session."""
-        async with self.pool.acquire() as conn:
-            # Enforce project ownership
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
             await conn.execute(
                 "DELETE FROM conduit_sessions WHERE session_id = $1 AND project_name = $2",
                 session_id,
@@ -260,8 +301,8 @@ class AsyncPostgresSessionRepository:
             )
 
     async def wipe(self) -> None:
-        """Delete ALL sessions for this project."""
-        async with self.pool.acquire() as conn:
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
             await conn.execute(
                 "DELETE FROM conduit_sessions WHERE project_name = $1",
                 self.project_name,
@@ -270,42 +311,30 @@ class AsyncPostgresSessionRepository:
     # --- Helpers ---
 
     def _row_to_message(self, row: Any) -> Message:
-        """Helper to rehydrate a Message object from a DB row."""
         msg_data = dict(row)
-
-        # Deserialize JSONB fields
         for field in ["content", "tool_calls", "images", "audio", "parsed", "metadata"]:
             if isinstance(msg_data.get(field), str):
                 try:
                     msg_data[field] = json.loads(msg_data[field])
                 except (json.JSONDecodeError, TypeError):
-                    pass  # Keep as is if decode fails
-
-        # Inject discriminator if needed by Pydantic
+                    pass
         if "role" in msg_data:
             msg_data["role_str"] = msg_data["role"]
-
         return self._message_adapter.validate_python(msg_data)
 
     def _topological_sort(self, message_dict: dict[str, Message]) -> list[Message]:
-        """
-        Sorts messages Root -> Leaf to satisfy Foreign Key constraints.
-        Simple BFS approach.
-        """
+        # (Same as before)
         present_ids = set(message_dict.keys())
         children_map = {mid: [] for mid in present_ids}
         roots = []
 
-        # Build graph
         for mid, msg in message_dict.items():
             pid = msg.predecessor_id
             if pid and pid in present_ids:
                 children_map[pid].append(mid)
             else:
-                # No predecessor in this batch -> Root
                 roots.append(mid)
 
-        # Traverse
         sorted_list = []
         queue = roots[:]
 
@@ -315,7 +344,6 @@ class AsyncPostgresSessionRepository:
                 sorted_list.append(message_dict[current_id])
                 queue.extend(children_map.get(current_id, []))
 
-        # Fallback: append disconnected nodes (shouldn't happen in valid DAG)
         if len(sorted_list) < len(message_dict):
             visited = set(m.message_id for m in sorted_list)
             for m in message_dict.values():
@@ -325,16 +353,11 @@ class AsyncPostgresSessionRepository:
         return sorted_list
 
 
-async def get_async_repository(project_name: str) -> AsyncPostgresSessionRepository:
+# Factory function becomes synchronous (just instantiates the lazy object)
+def get_async_repository(project_name: str) -> AsyncPostgresSessionRepository:
     """
     Factory function to get an initialized AsyncPostgresSessionRepository.
     Requires 'asyncpg' installed and configured in dbclients.
     """
-    from dbclients.clients.postgres import get_postgres_client
-
-    # Must await the async factory to get the pool
-    pool = await get_postgres_client(client_type="async", dbname="conduit")
-
-    repo = AsyncPostgresSessionRepository(project_name=project_name, pool=pool)
-    await repo.initialize()
-    return repo
+    # Simply return the object. It will connect on first use.
+    return AsyncPostgresSessionRepository(project_name=project_name)

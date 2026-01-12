@@ -115,10 +115,22 @@ class BaseCommands(CommandCollection):
             """View message history."""
             repository: ConversationRepository = ctx.obj["repository"]()  # Lazy load
             conversation: Conversation = ctx.obj["conversation"]()  # Lazy load
-            conversation_id: str = conversation.conversation_id
-            printer: Printer = ctx.obj["printer"]
 
-            handlers.handle_history(repository, conversation_id, printer)
+            # Correctly extract session ID
+            session_id = None
+            if conversation.session:
+                session_id = conversation.session.session_id
+
+            printer: Printer = ctx.obj["printer"]
+            loop = ctx.obj["loop"]
+
+            if not session_id:
+                printer.print_pretty(
+                    "[yellow]No active session to view history for.[/yellow]"
+                )
+                return
+
+            handlers.handle_history(repository, session_id, printer, loop)
 
         @click.command()
         @click.pass_context
@@ -126,15 +138,30 @@ class BaseCommands(CommandCollection):
             """Wipe message history."""
             repository: ConversationRepository = ctx.obj["repository"]()  # Lazy load
             conversation = ctx.obj["conversation"]()  # Lazy load
-            conversation_id: str = conversation.conversation_id
             printer: Printer = ctx.obj["printer"]
+            loop = ctx.obj["loop"]
 
-            handlers.handle_wipe(printer, repository, conversation_id)
+            # Correctly extract session ID
+            session_id = None
+            if conversation.session:
+                session_id = conversation.session.session_id
+
+            if not session_id:
+                printer.print_pretty(
+                    "[yellow]No active session found to wipe.[/yellow]"
+                )
+                # We might want to wipe ALL sessions if none is active, but that's a different command
+                # For now, let's treat this as a no-op
+                return
+
+            handlers.handle_wipe(printer, repository, session_id, loop)
+
             # Reset conversation in context
             from conduit.domain.conversation.conversation import Conversation
 
             ctx.obj["conversation"] = Conversation()
-            repository.save(ctx.obj["conversation"], name="Untitled")
+            # Note: We can't save here easily without running async, and we just wiped the ID.
+            # The next query will start fresh.
 
         @click.command()
         @click.pass_context

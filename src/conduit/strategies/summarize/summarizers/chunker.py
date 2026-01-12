@@ -1,5 +1,5 @@
-from conduit.extensions.summarize.strategy import ChunkingStrategy
-from conduit.core.workflow.workflow import step, get_param, add_metadata
+from conduit.strategies.summarize.strategy import ChunkingStrategy
+from conduit.core.workflow.step import step, get_param, add_metadata
 from typing import override
 import semchunk
 import tiktoken

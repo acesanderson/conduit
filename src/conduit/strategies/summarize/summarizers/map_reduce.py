@@ -2,7 +2,7 @@ from conduit.strategies.summarize.strategy import SummarizationStrategy
 from conduit.strategies.summarize.summarizers.one_shot import OneShotSummarizer
 from conduit.strategies.summarize.summarizers.chunker import Chunker
 from conduit.domain.result.response import GenerationResponse
-from conduit.core.workflow.workflow import step, get_param, add_metadata
+from conduit.core.workflow.step import step, get_param, add_metadata
 from typing import override
 import logging
 
