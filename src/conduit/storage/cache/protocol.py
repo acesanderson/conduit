@@ -21,6 +21,12 @@ class ConduitCache(Protocol):
         """
         ...
 
+    async def get_all(self) -> list[GenerationResponse]:
+        """
+        Return all cached Responses for this cache instance.
+        """
+        ...
+
     async def set(
         self, request: GenerationRequest, response: GenerationResponse
     ) -> None:

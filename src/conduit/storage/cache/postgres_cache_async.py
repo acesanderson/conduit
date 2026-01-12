@@ -102,6 +102,25 @@ class AsyncPostgresCache:
         payload = json.loads(row["payload"])
         return GenerationResponse.model_validate(payload)
 
+    async def get_all(self) -> list[GenerationResponse]:
+        pool = await self._get_pool()
+
+        query = """
+            SELECT payload
+            FROM conduit_cache_entries
+            WHERE cache_name = $1
+        """
+
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(query, self.project_name)
+
+        responses = []
+        for row in rows:
+            payload = json.loads(row["payload"])
+            responses.append(GenerationResponse.model_validate(payload))
+
+        return responses
+
     async def set(
         self, request: GenerationRequest, response: GenerationResponse
     ) -> None:

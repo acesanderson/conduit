@@ -40,7 +40,7 @@ class GenerationParams(BaseModel):
     # For structured responses; excluded from serialization, trust me
     response_model: type[BaseModel] | None = Field(default=None, exclude=True)
     # Generated field
-    response_model_schema: dict[str, str] | None = None
+    response_model_schema: dict[str, Any] | None = None
 
     @field_validator("model")
     def _validate_model(cls, v: str) -> str:
