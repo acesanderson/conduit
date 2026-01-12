@@ -105,7 +105,7 @@ class PerplexityClient(Client):
         return perplexity_payload
 
     @override
-    def tokenize(self, model: str, payload: str | Sequence[Message]) -> int:
+    async def tokenize(self, model: str, payload: str | Sequence[Message]) -> int:
         """
         Return the token count for a string, per model's tokenization function.
         cl100k_base is good enough for Perplexity approximation.

@@ -175,7 +175,9 @@ class Message(BaseModel):
         """
         Human-readable time string.
         """
-        return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.timestamp / 1000))
+        return time.strftime(
+            "%Y-%m-%d %H:%M:%S", time.localtime(self.created_at / 1000)
+        )
 
     @override
     def __hash__(self) -> int:

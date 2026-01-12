@@ -151,7 +151,7 @@ class OllamaClient(Client):
             json.dump(ollama_model_dict, f)
 
     @override
-    def tokenize(self, model: str, payload: str | Sequence[Message]) -> int:
+    async def tokenize(self, model: str, payload: str | Sequence[Message]) -> int:
         """
         Count tokens using Ollama's API via the official library.
         We set "num_predict" to 0 so we only process the prompt/history and get the eval count.

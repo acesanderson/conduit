@@ -22,6 +22,7 @@ import os
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 from importlib.metadata import version
+import asyncio
 
 if TYPE_CHECKING:
     from conduit.storage.odometer.odometer_registry import OdometerRegistry
@@ -171,8 +172,7 @@ def load_settings() -> Settings:
 
     def default_repository(
         project_name: str = default_project_name,
-    ) -> ConversationRepository:
-        # ... [repository code remains the same] ...
+    ) -> AsyncSessionRepository:
         from conduit.storage.repository.postgres_repository import get_async_repository
 
         return get_async_repository(project_name)

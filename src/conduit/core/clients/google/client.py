@@ -116,7 +116,7 @@ class GoogleClient(Client):
         return google_payload
 
     @override
-    def tokenize(self, model: str, payload: str | Sequence[Message]) -> int:
+    async def tokenize(self, model: str, payload: str | Sequence[Message]) -> int:
         """
         Get the token count per official tokenizer (through Google Native API).
         We use the google.generativeai SDK for this because Gemini tokens != tiktoken.
