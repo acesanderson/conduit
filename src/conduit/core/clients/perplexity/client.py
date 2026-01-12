@@ -8,7 +8,9 @@ from __future__ import annotations
 from conduit.core.clients.client_base import Client
 from conduit.core.clients.payload_base import Payload
 from conduit.core.clients.perplexity.payload import PerplexityPayload
-from conduit.core.clients.perplexity.message_adapter import convert_message_to_perplexity
+from conduit.core.clients.perplexity.message_adapter import (
+    convert_message_to_perplexity,
+)
 from conduit.domain.result.response import GenerationResponse
 from conduit.domain.result.response_metadata import ResponseMetadata, StopReason
 from conduit.domain.message.message import AssistantMessage
@@ -296,18 +298,21 @@ class PerplexityClient(Client):
             completion.search_results if hasattr(completion, "search_results") else []
         )
 
-        # Build content dict with citations only (structured response has no text)
-        content_dict = {
-            "citations": [
-                {
-                    "title": c.get("title", ""),
-                    "url": c.get("url", ""),
-                    "source": c.get("source"),
-                    "date": c.get("date"),
-                }
-                for c in citations_raw
-            ],
-        }
+        # Build citations list
+        citations = [
+            {
+                "title": c.get("title", ""),
+                "url": c.get("url", ""),
+                "source": c.get("source"),
+                "date": c.get("date"),
+            }
+            for c in citations_raw
+        ]
+
+        # Merge parsed model data with citations for the content payload
+        # This ensures 'content' contains the actual data, not just citations
+        content_dict = user_obj.model_dump()
+        content_dict["citations"] = citations
 
         # Create AssistantMessage with parsed structured data and citations
         # The perplexity_content property will use parsed object's JSON as text
