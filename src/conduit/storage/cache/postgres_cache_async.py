@@ -3,7 +3,7 @@ import time
 import json
 import logging
 import asyncio
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 from conduit.domain.result.response import GenerationResponse
 from conduit.domain.request.request import GenerationRequest
 
@@ -15,9 +15,17 @@ if TYPE_CHECKING:
 
 class AsyncPostgresCache:
     """
-    Async Postgres-backed implementation of ConduitCache using asyncpg.
-    Handles its own pool lifecycle to support restarting event loops (ModelSync).
+    Async Postgres-backed cache with SHARED connection pool.
+
+    Key Design:
+    - Class-level pool registry keyed by (db_name, event_loop_id)
+    - All cache instances for the same DB share ONE pool per event loop
+    - Automatic pool cleanup when event loops close
     """
+
+    # Class-level pool registry: {(db_name, loop_id): Pool}
+    _shared_pools: ClassVar[dict[tuple[str, int], Pool]] = {}
+    _pool_locks: ClassVar[dict[tuple[str, int], asyncio.Lock]] = {}
 
     def __init__(self, project_name: str, db_name: str = "conduit"):
         self.project_name = project_name
@@ -26,50 +34,66 @@ class AsyncPostgresCache:
         self._misses = 0
         self._start_time = time.time()
 
-        # Lazy pool management
-        self._pool: Pool | None = None
-        self._pool_loop: asyncio.AbstractEventLoop | None = None
+        # Instance no longer owns a pool
+        self._pool_key: tuple[str, int] | None = None
 
     async def _get_pool(self) -> Pool:
         """
-        Get or create a connection pool attached to the current event loop.
+        Get or create a SHARED connection pool for this database and event loop.
+        Thread-safe via async locks.
         """
-        current_loop = asyncio.get_running_loop()
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            raise RuntimeError(
+                "AsyncPostgresCache must be used within an async context"
+            )
 
-        # If we have a pool and the loop hasn't changed, reuse it
-        if (
-            self._pool
-            and self._pool_loop is current_loop
-            and not current_loop.is_closed()
-        ):
-            return self._pool
+        loop_id = id(current_loop)
+        pool_key = (self.db_name, loop_id)
 
-        # Otherwise (re)initialize
-        logger.debug(f"Initializing asyncpg pool for cache '{self.project_name}'")
-        from dbclients.clients.postgres import get_postgres_client
+        # Fast path: pool exists and loop is still valid
+        if pool_key in self._shared_pools:
+            pool = self._shared_pools[pool_key]
+            if not pool._closed:  # asyncpg pool check
+                self._pool_key = pool_key
+                return pool
+            else:
+                # Clean up dead pool
+                del self._shared_pools[pool_key]
+                if pool_key in self._pool_locks:
+                    del self._pool_locks[pool_key]
 
-        # get_postgres_client("async", ...) returns a coroutine factory for the pool
-        pool_factory = await get_postgres_client(
-            client_type="async", dbname=self.db_name
-        )
+        # Slow path: need to create pool (with locking to prevent duplicates)
+        if pool_key not in self._pool_locks:
+            self._pool_locks[pool_key] = asyncio.Lock()
 
-        # In the dbclients implementation, the factory return might be the pool itself
-        # or a context manager depending on implementation details.
-        # Assuming get_postgres_client returns the pool directly for "async" type based on common patterns,
-        # or we might need to adjust based on your specific dbclients lib.
-        # Let's assume strictly it returns the pool instance.
-        self._pool = pool_factory
-        self._pool_loop = current_loop
+        async with self._pool_locks[pool_key]:
+            # Double-check: another task might have created it while we waited
+            if pool_key in self._shared_pools:
+                pool = self._shared_pools[pool_key]
+                if not pool._closed:
+                    self._pool_key = pool_key
+                    return pool
 
-        await self.initialize_schema()
-        return self._pool
+            # Actually create the pool
+            logger.info(
+                f"Creating SHARED asyncpg pool for cache db='{self.db_name}' (loop {loop_id})"
+            )
+            from dbclients.clients.postgres import get_postgres_client
 
-    async def initialize_schema(self) -> None:
+            pool = await get_postgres_client(client_type="async", dbname=self.db_name)
+            self._shared_pools[pool_key] = pool
+            self._pool_key = pool_key
+
+            # Initialize schema on first connection
+            await self._initialize_schema(pool)
+
+            return pool
+
+    async def _initialize_schema(self, pool: Pool) -> None:
         """Ensure schema exists. Safe to call repeatedly."""
-        if not self._pool:
-            return
-
-        async with self._pool.acquire() as conn:
+        async with pool.acquire() as conn:
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS conduit_cache_entries (
                     cache_name  text      NOT NULL,
@@ -187,3 +211,19 @@ class AsyncPostgresCache:
 
     def _request_to_key(self, request: GenerationRequest) -> str:
         return request.generate_cache_key()
+
+    @classmethod
+    async def cleanup_pools(cls):
+        """
+        Manually close all shared pools.
+        Call this in cleanup/shutdown handlers if needed.
+        """
+        for pool_key, pool in list(cls._shared_pools.items()):
+            try:
+                await pool.close()
+                logger.info(f"Closed shared pool for {pool_key}")
+            except Exception as e:
+                logger.warning(f"Error closing pool {pool_key}: {e}")
+
+        cls._shared_pools.clear()
+        cls._pool_locks.clear()
