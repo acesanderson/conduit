@@ -1,7 +1,7 @@
 """
 For Perplexity models.
 NOTE: these use standard OpenAI SDK, the only difference in processing is that the response object has an extra 'citations' field.
-You want both the 'content' and 'citations' fields from the response object.
+We treat citations as metadata attached to the message, ensuring the 'content' remains standard text.
 """
 
 from __future__ import annotations
@@ -15,12 +15,12 @@ from conduit.domain.result.response import GenerationResponse
 from conduit.domain.result.response_metadata import ResponseMetadata, StopReason
 from conduit.domain.message.message import AssistantMessage
 from openai import AsyncOpenAI, AsyncStream
-from openai.types.chat.chat_completion import ChatCompletion
 from typing import TYPE_CHECKING, override, Any
 import instructor
 from instructor import Instructor
 import os
 import time
+import json
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -40,7 +40,6 @@ class PerplexityClient(Client):
         self._client: Instructor = instructor_client
         self._raw_client: AsyncOpenAI = raw_client
 
-    @override
     def _initialize_client(self) -> tuple[Instructor, AsyncOpenAI]:
         """
         Creates both raw and instructor-wrapped clients.
@@ -54,7 +53,6 @@ class PerplexityClient(Client):
         instructor_client = instructor.from_perplexity(raw_client)
         return instructor_client, raw_client
 
-    @override
     def _get_api_key(self) -> str:
         api_key = os.getenv("PERPLEXITY_API_KEY")
         if not api_key:
@@ -123,9 +121,6 @@ class PerplexityClient(Client):
 
         # CASE 2: Message History
         if isinstance(payload, list):
-            # Lazy import to avoid circular dependency
-            from conduit.domain.message.textmessage import TextMessage
-
             # Standard OpenAI-compatible overhead approximation
             tokens_per_message = 3
             num_tokens = 0
@@ -134,7 +129,7 @@ class PerplexityClient(Client):
                 num_tokens += tokens_per_message
 
                 # Role
-                num_tokens += len(encoding.encode(message.role))
+                num_tokens += len(encoding.encode(message.role.value))
 
                 # Content
                 # Perplexity generally only handles Text.
@@ -147,16 +142,18 @@ class PerplexityClient(Client):
                 elif isinstance(message.content, list):
                     # Handle complex content (list of BaseModels) by dumping to string
                     try:
-                        content_str = json.dumps(
-                            [m.model_dump() for m in message.content]
-                        )
-                    except AttributeError:
+                        # Extract text parts only to be safe
+                        texts = []
+                        for block in message.content:
+                            if isinstance(block, str):
+                                texts.append(block)
+                            elif hasattr(block, "text"):
+                                texts.append(block.text)
+                        content_str = " ".join(texts)
+                    except Exception:
                         content_str = str(message.content)
-                elif isinstance(message.content, BaseModel):
-                    try:
-                        content_str = message.content.model_dump_json()
-                    except AttributeError:
-                        content_str = str(message.content)
+                else:
+                    content_str = str(message.content)
 
                 num_tokens += len(encoding.encode(content_str))
 
@@ -182,7 +179,7 @@ class PerplexityClient(Client):
     async def _generate_text(self, request: GenerationRequest) -> GenerationResult:
         """
         Generate text using Perplexity and return a GenerationResponse.
-        Extracts citations from search_results and stores them in content dict.
+        Extracts citations from search_results and stores them in MESSAGE METADATA.
 
         Returns:
             - GenerationResponse object for successful non-streaming requests
@@ -222,23 +219,23 @@ class PerplexityClient(Client):
             result.search_results if hasattr(result, "search_results") else []
         )
 
-        # Build content dict with text and citations (JSON-serializable)
-        content_dict = {
-            "text": result.choices[0].message.content,
-            "citations": [
-                {
-                    "title": c.get("title", ""),
-                    "url": c.get("url", ""),
-                    "source": c.get("source"),
-                    "date": c.get("date"),
-                }
-                for c in citations_raw
-            ],
-        }
+        # Normalize citations for metadata
+        citations = [
+            {
+                "title": c.get("title", ""),
+                "url": c.get("url", ""),
+                "source": c.get("source", ""),
+                "date": c.get("date", ""),
+            }
+            for c in citations_raw
+        ]
 
-        # Create AssistantMessage with dict content
-        # The perplexity_content property will handle creating the rich object
-        assistant_message = AssistantMessage(content=content_dict)
+        # Create AssistantMessage
+        # CRITICAL FIX: content is just the string. Citations go to metadata.
+        assistant_message = AssistantMessage(
+            content=result.choices[0].message.content,
+            metadata={"citations": citations, "provider": "perplexity"},
+        )
 
         # Create ResponseMetadata
         metadata = ResponseMetadata(
@@ -260,8 +257,8 @@ class PerplexityClient(Client):
         self, request: GenerationRequest
     ) -> GenerationResponse:
         """
-        Generate a structured response using Perplexity's function calling and return a GenerationResponse.
-        Also extracts citations from search_results.
+        Generate a structured response using Perplexity's function calling.
+        Also extracts citations from search_results into metadata.
 
         Returns:
             - GenerationResponse object with parsed structured data in AssistantMessage.parsed
@@ -298,27 +295,22 @@ class PerplexityClient(Client):
             completion.search_results if hasattr(completion, "search_results") else []
         )
 
-        # Build citations list
         citations = [
             {
                 "title": c.get("title", ""),
                 "url": c.get("url", ""),
-                "source": c.get("source"),
-                "date": c.get("date"),
+                "source": c.get("source", ""),
+                "date": c.get("date", ""),
             }
             for c in citations_raw
         ]
 
-        # Merge parsed model data with citations for the content payload
-        # This ensures 'content' contains the actual data, not just citations
-        content_dict = user_obj.model_dump()
-        content_dict["citations"] = citations
-
-        # Create AssistantMessage with parsed structured data and citations
-        # The perplexity_content property will use parsed object's JSON as text
+        # Create AssistantMessage with parsed structured data
+        # Citations stored in metadata to avoid polluting the content or parsed object
         assistant_message = AssistantMessage(
-            content=content_dict,
+            content=completion.choices[0].message.content,
             parsed=user_obj,
+            metadata={"citations": citations, "provider": "perplexity"},
         )
 
         # Create ResponseMetadata

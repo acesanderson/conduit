@@ -212,18 +212,30 @@ class AsyncPostgresCache:
     def _request_to_key(self, request: GenerationRequest) -> str:
         return request.generate_cache_key()
 
-    @classmethod
-    async def cleanup_pools(cls):
+    # Context manager support for async usage
+    async def aclose(self) -> None:
         """
-        Manually close all shared pools.
-        Call this in cleanup/shutdown handlers if needed.
+        Close the connection pool associated with this cache instance's loop.
+        Removes it from the class-level shared registry.
         """
-        for pool_key, pool in list(cls._shared_pools.items()):
+        if self._pool_key and self._pool_key in self._shared_pools:
+            pool = self._shared_pools[self._pool_key]
             try:
                 await pool.close()
-                logger.info(f"Closed shared pool for {pool_key}")
+                logger.info(f"Closed shared pool for {self._pool_key}")
             except Exception as e:
-                logger.warning(f"Error closing pool {pool_key}: {e}")
+                logger.warning(f"Error closing cache pool: {e}")
+            finally:
+                # Remove from registry so we don't try to reuse a closed pool
+                self._shared_pools.pop(self._pool_key, None)
+                self._pool_locks.pop(self._pool_key, None)
+                self._pool_key = None
 
-        cls._shared_pools.clear()
-        cls._pool_locks.clear()
+    async def __aenter__(self) -> AsyncPostgresCache:
+        """Initialize the pool on entry."""
+        await self._get_pool()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Ensure the pool is closed on exit."""
+        await self.aclose()
