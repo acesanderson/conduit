@@ -264,7 +264,9 @@ class Conversation(BaseModel):
             case Role.TOOL:
                 return ConversationState.GENERATE
             case Role.ASSISTANT:
-                if self.last.tool_calls:
+                # Check if there are pending tool calls to execute
+                # If structured output, terminate
+                if self.last.tool_calls and self.last.parsed is None:
                     return ConversationState.EXECUTE
                 else:
                     return ConversationState.TERMINATE

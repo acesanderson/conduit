@@ -1,16 +1,3 @@
-"""
-ConduitCLI is our conduit library as a CLI application.
-
-Customize the query_function to specialize for various prompts / workflows while retaining archival and other functionalities.
-
-To customize:
-1. Define your own query function matching the QueryFunctionProtocol signature.
-2. Pass your custom function to the ConduitCLI class upon instantiation. NOTE: all Conduit configs are namespaced in the query function inputs. (and any other handlers you define)
-3. You can also pass other click options or commands to further customize the CLI behavior.
-
-This allows you to tailor the behavior of ConduitCLI while leveraging its existing features.
-"""
-
 from __future__ import annotations
 import asyncio
 import sys
@@ -24,7 +11,11 @@ from conduit.apps.cli.query.query_function import (
     CLIQueryFunctionProtocol,
     default_query_function,
 )
-from conduit.storage.repository.protocol import AsyncSessionRepository
+
+# CHANGE: Import the concrete class directly for proper typing and access
+from conduit.storage.repository.postgres_repository import (
+    AsyncPostgresSessionRepository,
+)
 from conduit.apps.cli.commands.commands import CommandCollection
 from conduit.apps.cli.utils.printer import Printer
 
@@ -45,16 +36,6 @@ DEFAULT_SYSTEM_MESSAGE = settings.system_prompt
 class ConduitCLI:
     """
     Main class for the Conduit CLI application.
-    Combines argument parsing, configuration loading, and command handling.
-    Attributes:
-        project_name (str): Name of the CLI application.
-        description (str): Description of the CLI application.
-        query_function (CLIQueryFunctionProtocol): Function to handle queries.
-        verbosity (Verbosity): Verbosity level for LLM responses.
-        cache (bool): Whether to use caching for LLM responses.
-        persistent (bool): Whether to persist history and settings.
-        system_message (str | None): System message for LLM context.
-        preferred_model (str): Preferred LLM model to use.
     """
 
     def __init__(
@@ -79,29 +60,25 @@ class ConduitCLI:
 
         # --- Lifecycle Management ---
         # Create a persistent Event Loop for this CLI instance.
-        # This bridges the synchronous CLI commands (Click) with the
-        # asynchronous backend (Postgres/LLM).
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
 
         self.cli: click.Group = self._build_cli()
 
     @cached_property
-    def repository(self) -> AsyncSessionRepository:
+    def repository(self) -> AsyncPostgresSessionRepository:
         """
-        Synchronously resolve the async repository.
+        Instantiate the repository.
+        Note: The connection is NOT opened here. It is opened in run().
         """
-        from conduit.storage.repository.postgres_repository import (
-            get_async_repository,
-        )
-
-        return get_async_repository(project_name=self.project_name)
+        return AsyncPostgresSessionRepository(project_name=self.project_name)
 
     @cached_property
     def conversation(self) -> Conversation:
         """
         Load the last conversation or create a new one.
         """
+        # This relies on self.repository being "open" (via run's context management)
         last_conversation = self.loop.run_until_complete(self.repository.last)
 
         if last_conversation is not None:
@@ -116,8 +93,6 @@ class ConduitCLI:
         printer = self.printer
         version_string: str = self.version
 
-        # invoke_without_command=True allows us to handle --version
-        # without triggering a "Missing command" error
         @click.group(invoke_without_command=True)
         @click.option("--version", "show_version", is_flag=True)
         @click.option("--raw", is_flag=True)
@@ -129,7 +104,7 @@ class ConduitCLI:
             ctx.obj["stdin"] = stdin
             ctx.obj["printer"] = printer
 
-            # Pass the loop in case commands need to run async tasks
+            # Pass the loop so commands can run async tasks
             ctx.obj["loop"] = self.loop
 
             ctx.obj["repository"] = lambda: self.repository  # Lazy load
@@ -139,17 +114,13 @@ class ConduitCLI:
             ctx.obj["system_message"] = self.system_message
             ctx.obj["verbosity"] = settings.default_verbosity
 
-            # Global Handler: Raw Mode
             if raw:
                 printer.set_raw(True)
 
-            # Global Handler: Version
             if show_version:
                 click.echo(version_string)
                 ctx.exit()
 
-            # Strict Logic: If no subcommand is provided, just show help.
-            # We no longer guess that the user meant to query.
             if ctx.invoked_subcommand is None:
                 click.echo(ctx.get_help())
 
@@ -158,17 +129,33 @@ class ConduitCLI:
     def attach(self, command_collection: CommandCollection) -> None:
         """
         Attach a set of commands to the CLI.
-        Args:
-            command_set (click.Group): The set of commands to attach.
         """
         _ = command_collection.attach(self.cli)
 
     def run(self) -> None:
+        """
+        Execute the CLI.
+        Manages the lifecycle of the Async Repository connection pool using the synchronous event loop.
+        """
+        # 1. Initialize Repository Connection
+        # We manually trigger the context manager's entry point
+        self.loop.run_until_complete(self.repository.__aenter__())
+
         try:
             self.cli()
+        except Exception as e:
+            # Catch-all to ensure we don't crash without closing,
+            # though Click usually handles its own exceptions.
+            logger.error(f"CLI Error: {e}")
+            raise
         finally:
-            # Clean up the event loop when the CLI exits
-            if self.loop.is_running():
+            # 2. Cleanup Repository Connection
+            # This runs even if sys.exit() is called by a Click command
+            if not self.loop.is_closed():
+                # Manually trigger the context manager's exit point
+                self.loop.run_until_complete(
+                    self.repository.__aexit__(None, None, None)
+                )
                 self.loop.close()
 
     def _get_stdin(self) -> str:

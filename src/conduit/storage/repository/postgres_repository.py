@@ -352,6 +352,27 @@ class AsyncPostgresSessionRepository:
 
         return sorted_list
 
+    # --- Async Context Management ---
+    async def aclose(self) -> None:
+        """Close the connection pool."""
+        if self._pool:
+            try:
+                await self._pool.close()
+                logger.info(f"Closed pool for repository '{self.project_name}'")
+            except Exception as e:
+                logger.warning(f"Error closing repository pool: {e}")
+            finally:
+                self._pool = None
+
+    async def __aenter__(self) -> AsyncPostgresSessionRepository:
+        """Initialize the pool and schema on entry."""
+        await self.initialize()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Ensure the pool is closed on exit."""
+        await self.aclose()
+
 
 # Factory function becomes synchronous (just instantiates the lazy object)
 def get_async_repository(project_name: str) -> AsyncPostgresSessionRepository:
