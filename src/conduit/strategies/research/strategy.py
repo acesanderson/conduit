@@ -8,7 +8,7 @@ Examples:
 """
 
 from abc import ABC, abstractmethod
-from conduit.core.workflow.workflow import step
+from conduit.core.workflow.step import step
 
 
 class ResearchStrategy(ABC):
