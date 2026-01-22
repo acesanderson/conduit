@@ -19,7 +19,6 @@ from rich.console import RenderableType
 if TYPE_CHECKING:
     from conduit.core.model.models.modelspec import ModelSpec
     from conduit.core.model.models.modelspecs_CRUD import (
-        get_modelspec_by_name,
         get_all_modelspecs,
     )
 
@@ -52,6 +51,9 @@ class ModelStore:
             with open(settings.paths["SERVER_MODELS_PATH"]) as f:
                 server_models = json.load(f)
             models_json["ollama"] += server_models["ollama"]
+        # Remove duplicates in ollama models
+        if "ollama" in models_json:
+            models_json["ollama"] = list(set(models_json["ollama"]))
         return models_json
 
     @classmethod
