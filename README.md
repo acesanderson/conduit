@@ -1,42 +1,125 @@
-Conduit is a high-level LLM orchestration framework designed to decouple application-layer interaction logic from provider-specific API implementations. It provides a unified interface for interacting with various inference backends, including OpenAI, Anthropic, Google Gemini, Perplexity, and Ollama. The system is built around a centralized Data Transfer Object (DTO) architecture using Pydantic to enforce strict schema validation for messages, requests, and responses across multimodal (text, image, audio) and structured-data domains.
+# Conduit
 
-Architecturally, the system utilizes a Finite State Machine (FSM) within its core Engine to manage the transition between inference (GENERATE) and action (EXECUTE) states. Conversations are represented as persistent Directed Acyclic Graphs (DAGs) of messages, enabling stateful history reconstruction, branching, and complex tool-calling loops. A middleware layer intercepts the request-response cycle to handle cross-cutting concerns, including SHA-256-based semantic caching, asynchronous token telemetry (the Odometer), and terminal-based observability.
+Conduit is a unified framework for building LLM applications. It provides a single, high-level interface for interacting with multiple providers—including OpenAI, Anthropic, Google Gemini, Ollama, and Perplexity—while managing complex requirements like semantic caching, conversation persistence, and autonomous tool execution.
 
-### Core Components and Interaction
+## Quick Start
 
-The system is partitioned into several functional layers:
+### Installation
 
-1.  **Domain Layer:** Defines the primitive types (`Message`, `Conversation`, `Session`). Messages are partitioned into `User`, `Assistant`, `System`, and `Tool` types. The `Session` object manages the underlying message dictionary and leaf pointers, allowing the `Conversation` object to provide a linear view of any path within the session graph.
-2.  **Engine Layer:** The `Engine` class executes the logic of the conversation. When a conversation is in the `GENERATE` state, it routes the request through the `Model` abstraction to the appropriate `Client`. If the LLM returns tool calls, the engine transitions the conversation to the `EXECUTE` state, invokes the registered Python functions, and feeds the results back into the context for the next inference turn.
-3.  **Model/Client Layer:** Implements the Adapter pattern. `ModelSync` and `ModelAsync` act as providers for specific model identities, while provider-specific clients (e.g., `AnthropicClient`, `OpenAIClient`) translate Conduit’s internal DTOs into the specific parameter sets required by external SDKs.
-4.  **Workflow Layer:** A higher-level abstraction for multi-step logic. It uses the `@step` decorator and `contextvars` to manage configuration resolution, tracing, and metadata injection without requiring manual state propagation through the call stack.
-5.  **Storage Layer:** Provides persistence via Postgres. The `AsyncPostgresCache` uses a canonical JSON representation of the `GenerationRequest` (normalized params and message order) to generate cache keys. The `AsyncPostgresSessionRepository` stores the conversation graph, maintaining referential integrity between messages and their predecessors.
+```bash
+pip install conduit-project
+```
 
-### Implementation Details
+### Basic Query
 
-**Concurrency and Execution Model**
-Conduit is primarily asynchronous, utilizing `asyncio` for all I/O-bound operations, including API calls, database interactions, and stream parsing. Synchronous wrappers (`ConduitSync`, `ModelSync`) are provided for REPL and scripting environments; these wrappers manage their own internal event loops but include safety guards (`_warn_if_loop_exists`) to prevent nested loop errors in existing async contexts.
+```python
+from conduit.sync import Model
 
-**Error Handling**
-The framework employs a hierarchical exception model (`ConduitError` base) to differentiate between orchestration failures, inference errors, and tool execution faults. Stream parsers for XML and JSON implement state-machine-based partial parsing, allowing for early termination of streams to save tokens once a structured object is fully closed.
+# Works with gpt-4o, claude-3-5-sonnet, gemini-1.5-pro, etc.
+model = Model("gpt-4o")
+response = model.query("Explain the significance of the year 1945.")
 
-**Token Telemetry (Odometer)**
-Tracking is handled by the `OdometerRegistry`. It implements a dual-path strategy: a "Hot Path" for asynchronous database flushes via `asyncpg` and a "Cold Path" using `atexit` and `signal` hooks to dump unsaved telemetry to a JSON "rescue file" during unexpected process termination.
+print(response.content)
+print(f"Tokens used: {response.total_tokens}")
+```
 
-### Rationales and Non-Obvious Decisions
+## Core Value Demonstration
 
-*   **Postgres over SQLite/JSON:** Postgres was selected as the default storage backend to support concurrent access from multiple processes (e.g., a background worker and a CLI) and to leverage `jsonb` for efficient indexing of message metadata and structured tool outputs.
-*   **DAG-based Sessions:** The decision to store messages in a DAG rather than a flat list allows for "branching" conversations. This is critical for agentic workflows where multiple potential paths are explored from a single prompt state.
-*   **ContextVars for Workflow Config:** The `resolve_param` logic uses `contextvars` to allow deeply nested functions to access harness-level configuration. This avoids "prop-drilling" where LLM parameters (like `temperature` or `model_name`) must be passed through every intermediate function.
-*   **Local Tokenization Heuristics:** The system includes local tokenizers (`tiktoken`, `transformers`). This was implemented because several providers (notably Ollama) truncate inputs that exceed context windows without raising an error, necessitating pre-inference length validation at the application level.
+Conduit excels at moving beyond simple text completion into structured workflows. It uses Pydantic to enforce data schemas and automatically handles tool execution loops.
 
-### Limitations and Footguns
+### Structured Data Extraction
 
-*   **Message Role Constraints:** The system enforces a strict alternating role pattern (User/Assistant). Adding consecutive messages with the same role (except for `Tool` results) will raise a `ConversationError`.
-*   **Provider Parity:** Not all multimodal features are available across all clients. For instance, `AnthropicClient` currently raises `NotImplementedError` for audio input, as the underlying API lacks support.
-*   **Database Dependency:** The `AsyncPostgresCache` and `AsyncPostgresSessionRepository` require a shared connection pool registry. If the Postgres server is unreachable, the middleware will continue execution but log failures for cache and telemetry operations, which may lead to data loss in the Odometer if the "rescue file" is also restricted by permissions.
-*   **Vi Mode Default:** The `EnhancedInput` interface defaults to Vi-mode for terminal interactions. Users unfamiliar with modal editing may find the prompt unresponsive unless this is toggled in the `PromptSession` configuration.
+```python
+from pydantic import BaseModel
+from conduit.sync import Model
 
-### Operational Context
+class ResearchSummary(BaseModel):
+    key_entities: list[str]
+    summary: str
+    sentiment_score: float
 
-Conduit is intended for use in environments ranging from interactive CLI tools to backend services for autonomous agents. It requires a Postgres instance for full persistence features and expects provider API keys (e.g., `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) to be available in the environment. The system follows POSIX philosophy in its CLI implementation, routing human-readable UI elements to `stderr` via `rich` while emitting raw data to `stdout` to support piping and shell redirection.
+model = Model("claude-3-5-sonnet")
+response = model.query(
+    "Analyze the latest news about fusion energy.",
+    response_model=ResearchSummary
+)
+
+# response.message.parsed is a validated ResearchSummary instance
+print(response.message.parsed.key_entities)
+```
+
+### Autonomous Tool Execution
+
+Conduit can execute Python functions as tools, handling the multi-turn conversation loop automatically until the task is complete.
+
+```python
+from typing import Annotated
+from conduit.sync import Conduit
+
+async def get_weather(location: Annotated[str, "The city name"]) -> str:
+    """Fetches current weather data."""
+    return f"The weather in {location} is 22°C and sunny."
+
+# Configure a conduit with a tool registry
+conduit = Conduit.create(
+    model="gpt-4o",
+    prompt="Check the weather in London and San Francisco."
+)
+conduit.options.tool_registry.register_functions([get_weather])
+
+result = conduit.run()
+print(result.content)
+```
+
+## Features
+
+*   **Multi-Provider Support**: Seamlessly switch between OpenAI, Anthropic, Google, Perplexity, and local Ollama instances.
+*   **Semantic Caching**: Built-in Postgres-backed caching to prevent redundant API calls and reduce costs.
+*   **Conversation Persistence**: Automatic DAG-based storage of conversation trees in Postgres, allowing for branching and resuming sessions.
+*   **Multimodal Primitives**: Native support for image analysis/generation and audio transcription/TTS.
+*   **Workflow Engine**: A state-machine based executor that manages tool calls and model reasoning steps.
+
+## CLI Usage
+
+Conduit includes several built-in CLI tools for interactive use and debugging.
+
+### Interactive Chat
+Launch a feature-rich terminal UI with persistent history and command completion:
+```bash
+chat
+```
+
+### Quick Query
+Execute a one-off query directly from the terminal or via a pipe:
+```bash
+ask "What is the capital of France?"
+cat file.py | ask "Refactor this code for readability"
+```
+
+### Model Management
+List all supported models and their specific capabilities (context window, multimodal support, etc.):
+```bash
+models
+```
+
+## Configuration
+
+Conduit uses environment variables for provider authentication.
+
+| Environment Variable | Description |
+|----------------------|-------------|
+| `OPENAI_API_KEY` | Required for OpenAI models |
+| `ANTHROPIC_API_KEY` | Required for Claude models |
+| `GOOGLE_API_KEY` | Required for Gemini models |
+| `PERPLEXITY_API_KEY` | Required for Perplexity models |
+
+For persistent storage and caching, ensure a Postgres instance is available. Conduit respects XDG base directory specifications for its local configuration and state files.
+
+## Architecture Overview
+
+Conduit follows a stateless "dumb pipe" philosophy for its core components:
+
+1.  **Model**: A stateless interface to an LLM provider.
+2.  **Conduit**: A template-aware orchestrator that renders prompts and manages context.
+3.  **Engine**: A finite state machine that processes conversations, determining when to generate text and when to execute tools.
+4.  **Middleware**: Handles cross-cutting concerns like UI spinners, logging, token usage tracking (Odometer), and caching.
