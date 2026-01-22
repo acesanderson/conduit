@@ -6,9 +6,8 @@ from conduit.core.model.models.modelspecs_CRUD import (
     in_db,
 )
 from conduit.core.model.model_sync import ModelSync as Model
-from conduit.core.conduit.conduit_sync import ConduitSync
+from conduit.sync import Conduit, GenerationParams, ConduitOptions, Verbosity
 from conduit.core.prompt.prompt import Prompt
-from conduit.core.parser.parser import Parser
 from rich.console import Console
 
 
@@ -91,13 +90,15 @@ Avoid promotional language or subjective quality assessments. Focus on objective
 def get_capabilities_by_provider(
     provider: str, model_list: list[str]
 ) -> list[ModelSpec]:
-    console = Console()
-    SyncConduit._console = console  # Set the console for Conduit to use
     length = len(model_list)
-    model = Model("sonar-pro")
-    prompt = Prompt(prompt_str)
-    parser = Parser(ModelSpecList)
-    sync_conduit = SyncConduit(model=model, prompt=prompt, parser=parser)
+    params = GenerationParams(
+        model="sonar-pro",
+        response_model=ModelSpecList,
+        output_type="structured_response",
+    )
+    prompt = Prompt(list_prompt_str)
+    options = ConduitOptions(project_name="conduit", verbosity=Verbosity.PROGRESS)
+    sync_conduit = Conduit(prompt=prompt, params=params, options=options)
     response = sync_conduit.run(
         input_variables={
             "provider": provider,
@@ -105,7 +106,8 @@ def get_capabilities_by_provider(
             "length": length,
         }
     )
-    return response.content.specs
+
+    return response.content.parsed.specs
 
 
 def get_all_capabilities() -> list[ModelSpec]:
@@ -142,14 +144,16 @@ def get_capabilities_by_model(provider: str, model: str) -> ModelSpec:
     """
     Get capabilities for a specific model.
     """
-    console = Console()
-    SyncConduit._console = console  # Set the console for Conduit to use
-    model_obj = Model("sonar-pro")
+    params = GenerationParams(
+        model="sonar-pro",
+        response_model=ModelSpec,
+        output_type="structured_response",
+    )
     prompt = Prompt(individual_prompt_str)
-    parser = Parser(ModelSpec)
-    sync_conduit = SyncConduit(model=model_obj, prompt=prompt, parser=parser)
-    response = sync_conduit.run(input_variables={"provider": provider, "model": model})
-    return response.content
+    options = ConduitOptions(project_name="conduit", verbosity=Verbosity.PROGRESS)
+    conduit = Conduit(prompt=prompt, params=params, options=options)
+    response = conduit.run(input_variables={"provider": provider, "model": model})
+    return response.last.parsed
 
 
 def create_modelspec(model: str) -> None:
