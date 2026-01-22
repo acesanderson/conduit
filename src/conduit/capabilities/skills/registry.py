@@ -14,6 +14,16 @@ class SkillRegistry:
 
         return settings.paths["SKILLS_DIR"]
 
+    @property
+    def skills(self) -> list[Skill]:
+        return list(self._skills.values())
+
+    @property
+    def system(self) -> str:
+        from conduit.capabilities.skills.system import generate_skills_system_prompt
+
+        return generate_skills_system_prompt(self)
+
     def register(self, skill: Skill):
         self._skills[skill.name] = skill
 
@@ -22,9 +32,6 @@ class SkillRegistry:
 
     def list_skills(self) -> list[str]:
         return list(self._skills.keys())
-
-    def all_skills(self) -> list[Skill]:
-        return list(self._skills.values())
 
     @classmethod
     def from_skills_dir(
