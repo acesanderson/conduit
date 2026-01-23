@@ -18,7 +18,7 @@ class BasicInput(InputInterface):
         self.console: Console = console
 
     @override
-    def get_input(self, prompt: str = ">> ") -> str:
+    async def get_input(self, prompt: str = ">> ") -> str:
         """
         Get user input from console with formatted prompt styling.
         """
