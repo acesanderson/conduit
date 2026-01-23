@@ -131,8 +131,7 @@ headwater_api = { path = "../headwater/headwater-api", editable = true }
 headwater_client = { path = "../headwater/headwater-client", editable = true }
 
 [project.scripts]
-bchat = "conduit.apps.scripts.chat_cli:main"
-chat = "conduit.apps.scripts.fchat_cli:main"
+chat = "conduit.apps.scripts.chat_cli:main"
 imagegen = "conduit.apps.scripts.imagegen_cli:main"
 models = "conduit.apps.scripts.models_cli:main"
 tokens = "conduit.apps.scripts.tokens_cli:main"
