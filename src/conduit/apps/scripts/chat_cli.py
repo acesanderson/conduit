@@ -1,13 +1,11 @@
 import asyncio
 import logging
 import os
-
 from rich.console import Console
-
 from conduit.config import settings
 from conduit.apps.chat.create_app import create_chat_app
-from conduit.apps.chat.ui.async_input import AsyncInput
 from conduit.domain.config.conduit_options import ConduitOptions
+import argparse
 
 # Set up logging
 log_level = int(os.getenv("PYTHON_LOG_LEVEL", "1"))
@@ -19,35 +17,46 @@ logger = logging.getLogger(__name__)
 
 # Constants
 CONSOLE = Console()
-INPUT_INTERFACE = AsyncInput()
 PREFERRED_MODEL = settings.preferred_model
 WELCOME_MESSAGE = "[bold cyan]Conduit Chat. Type /exit to exit.[/bold cyan]"
 SYSTEM_MESSAGE = settings.system_prompt
 VERBOSITY = settings.default_verbosity
 
-OPTIONS = ConduitOptions(project_name="conduit-chat", verbosity=VERBOSITY, console=CONSOLE)
+OPTIONS = ConduitOptions(
+    project_name="conduit-chat", verbosity=VERBOSITY, console=CONSOLE
+)
 
 
-async def async_main():
+async def async_main(input_mode: str):
     """
     Initializes and runs the asynchronous chat application.
     """
     app = create_chat_app(
-        input_interface=INPUT_INTERFACE,
+        input_mode=input_mode,
         preferred_model=PREFERRED_MODEL,
         welcome_message=WELCOME_MESSAGE,
         system_message=SYSTEM_MESSAGE,
         options=OPTIONS,
     )
-    
+
     await app.run()
+
 
 def main():
     """
     Synchronous entry point to run the async main function.
     """
+    parser = argparse.ArgumentParser(description="Conduit Chat CLI")
+    _ = parser.add_argument(
+        "--input-mode",
+        "-i",
+        choices=["enhanced", "basic"],
+        default="enhanced",
+        help="Select input mode for the chat application.",
+    )
+    args = parser.parse_args()
     try:
-        asyncio.run(async_main())
+        asyncio.run(async_main(str(args.input_mode)))
     except KeyboardInterrupt:
         print("\nExiting...")
 

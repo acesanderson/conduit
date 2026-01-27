@@ -24,5 +24,5 @@ def generate_skills_system_prompt(
         str: The generated system prompt.
     """
     template = Template(PROMPT_STR)
-    skills = registry.all_skills()
+    skills = registry.skills
     return template.render(system_prompt=system_prompt, skills=skills)
