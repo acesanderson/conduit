@@ -1,6 +1,9 @@
 from typing import Any
 from conduit.core.workflow.context import context
 from conduit.core.workflow.protocols import Workflow
+import ast
+import inspect
+from collections import deque
 
 
 class ConduitHarness:
@@ -132,28 +135,3 @@ class ConduitHarness:
             )
 
         console.print(table)
-
-
-async def generate_config_schema(
-    workflow_factory: Any, dummy_input: Any, *args, **kwargs
-) -> dict:
-    """
-    Utility to discover the configuration schema of a workflow by running it "naked".
-
-    Args:
-        workflow_factory: A callable that returns the workflow instance (or the instance itself).
-        dummy_input: Minimal input required to run the workflow (to trigger code paths).
-    """
-    # 1. Setup
-    workflow = workflow_factory() if callable(workflow_factory) else workflow_factory
-    harness = ConduitHarness(config={})  # Naked harness
-
-    # 2. Run with dummy input
-    try:
-        await harness.run(workflow, dummy_input, *args, **kwargs)
-    except Exception:
-        # Ignore runtime errors; we only care about the parameters read up to the crash.
-        pass
-
-    # 3. Generate Report
-    return harness.report_available_config()

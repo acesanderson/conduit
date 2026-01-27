@@ -1,24 +1,27 @@
+"""
+Workflow step decorator and parameter resolution system for Conduit's async task orchestration.
+
+This module provides core infrastructure for the `@step` decorator—enabling automatic input binding,
+context variable management, and telemetry collection within async workflows. It also injects
+introspection capabilities (.diagram, .schema) as properties on decorated functions.
+"""
+
+import ast
 import functools
 import inspect
 import time
-from typing import Any, TypeVar, ParamSpec, cast
+from collections import deque
 from collections.abc import Callable, Awaitable
+from typing import Any, TypeVar, ParamSpec, cast
 
 from conduit.core.workflow.context import context
 
-# Typing vars for the decorator
+# Typing vars
 P = ParamSpec("P")
 R = TypeVar("R")
 
 
-def add_metadata(key: str, value: Any):
-    """
-    Log metadata to the current step (e.g., token usage, model version)
-    without cluttering the return value.
-    """
-    meta = context.step_meta.get()
-    if meta is not None:
-        meta[key] = value
+# --- 1. CORE UTILITIES ---
 
 
 def resolve_param(
@@ -29,49 +32,32 @@ def resolve_param(
 ) -> Any:
     """
     Resolves a parameter value in strict precedence:
-    1. Runtime Override (Explicit argument passed to the function, if not None)
+    1. Runtime Override (Explicit argument passed to the function)
     2. Harness Configuration (ContextVars via get_param)
     3. Hardcoded Default (provided as arg)
-
-    Args:
-        key: The parameter name to look up (e.g., "model").
-        default: The fallback value if found nowhere else.
-        overrides: Optional manual dictionary to check first. If None, uses the
-                   automatically captured arguments from the current @step.
-        scope: Optional namespace for config lookup (defaults to caller name).
     """
     resolution_source = "default"
     value = default
-    active_key = None  # The key actually read from config, if any
+    active_key = None
 
-    # Auto-detect scope if not provided
     if scope is None:
         try:
-            # Stack: [0] this function, [1] caller
             scope = inspect.stack()[1].function
         except (IndexError, AttributeError):
             scope = "unknown"
 
-    # --- 1. RUNTIME OVERRIDE LOOKUP ---
-    # We check 'overrides' if provided, otherwise check the context
-    # populated by the @step decorator's auto-binding logic.
+    # 1. RUNTIME OVERRIDE
     runtime_args = overrides
     if runtime_args is None:
         runtime_args = context.args.get() or {}
 
-    if key in runtime_args:
-        # Crucial: We only accept the runtime value if it is NOT None.
-        # This supports the pattern `def func(model=None): resolve_param("model", ...)`
-        # allowing the None default to signal "fall through to config".
-        if runtime_args[key] is not None:
-            value = runtime_args[key]
-            resolution_source = "runtime_kwarg"
+    if key in runtime_args and runtime_args[key] is not None:
+        value = runtime_args[key]
+        resolution_source = "runtime_kwarg"
 
-    # --- 2. HARNESS CONFIG LOOKUP ---
-    # Only check config if we haven't found a runtime override (or it was None)
+    # 2. CONFIG LOOKUP
     if resolution_source == "default":
         cfg = context.config.get()
-        # Check Scoped
         if scope:
             scoped_key = f"{scope}.{key}"
             if scoped_key in cfg:
@@ -79,114 +65,231 @@ def resolve_param(
                 resolution_source = f"config_scoped ({scoped_key})"
                 active_key = scoped_key
 
-        # Check Global (only if not found in scope)
         if resolution_source == "default" and key in cfg:
             value = cfg[key]
             resolution_source = f"config_global ({key})"
             active_key = key
 
-    # --- 3. TELEMETRY (Trace) ---
-    # Log the decision to the current step's metadata
+    # 3. TELEMETRY
     meta = context.step_meta.get()
     if meta is not None:
         if "config_resolutions" not in meta:
             meta["config_resolutions"] = {}
-
         meta["config_resolutions"][key] = {
-            "value": str(value),  # stringify to ensure JSON serializable
+            "value": str(value),
             "source": resolution_source,
         }
 
-    # --- 4. DISCOVERY (Schema) ---
-    # Log that this key was requested, along with its default value.
+    # 4. DISCOVERY
     discovery_log = context.discovery.get()
     if discovery_log is not None:
         canonical_key = f"{scope}.{key}" if scope else key
         discovery_log[canonical_key] = default
 
-    # --- 5. DRIFT DETECTION ---
+    # 5. DRIFT DETECTION
     if "config" in resolution_source and active_key:
-        accessed_keys = context.access.get()
-        if accessed_keys is not None:
-            accessed_keys.add(active_key)
+        accessed = context.access.get()
+        if accessed is not None:
+            accessed.add(active_key)
 
     return value
 
 
 def get_param(key: str, default: Any = None, scope: str | None = None) -> Any:
-    """
-    Legacy wrapper for resolve_param.
-    """
     return resolve_param(key, default, None, scope)
 
 
-def step(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
-    # 1. Capture the signature once at definition time
-    if not inspect.iscoroutinefunction(func):
-        raise TypeError(
-            f"@step requires async functions. {func.__name__} must be defined with `async def`."
-        )
-    sig = inspect.signature(func)
+def add_metadata(key: str, value: Any) -> None:
+    """
+    Add metadata to the current step's execution trace.
+    """
+    meta = context.step_meta.get()
+    if meta is not None:
+        meta[key] = value
 
-    @functools.wraps(func)
-    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-        start = time.time()
 
-        # 2. AUTO-BINDING MAGIC
-        # Bind args/kwargs to the function signature to normalize input
-        bound = sig.bind(*args, **kwargs)
+# --- 2. STATIC ANALYSIS LOGIC ---
+
+
+def _static_scan_workflow(root_func) -> dict:
+    schema = {}
+    visited = set()
+    root = getattr(root_func, "__wrapped__", root_func)
+    queue = deque([root])
+    visited.add(root)
+
+    while queue:
+        current_func = queue.popleft()
+        try:
+            src = inspect.getsource(current_func)
+            src = inspect.cleandoc(src)
+            tree = ast.parse(src)
+            func_globals = getattr(current_func, "__globals__", {})
+        except (OSError, TypeError):
+            continue
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                # A: resolve_param
+                if getattr(node.func, "id", "") == "resolve_param":
+                    if len(node.args) > 0 and isinstance(node.args[0], ast.Constant):
+                        key = node.args[0].value
+                        default_val = "dynamic"
+                        if len(node.args) > 1:
+                            if isinstance(node.args[1], ast.Constant):
+                                default_val = node.args[1].value
+                            elif isinstance(node.args[1], ast.List):
+                                default_val = [
+                                    getattr(e, "value", "unknown")
+                                    for e in node.args[1].elts
+                                ]
+                        schema[f"{current_func.__name__}.{key}"] = default_val
+
+                # B: Recursion
+                func_name = None
+                if isinstance(node.func, ast.Name):
+                    func_name = node.func.id
+
+                if func_name and func_name in func_globals:
+                    child = func_globals[func_name]
+                    # Check for __wrapped__ (works on both StepWrapper and standard decorators)
+                    underlying = getattr(child, "__wrapped__", None)
+                    if underlying and underlying not in visited:
+                        visited.add(underlying)
+                        queue.append(underlying)
+    return schema
+
+
+def _generate_hierarchy_graph(root_func) -> str:
+    visited_funcs = set()
+    root = getattr(root_func, "__wrapped__", root_func)
+    queue = deque([root])
+    edges = []
+
+    while queue:
+        current_func = queue.popleft()
+        if current_func in visited_funcs:
+            continue
+        visited_funcs.add(current_func)
+
+        parent_name = current_func.__name__
+        try:
+            src = inspect.getsource(current_func)
+            src = inspect.cleandoc(src)
+            tree = ast.parse(src)
+            func_globals = getattr(current_func, "__globals__", {})
+        except (OSError, TypeError):
+            continue
+
+        found_deps = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                target_name = None
+                if isinstance(node.func, ast.Name):
+                    target_name = node.func.id
+
+                if target_name and target_name in func_globals:
+                    child = func_globals[target_name]
+                    if getattr(child, "__wrapped__", None):
+                        if target_name not in found_deps:
+                            found_deps.add(target_name)
+                            edges.append(f"  {parent_name} --> {target_name}")
+                            queue.append(getattr(child, "__wrapped__"))
+
+    return "graph LR\n" + "\n".join(edges)
+
+
+# --- 3. THE CLASS WRAPPER ---
+
+
+class StepWrapper:
+    """
+    A callable object that wraps the step function.
+    Provides attribute access (.diagram, .schema) while maintaining callability.
+    """
+
+    def __init__(self, func: Callable):
+        self._func = func
+        self._sig = inspect.signature(func)
+        functools.update_wrapper(self, func)
+
+    async def __call__(self, *args, **kwargs):
+        # 1. Bind Args
+        bound = self._sig.bind(*args, **kwargs)
         bound.apply_defaults()
-
-        # Flatten into a single dict: {"text": "...", "model": None, ...}
         unified_args = dict(bound.arguments)
 
-        # Handle **kwargs in signature: flatten nested dict if present
-        # Find which param name holds the var_keyword (usually "kwargs")
-        var_keyword_name = next(
+        # Handle **kwargs
+        var_kw = next(
             (
                 p.name
-                for p in sig.parameters.values()
+                for p in self._sig.parameters.values()
                 if p.kind == inspect.Parameter.VAR_KEYWORD
             ),
             None,
         )
-        if var_keyword_name and var_keyword_name in unified_args:
-            extra = unified_args.pop(var_keyword_name)
+        if var_kw and var_kw in unified_args:
+            extra = unified_args.pop(var_kw)
             if extra:
                 unified_args.update(extra)
 
-        # 3. Mount Context
+        # 2. Context
+        start = time.time()
         token_args = context.args.set(unified_args)
         current_meta = {}
         token_meta = context.step_meta.set(current_meta)
 
+        # Initialize defaults to prevent UnboundLocalError in finally block
+        result = None
+        status = "unknown"
+
         try:
-            result = await func(*args, **kwargs)
+            result = await self._func(*args, **kwargs)
             status = "success"
         except Exception as e:
             result = str(e)
             status = "error"
             raise
+        except BaseException as e:
+            # Handle Cancellation/SystemExit
+            result = f"<{type(e).__name__}>"
+            status = "cancelled"
+            raise
         finally:
             duration = time.time() - start
-
-            trace_list = context.trace.get()
-            if trace_list is not None:
-                trace_list.append(
+            trace = context.trace.get()
+            if trace is not None:
+                trace.append(
                     {
-                        "step": f"{func.__qualname__.replace('.__call__', '')}",
-                        "inputs": unified_args,  # Log normalized inputs!
+                        "step": self._func.__qualname__,
+                        "inputs": unified_args,
                         "output": result,
                         "duration": round(duration, 4),
                         "status": status,
                         "metadata": current_meta,
                     }
                 )
-
-            # Cleanup
             context.args.reset(token_args)
             context.step_meta.reset(token_meta)
 
         return result
 
-    return cast(Callable[P, Awaitable[R]], wrapper)
+    @property
+    def diagram(self) -> str:
+        """Lazy-loaded Mermaid graph."""
+        return _generate_hierarchy_graph(self._func)
+
+    @property
+    def schema(self) -> dict:
+        """Lazy-loaded config schema."""
+        return _static_scan_workflow(self._func)
+
+
+def step(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
+    if not inspect.iscoroutinefunction(func):
+        raise TypeError(
+            f"@step requires async functions. {func.__name__} must be defined with `async def`."
+        )
+
+    # Return the class wrapper instead of a function closure
+    return cast(Callable[P, Awaitable[R]], StepWrapper(func))
