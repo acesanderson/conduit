@@ -151,7 +151,7 @@ class AnthropicClient(Client):
             if not messages_payload:
                 return 0
 
-            response = anthropic_client.messages.count_tokens(
+            response = self.sync_client.messages.count_tokens(
                 model=model,
                 messages=messages_payload,
             )
@@ -310,8 +310,24 @@ class AnthropicClient(Client):
                     stop_reason = StopReason.STOP
 
         # Create AssistantMessage with parsed structured data
-        # For Anthropic, content[0].text may be None for structured responses
-        content_text = completion.content[0].text if completion.content else None
+        # Handle Anthropic content blocks safely: filter for text blocks only
+        content_text = None
+        if completion.content:
+            # Join all text blocks (e.g. Chain of Thought before the tool use)
+            text_parts = [
+                block.text
+                for block in completion.content
+                if getattr(block, "type", "") == "text" and hasattr(block, "text")
+            ]
+            if text_parts:
+                content_text = "\n".join(text_parts)
+
+        # FAIL-SAFE: If content is empty but we have a parsed object,
+        # dump the object to JSON as the content.
+        # This prevents "empty message" ValidationErrors when reloading from cache.
+        if not content_text and user_obj:
+            content_text = user_obj.model_dump_json(indent=2)
+
         assistant_message = AssistantMessage(
             content=content_text,
             parsed=user_obj,
