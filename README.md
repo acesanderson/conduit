@@ -1,157 +1,125 @@
 # Conduit
 
-**The Universal Runtime for LLM Applications.**
+Conduit is a unified framework for building LLM applications. It provides a single, high-level interface for interacting with multiple providers—including OpenAI, Anthropic, Google Gemini, Ollama, and Perplexity—while managing complex requirements like semantic caching, conversation persistence, and autonomous tool execution.
 
-Conduit is a Python framework for orchestrating Large Language Model interactions. It rejects the "Chain" metaphor in favor of a **Finite State Machine (FSM)** architecture, treating conversation history as state and prediction as a cyclic process.
+## Quick Start
 
-It is built on three core principles:
+### Installation
 
-1.  **Strict Typing:** Everything is a Pydantic model. No loose dictionaries.
-2.  **No Magic:** Explicit dependency injection. You control the state.
-3.  **Universal Loop:** A single runtime engine handles linear chat, RAG, and complex agentic loops using the same logic.
-
------
-
-## 📐 The Architecture
-
-Legacy frameworks model LLM apps as "Chains" (DAGs). Conduit models them as a **State Machine**.
-
-The core insight of Conduit is that all LLM interactions—whether a simple Q\&A or a multi-step autonomous agent—follow the same logic: **Predict the next message based on the current state.**
-
-
-### The Components
-
-1.  **The State (`Conversation`):** A passive, serializable container holding the message history.
-2.  **The Engine (`Conduit`):** An active processor that inspects the *tail* of the conversation to determine the next state transition.
-3.  **The Adapters (`Clients`):** An Anti-Corruption Layer (ACL) that normalizes disparate provider APIs (OpenAI, Anthropic, Ollama) into internal domain objects.
-4.  **The Actors (`Capabilities`):** Executable units (Tools, Skills) that perform actions when the FSM enters the `EXECUTE` state.
-
------
-
-## 🗺️ Project Structure
-
-Conduit is organized into clear domain boundaries to prevent circular dependencies and "God Objects."
-
-```text
-src/conduit/
-├── core/                  # THE KERNEL
-│   ├── engine.py          # The Universal Loop (FSM) logic
-│   ├── prompt.py          # Jinja2 template management
-│   └── parser.py          # Structured output parsing
-│
-├── domain/                # THE DATA (Pure Pydantic DTOs)
-│   ├── conversation.py    # The State Container
-│   ├── messages.py        # Discriminated Unions (User, Assistant, Tool)
-│   └── request.py         # Internal Transport DTO
-│
-├── clients/               # THE I/O LAYER (Adapters & ACL)
-│   ├── base.py            # Abstract Client Interface
-│   ├── common.py          # Payload Type Definitions
-│   ├── openai/            # Provider implementations...
-│   ├── anthropic/
-│   └── ...
-│
-├── capabilities/          # THE ACTORS
-│   ├── executor.py        # Tool execution logic
-│   ├── tools/             # Atomic functions (filesystem, search)
-│   └── skills/            # Complex behaviors (personas, memories)
-│
-├── storage/               # PERSISTENCE
-│   ├── repository.py      # Conversation/Message persistence
-│   └── odometer/          # Token counting & Telemetry
-│
-└── apps/                  # CONSUMERS
-    ├── cli/               # Command Line Interface
-    └── chat/              # TUI Application
+```bash
+pip install conduit-project
 ```
 
------
-
-## 🧠 Core Concepts
-
-### 1\. The Message Union (`domain/messages.py`)
-
-Conduit abandons inheritance for composition. Messages are a **Discriminated Union** of strict types.
-
-  * **`UserMessage`**: Supports multimodal content blocks (Text + Image + Audio).
-  * **`AssistantMessage`**: Atomic representation of a turn. Contains **Content** (final answer), **Reasoning** (hidden chain-of-thought), and **ToolCalls** (intent to act).
-  * **`ToolMessage`**: The result of an execution, strictly linked to a call ID.
-
-### 2\. The Universal Loop (`core/engine.py`)
-
-There are no separate classes for "Agent" vs "Chat." There is only `Conduit.run()`.
-
-The engine implements a standard Act-Observe-Think loop:
-
-1.  **GENERATE:** If the tail is `UserMessage` or `ToolMessage` $\rightarrow$ Call LLM.
-2.  **EXECUTE:** If the tail is `AssistantMessage` with `tool_calls` $\rightarrow$ Execute Tools.
-3.  **TERMINATE:** If the tail is `AssistantMessage` with text only $\rightarrow$ Return to User.
-
-### 3\. The Anti-Corruption Layer (`clients/`)
-
-Conduit refuses to let provider idiosyncrasies leak into your business logic.
-
-  * **Internal Domain:** We use `Conduit.Request` (generic).
-  * **Provider Domain:** We define strict `Payload` models (e.g., `AnthropicPayload`, `OpenAIPayload`) that mirror the exact API spec of the vendor.
-  * **The Adapter:** The `Client` class is responsible for converting `Request` $\rightarrow$ `Payload`.
-
------
-
-## 💻 Usage Examples
-
-### 1\. The Direct Flow (Simple Chat)
-
-For linear, synchronous interaction.
+### Basic Query
 
 ```python
-from conduit.core.engine import Conduit
-from conduit.domain.conversation import Conversation
-from conduit.clients.openai.client import OpenAIClient
+from conduit.sync import Model
 
-# 1. Initialize State
-conv = Conversation()
-conv.add_user_message("Why is the sky blue?")
+# Works with gpt-4o, claude-3-5-sonnet, gemini-1.5-pro, etc.
+model = Model("gpt-4o")
+response = model.query("Explain the significance of the year 1945.")
 
-# 2. Initialize Engine
-client = OpenAIClient()
-conduit = Conduit(client=client)
-
-# 3. Run the Loop (Runs until TERMINATE state)
-result = conduit.run(conv)
-print(result.last_message.content)
+print(response.content)
+print(f"Tokens used: {response.total_tokens}")
 ```
 
-### 2\. The Agentic Flow (Tools & Loops)
+## Core Value Demonstration
 
-By simply adding tools, the Engine automatically switches to a cyclic FSM.
+Conduit excels at moving beyond simple text completion into structured workflows. It uses Pydantic to enforce data schemas and automatically handles tool execution loops.
+
+### Structured Data Extraction
 
 ```python
-from conduit.capabilities.tools import WeatherTool, StockTool
-from conduit.clients.anthropic.client import AnthropicClient
+from pydantic import BaseModel
+from conduit.sync import Model
 
-# 1. Initialize State
-conv = Conversation()
-conv.add_user_message("What is the stock price of Apple compared to the temperature in NY?")
+class ResearchSummary(BaseModel):
+    key_entities: list[str]
+    summary: str
+    sentiment_score: float
 
-# 2. Initialize Engine with Capabilities
-client = AnthropicClient()
-tools = [WeatherTool(), StockTool()]
-conduit = Conduit(client=client, tools=tools)
+model = Model("claude-3-5-sonnet")
+response = model.query(
+    "Analyze the latest news about fusion energy.",
+    response_model=ResearchSummary
+)
 
-# 3. Run the Loop
-# The Engine will:
-#   1. GENERATE (Thought: I need stock price and weather)
-#   2. EXECUTE (Runs both tools in parallel)
-#   3. GENERATE (Synthesizes answer based on ToolMessages)
-#   4. TERMINATE
-final_conv = conduit.run(conv)
+# response.message.parsed is a validated ResearchSummary instance
+print(response.message.parsed.key_entities)
 ```
 
------
+### Autonomous Tool Execution
 
-## 🔮 Future Roadmap
+Conduit can execute Python functions as tools, handling the multi-turn conversation loop automatically until the task is complete.
 
-  * **Remote Execution:** Because `Conversation` is pure data, the Engine can serialize the state, send it to a `Headwater` server, execute the heavy compute there, and return the mutated state.
-  * **Branching:** Moving from a List-based history to a Tree-based history to support "regenerate" and "alternative timeline" features without data duplication.
-  * **Telemetry:** The `Odometer` system will track token usage across the FSM lifecycle, attributing costs to specific states (Reasoning vs. Generation vs. Tooling).
+```python
+from typing import Annotated
+from conduit.sync import Conduit
 
+async def get_weather(location: Annotated[str, "The city name"]) -> str:
+    """Fetches current weather data."""
+    return f"The weather in {location} is 22°C and sunny."
+
+# Configure a conduit with a tool registry
+conduit = Conduit.create(
+    model="gpt-4o",
+    prompt="Check the weather in London and San Francisco."
+)
+conduit.options.tool_registry.register_functions([get_weather])
+
+result = conduit.run()
+print(result.content)
+```
+
+## Features
+
+*   **Multi-Provider Support**: Seamlessly switch between OpenAI, Anthropic, Google, Perplexity, and local Ollama instances.
+*   **Semantic Caching**: Built-in Postgres-backed caching to prevent redundant API calls and reduce costs.
+*   **Conversation Persistence**: Automatic DAG-based storage of conversation trees in Postgres, allowing for branching and resuming sessions.
+*   **Multimodal Primitives**: Native support for image analysis/generation and audio transcription/TTS.
+*   **Workflow Engine**: A state-machine based executor that manages tool calls and model reasoning steps.
+
+## CLI Usage
+
+Conduit includes several built-in CLI tools for interactive use and debugging.
+
+### Interactive Chat
+Launch a feature-rich terminal UI with persistent history and command completion:
+```bash
+chat
+```
+
+### Quick Query
+Execute a one-off query directly from the terminal or via a pipe:
+```bash
+ask "What is the capital of France?"
+cat file.py | ask "Refactor this code for readability"
+```
+
+### Model Management
+List all supported models and their specific capabilities (context window, multimodal support, etc.):
+```bash
+models
+```
+
+## Configuration
+
+Conduit uses environment variables for provider authentication.
+
+| Environment Variable | Description |
+|----------------------|-------------|
+| `OPENAI_API_KEY` | Required for OpenAI models |
+| `ANTHROPIC_API_KEY` | Required for Claude models |
+| `GOOGLE_API_KEY` | Required for Gemini models |
+| `PERPLEXITY_API_KEY` | Required for Perplexity models |
+
+For persistent storage and caching, ensure a Postgres instance is available. Conduit respects XDG base directory specifications for its local configuration and state files.
+
+## Architecture Overview
+
+Conduit follows a stateless "dumb pipe" philosophy for its core components:
+
+1.  **Model**: A stateless interface to an LLM provider.
+2.  **Conduit**: A template-aware orchestrator that renders prompts and manages context.
+3.  **Engine**: A finite state machine that processes conversations, determining when to generate text and when to execute tools.
+4.  **Middleware**: Handles cross-cutting concerns like UI spinners, logging, token usage tracking (Odometer), and caching.

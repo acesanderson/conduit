@@ -6,8 +6,6 @@ The primary function connects generation parameters and runtime options to the e
 
 from conduit.apps.chat.app import ChatApp
 from conduit.apps.chat.engine.async_engine import ChatEngine
-from conduit.apps.chat.ui.async_input import AsyncInput
-from conduit.apps.chat.ui.enhanced_input import EnhancedInput
 from conduit.apps.chat.ui.input_interface import InputInterface
 from conduit.domain.request.generation_params import GenerationParams
 from conduit.domain.config.conduit_options import ConduitOptions
@@ -30,10 +28,18 @@ def create_chat_app(
 
     # Select and create input interface
     if input_mode == "enhanced":
+        from conduit.apps.chat.ui.enhanced_input import EnhancedInput
+
         console = Console()
         input_interface: InputInterface = EnhancedInput(console)
+        input_interface.set_engine(engine)
+    elif input_mode == "basic":
+        from conduit.apps.chat.ui.basic_input import BasicInput
+
+        console = Console()
+        input_interface = BasicInput(console)
     else:
-        input_interface = AsyncInput()
+        raise ValueError(f"Unknown input mode: {input_mode}")
 
     # Create app with all dependencies
     app = ChatApp(
@@ -42,8 +48,4 @@ def create_chat_app(
         welcome_message=welcome_message,
         verbosity=options.verbosity,  # Verbosity comes from options now
     )
-
-    if isinstance(input_interface, EnhancedInput):
-        input_interface.set_engine(engine)
-
     return app

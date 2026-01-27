@@ -6,7 +6,6 @@ from conduit.utils.progress.plain_formatters import _extract_user_prompt
 
 from rich.console import RenderableType
 from rich.panel import Panel
-from rich.text import Text
 from rich.table import Table
 from rich.syntax import Syntax
 from rich import box
@@ -74,6 +73,8 @@ def _response_detailed_rich(response: GenerationResponse) -> Panel:
 
 def _response_complete_rich(response: GenerationResponse) -> Panel:
     """Complete view: Full messages, no truncation."""
+    from rich.markup import escape  # Needed because of f-string usage
+
     grid = Table.grid(padding=(0, 1))
     grid.add_column("Role", style="bold", width=10)
     grid.add_column("Content")
@@ -82,8 +83,10 @@ def _response_complete_rich(response: GenerationResponse) -> Panel:
         for msg in response.request.messages:
             role_style = "green" if msg.role == "system" else "yellow"
             grid.add_row(
-                f"[{role_style}]{msg.role.value.upper()}[/{role_style}]",
-                str(msg.content),
+                escape(
+                    f"[{role_style}]{msg.role.value.upper()}[/{role_style}]"
+                    + str(msg.content)
+                )
             )
             grid.add_row("", "")  # Spacer
 

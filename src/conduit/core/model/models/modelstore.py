@@ -254,7 +254,6 @@ class ModelStore:
     def _update_models(cls):
         from conduit.core.model.models.research_models import create_modelspec
         from conduit.core.model.models.modelspecs_CRUD import (
-            get_all_modelspecs,
             delete_modelspec,
             get_all_model_names,
         )
