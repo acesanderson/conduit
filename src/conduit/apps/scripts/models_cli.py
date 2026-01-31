@@ -32,6 +32,9 @@ def main():
     parser.add_argument(
         "-p", "--provider", type=str, help="Provider of the model to filter by."
     )
+    parser.add_argument(
+        "-a", "--aliases", action="store_true", help="Display model aliases."
+    )
     args = parser.parse_args()
     # Validate arguments
     if args.type:
@@ -44,6 +47,14 @@ def main():
             raise ValueError(
                 f"Invalid provider: {args.provider}. Must be one of: {' | '.join(providers)}."
             )
+    if args.aliases:
+        from rich.console import Console
+
+        console = Console()
+
+        aliases = ModelStore.aliases()
+        console.print(aliases)
+        return
     if args.model:
         model_string = ModelStore().validate_model
         if not model_string:

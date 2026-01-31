@@ -213,6 +213,16 @@ class StepWrapper:
         self._sig = inspect.signature(func)
         functools.update_wrapper(self, func)
 
+    def __get__(self, instance, owner):
+        """
+        Descriptor protocol support.
+        Ensures that when a @step decorated method is accessed on an instance,
+        we return a bound callable (via partial application) so 'self' is passed correctly.
+        """
+        if instance is None:
+            return self
+        return functools.partial(self.__call__, instance)
+
     async def __call__(self, *args, **kwargs):
         # 1. Bind Args
         bound = self._sig.bind(*args, **kwargs)
