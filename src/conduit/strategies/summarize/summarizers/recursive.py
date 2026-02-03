@@ -85,7 +85,7 @@ class RecursiveSummarizer(SummarizationStrategy):
         )
 
         summarizer = OneShotSummarizer()
-        summary = await summarizer(text=text, model_name=model_name)
+        summary = await summarizer(text=text, model=model_name)
         return summary
 
     async def map_reduce(
@@ -98,7 +98,7 @@ class RecursiveSummarizer(SummarizationStrategy):
 
         summarizer = MapReduceSummarizer()
         # MapReduce will handle the chunking internally using its own Chunker
-        summary = await summarizer(text=text, model_name=self.model_name)
+        summary = await summarizer(text=text, model=self.model_name)
 
         # [LOGGING] Recursion
         logger.info("Map-Reduce pass complete. Recursing on the combined summary.")

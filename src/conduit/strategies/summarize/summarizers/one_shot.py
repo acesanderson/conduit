@@ -9,7 +9,7 @@ class OneShotSummarizer(SummarizationStrategy):
     @override
     async def __call__(self, text: str, **kwargs) -> str:
         # Grab params
-        model = get_param("model", default="gpt-3.5")
+        model = get_param("model", default="gpt3")
         prompt = get_param(
             "prompt", default="Summarize the following text:\n\n{{text}}"
         )
