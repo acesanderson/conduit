@@ -1,36 +1,17 @@
-"""
-Adapter layer for integrating Conduit workflows with Promptfoo evaluation framework. This module dynamically loads workflow definitions from dot-notation paths and executes them within the ConduitHarness observability context, enabling tracing and configuration injection. The `load_workflow_target()` function performs runtime module/class resolution to support both standalone functions and callable class instances, while `call_api()` wraps the execution for Promptfoo's evaluation protocol by extracting workflow references from config, running them with context management, and returning results with trace metadata for cost analysis and debugging.
-
-Usage:
-```yaml
-providers:
-  - id: python:eval_adapter.py
-    label: "Email Flow (GPT-4)"
-    config:
-      # THE DYNAMIC PARTS
-      workflow_target: "library.workflows.email.EmailWorkflow"
-      entry_point: "run"
-
-      # THE TUNABLE PARTS (Passed to Harness)
-      model: "gpt-4"
-      verbosity: "high"
-```
-```python
-# Promptfoo config specifies workflow target and entry point
-result = call_api(
-    prompt="Your input prompt",
-    options={"config": {"workflow_target": "my_app.flows.EmailWorkflow", "entry_point": "run"}},
-    context={}
-)
-# Returns {"output": result_value, "metadata": {"trace": [...]}}
-```
-"""
-
 import importlib
 from collections.abc import Callable
+import asyncio
+import inspect
+import sys
+import os
 
-# Use your actual imports here
 from conduit.core.workflow.harness import ConduitHarness
+
+# AUTOMATICALLY FIX PATH:
+# Add the current working directory to sys.path so we can import user scripts (like 'evals.py')
+# regardless of where this adapter script actually lives.
+if os.getcwd() not in sys.path:
+    sys.path.append(os.getcwd())
 
 
 def load_workflow_target(target_path: str, method_name: str = None) -> Callable:
@@ -74,44 +55,65 @@ def load_workflow_target(target_path: str, method_name: str = None) -> Callable:
         raise ImportError(f"Could not load workflow target '{target_path}': {e}")
 
 
+def sanitize_output(obj):
+    """
+    Recursively converts Pydantic models and Enums to JSON-serializable types.
+    """
+    # 1. Handle Pydantic Models (v1 and v2 support)
+    if hasattr(obj, "model_dump"):  # Pydantic v2
+        return sanitize_output(obj.model_dump())
+    if hasattr(obj, "dict"):  # Pydantic v1
+        return sanitize_output(obj.dict())
+
+    # 2. Handle Enums (convert to their value string)
+    if hasattr(obj, "value") and hasattr(obj, "name"):
+        return obj.value
+
+    # 3. Handle Lists
+    if isinstance(obj, list):
+        return [sanitize_output(item) for item in obj]
+
+    # 4. Handle Dictionaries
+    if isinstance(obj, dict):
+        return {k: sanitize_output(v) for k, v in obj.items()}
+
+    # 5. Return basic types as-is
+    return obj
+
+
 def call_api(prompt, options, context):
     """
-    Generic Promptfoo bridge.
+    Bridge that handles Async + Serialization automatically.
     """
-    # 1. Extract Config
-    # We look for special keys 'workflow' and 'entry_point'
     run_config = options.get("config", {})
-
     target_path = run_config.pop("workflow_target", None)
     method_name = run_config.pop("entry_point", None)
 
     if not target_path:
-        return {
-            "error": "Missing 'workflow_target' in config (e.g. 'flows.email.EmailWorkflow')"
-        }
+        return {"error": "Missing 'workflow_target' in config"}
 
     try:
-        # 2. Dynamically Load the Logic
         workflow_callable = load_workflow_target(target_path, method_name)
-
-        # 3. Initialize Harness (Trace/Config Context)
         harness = ConduitHarness(config=run_config)
 
-        # 4. Execute
-        # Note: We pass *prompt as the first arg. If your workflow takes multiple args,
-        # you might need to parse 'prompt' as JSON or use run_config for others.
-        output = harness.run(workflow_callable, prompt)
+        # Execute
+        result = harness.run(workflow_callable, prompt)
 
-        # 5. Return to Promptfoo
+        # Resolve Async
+        if inspect.iscoroutine(result):
+            result = asyncio.run(result)
+
+        # === THE FIX: Sanitize before returning ===
+        # This converts your EmailCategoryOutput to a plain dict
+        safe_result = sanitize_output(result)
+
         return {
-            "output": output,
+            "output": safe_result,
             "metadata": {
-                "trace": harness.trace,
-                # "cost": calculate_cost(harness.trace) # Add your helper here
+                "trace": harness.trace_log,
             },
         }
     except Exception as e:
-        # Return full traceback for easier debugging in Promptfoo UI
         import traceback
 
         return {"error": f"{str(e)}\n\n{traceback.format_exc()}"}

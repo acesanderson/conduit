@@ -55,6 +55,11 @@ async def middleware_context_manager(request: GenerationRequest):
         if isinstance(cached_result, GenerationResponse):
             ctx["cache_hit"] = True
             ctx["result"] = cached_result
+            # Reconstruct parsed field for structured responses
+            if request.params.response_model and cached_result.message.content:
+                cached_result.message.parsed = request.params.response_model.model_validate_json(
+                    cached_result.message.content
+                )
             logger.info("Cache hit.")
 
     # --- 4. EXECUTION (YIELD) ---
