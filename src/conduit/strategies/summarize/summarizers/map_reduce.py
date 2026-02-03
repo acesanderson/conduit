@@ -31,7 +31,7 @@ class MapReduceSummarizer(SummarizationStrategy):
     async def __call__(self, text: str, **kwargs) -> str:
         logger.info("Starting MapReduceSummarizer")
         # Grab llm params
-        model = get_param("model", default="gpt-3.5")
+        model = get_param("model", default="gpt3")
         prompt = get_param("prompt", default=chunk_summarization_prompt)
         concurrency_limit = get_param("concurrency_limit", default=5)
 
