@@ -1,37 +1,139 @@
+import io
+import logging
+from typing import Annotated, Any
 from conduit.domain.exceptions.exceptions import ToolError
-from typing import Annotated
+
+logger = logging.getLogger(__name__)
 
 
-def extract_content_from_html(html: str) -> str:
-    """Extract and convert HTML content to Markdown format.
-
-    Args:
-        html: Raw HTML content to process
-
-    Returns:
-        Simplified markdown version of the content
-    """
+# CONVERSION FUNCTIONS
+def _convert_html_to_md(html_text: str) -> str:
+    """Standard HTML denoising using readabilipy and markdownify."""
     import markdownify
     import readabilipy
 
-    ret = readabilipy.simple_json.simple_json_from_html_string(
-        html, use_readability=True
-    )
+    ret = readabilipy.simple_json_from_html_string(html_text, use_readability=True)
     if not ret["content"]:
         return "<error>Page failed to be simplified from HTML</error>"
-    content = markdownify.markdownify(
-        ret["content"],
-        heading_style=markdownify.ATX,
-    )
-    return content
+
+    return markdownify.markdownify(ret["content"], heading_style=markdownify.ATX)
 
 
-async def fetch_url(url: Annotated[str, "The URL to fetch"]) -> dict[str, str]:
+def _convert_binary_to_md(content_bytes: bytes, extension: str) -> str:
+    """Uses MarkItDown locally to handle PDFs, Office docs, etc."""
+    from markitdown import MarkItDown
+
+    md = MarkItDown()
+    stream = io.BytesIO(content_bytes)
+
+    # We provide the extension hint to help MarkItDown select the right parser
+    try:
+        result = md.convert_stream(stream, file_extension=extension)
+        return result.text_content
+    except Exception as e:
+        return f"<error>MarkItDown failed to convert {extension} file: {str(e)}</error>"
+
+
+async def _fetch_youtube_via_siphon(url: str) -> str:
     """
-    Fetch the URL and return the content in a form ready for the LLM, as well as a prefix string with status information.
+    Lazy loads Siphon/Headwater client to extract YouTube transcripts
+    via the remote Siphon server (Stallion).
+    """
+    try:
+        from headwater_client.client.headwater_client import HeadwaterClient
+        from siphon_api.api.siphon_request import SiphonRequestParams
+        from siphon_api.api.to_siphon_request import create_siphon_request
+        from siphon_api.enums import ActionType
+        from siphon_api.models import ContentData
+
+        # 1. Build the ephemeral extraction request
+        params = SiphonRequestParams(action=ActionType.EXTRACT)
+        request = create_siphon_request(source=url, request_params=params)
+
+        # 2. Process via the Headwater/Siphon server
+        client = HeadwaterClient()
+        response = client.siphon.process(request)
+
+        payload = response.payload
+        if isinstance(payload, ContentData):
+            return payload.text
+        return (
+            f"<error>Siphon returned unexpected payload type: {type(payload)}</error>"
+        )
+
+    except ImportError:
+        return (
+            "<error>YouTube support requires 'siphon-client' and 'headwater-client' "
+            "to be installed. Please install them to use this feature.</error>"
+        )
+    except Exception as e:
+        return f"<error>Siphon YouTube extraction failed: {str(e)}</error>"
+
+
+def _paginate_content(full_content: str, url: str, page: int) -> dict[str, Any]:
+    """Unified pagination and TOC logic for any markdown content."""
+    lines = full_content.splitlines()
+
+    # Generate Table of Contents (Map)
+    toc = [
+        {"text": line, "line": i + 1}
+        for i, line in enumerate(lines)
+        if line.strip().startswith("#")
+    ]
+
+    # Viewport Slicing (~2000 tokens)
+    chars_per_page = 8000
+    total_chars = len(full_content)
+    total_pages = (total_chars // chars_per_page) + 1
+
+    start_idx = (page - 1) * chars_per_page
+    end_idx = start_idx + chars_per_page
+    viewport_text = full_content[start_idx:end_idx]
+
+    if start_idx >= total_chars and total_chars > 0:
+        return {
+            "error": f"Page {page} out of bounds. Total pages: {total_pages}",
+            "url": url,
+        }
+
+    return {
+        "metadata": {
+            "url": url,
+            "current_page": page,
+            "total_pages": total_pages,
+            "total_characters": total_chars,
+            "is_truncated": page < total_pages,
+        },
+        "table_of_contents": toc,
+        "content": viewport_text,
+        "instructions": (
+            f"Showing page {page} of {total_pages}. "
+            "Use the TOC to jump to sections using the 'page' parameter."
+        ),
+    }
+
+
+# --- MAIN TOOLS ---
+
+
+async def fetch_url(
+    url: Annotated[str, "The URL to fetch"],
+    page: Annotated[int, "The page number to view (1-indexed)."] = 1,
+) -> dict[str, Any]:
+    """
+    Fetch a URL and convert it to clean Markdown.
+    Supports HTML, PDF, Office documents, and YouTube transcripts.
     """
     from httpx import AsyncClient, HTTPError
+    import mimetypes
 
+    # 1. Domain Fork: YouTube
+    if "youtube.com" in url or "youtu.be" in url:
+        logger.info(f"Routing YouTube URL to Siphon: {url}")
+        full_md = await _fetch_youtube_via_siphon(url)
+        return _paginate_content(full_md, url, page)
+
+    # 2. Standard Fetch
     async with AsyncClient() as client:
         try:
             response = await client.get(
@@ -42,53 +144,55 @@ async def fetch_url(url: Annotated[str, "The URL to fetch"]) -> dict[str, str]:
                 },
                 timeout=30,
             )
+            response.raise_for_status()
         except HTTPError as e:
             raise ToolError(f"Failed to fetch {url}: {e}")
-        if response.status_code >= 400:
-            raise ToolError(
-                f"Failed to fetch {url} - status code {response.status_code}"
-            )
 
-        page_raw = response.text
+    # 3. MIME Type Dispatcher
+    content_type = response.headers.get("content-type", "").lower().split(";")[0]
+    extension = mimetypes.guess_extension(content_type) or ""
 
-    content_type = response.headers.get("content-type", "")
-    is_page_html = (
-        "<html" in page_raw[:100] or "text/html" in content_type or not content_type
-    )
+    try:
+        match content_type:
+            case "text/html" | "application/xhtml+xml":
+                full_md = _convert_html_to_md(response.text)
 
-    if is_page_html:
-        return {
-            "type": "html",
-            "url": url,
-            "content": extract_content_from_html(page_raw),
-        }
+            case (
+                "application/pdf"
+                | "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                | "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                | "application/rtf"
+            ):
+                logger.info(
+                    f"Processing binary document ({content_type}) via MarkItDown"
+                )
+                full_md = _convert_binary_to_md(response.content, extension)
 
-    return {
-        "type": "text",
-        "url": url,
-        "content": page_raw,
-    }
+            case "application/json":
+                full_md = f"```json\n{response.text}\n```"
 
+            case _:
+                # Sniff for HTML if MIME is missing/generic
+                if "<html" in response.text[:100].lower():
+                    full_md = _convert_html_to_md(response.text)
+                else:
+                    full_md = response.text
 
-if __name__ == "__main__":
-    # Test the most basic functionality
-    example_url = "https://www.example.com"
-    import asyncio
+    except Exception as e:
+        raise ToolError(f"Conversion error for {url}: {str(e)}")
 
-    result = asyncio.run(fetch_url(example_url))
-    print(result)
+    return _paginate_content(full_md, url, page)
 
 
 async def web_search(
     query: Annotated[str, "The search query to find information online."],
 ) -> dict[str, str]:
     """
-    Performs a web search using the Brave Search API to find documentation, solutions, or current events.
+    Performs a web search using the Brave Search API.
     """
     import os
     import httpx
-    import json
-    from conduit.domain.exceptions.exceptions import ToolError
 
     api_key = os.getenv("BRAVE_API_KEY")
     if not api_key:
@@ -97,53 +201,36 @@ async def web_search(
     url = "https://api.search.brave.com/res/v1/web/search"
     headers = {
         "Accept": "application/json",
-        "Accept-Encoding": "gzip",
         "X-Subscription-Token": api_key,
     }
-    params = {
-        "q": query,
-        "count": 5,  # Limit results to save tokens
-    }
+    params = {"q": query, "count": 5}
 
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 url, headers=headers, params=params, timeout=10.0
             )
-
-            if response.status_code == 401:
-                raise ToolError("Invalid Brave Search API key.")
-            if response.status_code == 429:
-                raise ToolError("Rate limit exceeded for Brave Search.")
-
             response.raise_for_status()
             data = response.json()
 
-        # Parse and format the results for the LLM
         results = []
-
-        # Brave puts results in ['web']['results']
         web_results = data.get("web", {}).get("results", [])
 
         if not web_results:
             return {"result": "No results found."}
 
-        for item in web_results:
+        for i, item in enumerate(web_results, 1):
             title = item.get("title", "No Title")
             link = item.get("url", "")
             description = item.get("description", "")
-            # Only include pub date if available, helpful for "latest news" queries
-            age = item.get("age", "")
+            results.append(
+                f"[{i}] Title: {title}\n    URL: {link}\n    Snippet: {description}"
+            )
 
-            entry = f"Title: {title}\nURL: {link}\nDescription: {description}"
-            if age:
-                entry += f"\nPublished: {age}"
-            results.append(entry)
-
-        return {"result": "\n---\n".join(results)}
-
-    except httpx.TimeoutException:
-        return {"error": "Search request timed out."}
+        return {
+            "result": "\n---\n".join(results),
+            "next_step_hint": "Use fetch_url to see full page content or transcripts.",
+        }
     except Exception as e:
         return {"error": f"Search failed: {str(e)}"}
 

@@ -1,6 +1,6 @@
 from conduit.capabilities.tools.registry import ToolRegistry
-from conduit.capabilities.tools.tools.fetch_url import fetch_url
-from conduit.capabilities.tools.tools.file_read import file_read
+from conduit.capabilities.tools.tools.fetch import fetch_url
+from conduit.capabilities.tools.tools.files import file_read
 from conduit.domain.config.conduit_options import ConduitOptions
 from conduit.domain.request.generation_params import GenerationParams
 from conduit.sync import Model, Conduit, Prompt, Verbosity
