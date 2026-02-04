@@ -35,7 +35,12 @@ class GenerationParams(BaseModel):
     stream: bool = False
     client_params: dict | None = None
     system: str | None = None
+
+    # Tools: hand-made (i.e. ToolRegistry) tools go here
     tools: list[dict[str, Any]] | None = None
+    # Tools: native tool calls are flagged here
+    web_search: bool = False
+    code_interpreter: bool = False
 
     # For structured responses; excluded from serialization, trust me
     response_model: type[BaseModel] | None = Field(default=None, exclude=True)

@@ -82,15 +82,33 @@ class OpenAIClient(Client, ABC):
         """
         converted_messages = self._convert_messages(request.messages)
 
-        # Convert tools and enable parallel tool calls if tools are present
-        tools = None
-        parallel_tool_calls = None
+        # 1. Initialize tools list (start with custom functions)
+        tools = []
         if request.options.tool_registry:
-            tools = [
-                convert_tool_to_openai(tool)
-                for tool in request.options.tool_registry.tools
-            ]
-            parallel_tool_calls = request.options.parallel_tool_calls
+            tools.extend(
+                [
+                    convert_tool_to_openai(tool)
+                    for tool in request.options.tool_registry.tools
+                ]
+            )
+
+        # 2. Inject Native Tools based on GenerationParams
+        if request.params.web_search:
+            tools.append(
+                {
+                    "type": "web_search_preview",
+                    "search_context_size": "medium",  # Defaulting to medium as per API spec
+                }
+            )
+
+        if request.params.code_interpreter:
+            tools.append({"type": "code_interpreter"})
+
+        # 3. Handle state and clean up
+        parallel_tool_calls = request.options.parallel_tool_calls if tools else None
+
+        # Ensure tools is None if the list is empty to avoid API validation errors
+        final_tools = tools if tools else None
 
         openai_payload = OpenAIPayload(
             model=request.params.model,
@@ -99,7 +117,7 @@ class OpenAIClient(Client, ABC):
             top_p=request.params.top_p,
             max_tokens=request.params.max_tokens,
             stream=request.params.stream,
-            tools=tools,
+            tools=final_tools,
             parallel_tool_calls=parallel_tool_calls,
         )
         return openai_payload
