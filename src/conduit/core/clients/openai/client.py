@@ -92,19 +92,7 @@ class OpenAIClient(Client, ABC):
                 ]
             )
 
-        # 2. Inject Native Tools based on GenerationParams
-        if request.params.web_search:
-            tools.append(
-                {
-                    "type": "web_search_preview",
-                    "search_context_size": "medium",  # Defaulting to medium as per API spec
-                }
-            )
-
-        if request.params.code_interpreter:
-            tools.append({"type": "code_interpreter"})
-
-        # 3. Handle state and clean up
+        # 2. Handle state and clean up
         parallel_tool_calls = request.options.parallel_tool_calls if tools else None
 
         # Ensure tools is None if the list is empty to avoid API validation errors
