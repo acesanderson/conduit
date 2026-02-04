@@ -22,13 +22,15 @@ dependencies = [
     "anthropic",
     "google-generativeai",
     "ollama",
-    # Audio/Image Processing
+    # File process
     "pydub",
     "pillow",
     "soundfile",
+    "markitdown[all]",
     # Web/HTTP
     "headwater_api",
     "headwater_client",
+    "siphon_api",
     # Dev tools
     "ruff>=0.12.4",
     "ty>=0.0.1a15",
@@ -129,6 +131,7 @@ members = [
 dbclients = { path = "../dbclients-project", editable = true }
 headwater_api = { path = "../headwater/headwater-api", editable = true }
 headwater_client = { path = "../headwater/headwater-client", editable = true }
+siphon_api = { path = "../siphon/siphon-api", editable = true }
 
 [project.scripts]
 chat = "conduit.apps.scripts.chat_cli:main"

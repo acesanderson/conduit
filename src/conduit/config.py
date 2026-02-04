@@ -92,7 +92,14 @@ def load_settings() -> Settings:
     # Ensure critical config files exist or provide defaults if missing logic is preferred
     # (Leaving assertions as is per original file, assuming scaffolding exists)
     if SYSTEM_PROMPT_PATH.exists():
+        from jinja2 import Template
+        from datetime import datetime
+
         system_prompt = SYSTEM_PROMPT_PATH.read_text()
+        CURRENT_DATE = datetime.now().strftime("%Y-%m-%d")
+        template = Template(system_prompt)
+        system_prompt = template.render(current_date=CURRENT_DATE)
+
     else:
         system_prompt = config["system_prompt"]  # Fallback
 
