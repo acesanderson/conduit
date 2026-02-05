@@ -72,10 +72,13 @@ Each event has:
 * expandable
 * editable
 * branchable
+* deletable
 
 
 
 Events are **never mutated in place** once committed to a conversation.
+
+Deletion of events (for context pruning) creates a new conversation with the deleted events omitted.
 
 ### 1.2 Conversation
 
@@ -84,8 +87,16 @@ A **conversation** is an immutable, persisted record consisting of:
 * an ordered event stream
 * a single active branch path
 
-Any edit to history creates a **new conversation**.
+Any modification to history creates a **new conversation**.
 The previous conversation remains addressable and unchanged.
+
+Modifications include:
+
+* Editing a message (creates a branch)
+* Deleting a message (creates a pruned conversation)
+* Branching from a point in history
+
+All modifications preserve the original conversation for recovery.
 
 ### 1.3 Branch
 
@@ -159,16 +170,29 @@ Selection is **event-based**, not cursor- or line-based.
 
 Navigation never mutates conversation state.
 
+#### Deletion keybindings
+
+* `D` → delete selected message (requires confirmation)
+* `m` → mark message for range deletion
+* `D` (when mark is set) → delete from marked message to selected message (requires confirmation)
+
+Deletion requires visual confirmation and creates a new conversation with the deletion applied.
+
+**Note:** This does not violate the Vim motion constraint as these are explicit single-key bindings for specific actions, not general Vim verb-noun grammar.
+
 #### Actions (non-exhaustive)
 
 * Toggle expand / collapse (only if event is expandable)
 * Copy event content to clipboard
 * Edit / rewrite selected message
 * Regenerate selected assistant message
+* Delete selected message (context pruning)
 * Open input editor for appending
 * Enter command mode (`:`)
 
 Actions operate on **the selected event only**.
+
+Message deletion is a **destructive operation** used for context window pruning and requires confirmation.
 
 ### 3.2 Insert mode
 
@@ -344,6 +368,51 @@ Then:
 * user message becomes editable
 * submission creates a new conversation branch
 
+### 5.4 Message deletion (context pruning)
+
+**Purpose:** Remove messages from conversation history to manage context window size.
+
+#### Deletion semantics
+
+When a message is deleted:
+
+* A **new conversation** is created with the deleted message(s) omitted
+* Original conversation remains unchanged
+* New conversation becomes active
+* Deletion affects the linear history leading to the current leaf
+
+#### Deletion scope
+
+Deletion operates in two modes:
+
+* **Single message deletion:** Deletes only the selected message
+* **Range deletion:** Deletes from a marked message up to (and including) the selected message
+
+#### Branch handling
+
+If the deleted message has branches:
+
+* All branches at that point are preserved in the original conversation
+* The new conversation reflects the deletion along the active path only
+* Branches are not automatically merged or destroyed
+
+#### Deletion constraints
+
+* Cannot delete the root `SystemMessage`
+* Cannot delete messages if deletion would violate the invariant that two `UserMessage` events cannot exist consecutively
+* If deletion would create an invalid state, it must be rejected with a clear error message
+
+#### Confirmation required
+
+Deletion is a **destructive operation** and requires explicit confirmation:
+
+* Visual confirmation dialog must be shown
+* Confirmation should indicate:
+  * Number of messages to be deleted
+  * Whether branches exist at the deletion point
+  * That the operation creates a new conversation
+* Accidental deletions can be recovered by switching back to the previous conversation
+
 ---
 
 ## 6. Branch navigation
@@ -412,9 +481,18 @@ Tap must never:
 
 Destructive actions:
 
-* require confirmation
+* require explicit confirmation
 * are visually distinct
 * are never bound to ambiguous keys
+* are fully recoverable (original conversation remains accessible)
+
+Message deletion:
+
+* is explicit and requires confirmation
+* creates a new conversation (fork) with deletions applied
+* never modifies the original conversation
+* preserves all branches in the original conversation
+* can be undone by switching back to the pre-deletion conversation
 
 Unsubmitted input:
 
@@ -682,3 +760,88 @@ Widgets **do not own domain state**.
 * **Normal Mode:** `j/k` scroll, `i` enter insert mode.
 * **Insert Mode:** `Esc` to normal, `Enter` to submit.
 * **Branching:** `h/l` calls `manager.navigate_horizontal`.
+
+---
+
+## Phase 4: Message Deletion (Context Pruning)
+
+**Goal:** Implement message deletion for context window management.
+
+### Chunk 4.1: Domain Support for Deletion
+
+* **File:** `tap/domain/manager.py` (Update)
+* **Requirements:**
+* Add `TapConversationManager` methods:
+  * `delete_message(node_id: UUID) -> tuple[UUID, Conversation]`: Creates a new conversation with the specified message removed from the active path. Returns the new root ID and the resulting conversation.
+  * `delete_range(start_node_id: UUID, end_node_id: UUID) -> tuple[UUID, Conversation]`: Deletes all messages in the range from start to end (inclusive) along the active path.
+  * `can_delete(node_id: UUID) -> tuple[bool, str]`: Validates whether a message can be deleted. Returns (is_valid, error_message).
+* **Validation rules:**
+  * Cannot delete root SystemMessage
+  * Cannot delete if it would create consecutive UserMessages
+  * Must maintain conversation validity
+
+### Chunk 4.2: UI Confirmation Dialog
+
+* **File:** `tap/ui/dialogs.py`
+* **Requirements:**
+* Create `DeletionConfirmationDialog(ModalScreen)`:
+  * Shows message count to be deleted
+  * Warns if branches exist at deletion point
+  * Shows preview of resulting conversation structure
+  * Buttons: "Delete" (destructive style) and "Cancel"
+* Returns user choice via callback
+
+### Chunk 4.3: Mark System for Range Deletion
+
+* **File:** `tap/controller.py` (Update)
+* **Requirements:**
+* Add state for message marking:
+  * `marked_node_id: UUID | None`
+* Implement `toggle_mark()`:
+  * Sets/clears mark on selected message
+  * Visual indicator in transcript view
+* Implement `get_deletion_range() -> tuple[UUID, UUID] | None`:
+  * Returns (start, end) if mark is set
+  * Returns None if no mark
+
+### Chunk 4.4: Keybindings and Actions
+
+* **File:** `tap/ui/app.py` (Update)
+* **Requirements:**
+* Add to Normal mode bindings:
+  * `D` → trigger deletion flow
+  * `m` → toggle mark on selected message
+* Deletion flow:
+  1. Check if mark is set (range deletion) or single deletion
+  2. Validate deletion with `can_delete()`
+  3. Show confirmation dialog with appropriate details
+  4. On confirmation:
+     - Call `delete_message()` or `delete_range()`
+     - Create new conversation with deletion applied
+     - Switch to new conversation
+     - Clear mark if set
+  5. On cancel: return to normal mode
+
+### Chunk 4.5: Unit Tests
+
+* **File:** `tests/test_deletion.py`
+* **Tests:**
+* Verify single message deletion creates valid conversation
+* Verify range deletion removes correct messages
+* Verify validation prevents invalid deletions (root, consecutive users)
+* Verify original conversation remains unchanged
+* Verify branches are preserved in original conversation
+* Verify mark system correctly identifies ranges
+
+### Chunk 4.6: Visual Indicators
+
+* **File:** `tap/ui/widgets.py` (Update)
+* **Requirements:**
+* Add visual indicator for marked messages:
+  * Subtle border or icon on marked message
+  * Should be visible but not distracting
+* Update transcript rendering to show:
+  * When deletion would affect the current view
+  * Clear visual feedback during marking
+
+---
