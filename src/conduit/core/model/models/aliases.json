@@ -16,7 +16,7 @@
   "llama": "llama3.1:latest",
   "nano": "gpt-5-mini",
   "ollama": "mistral:latest",
-  "opus": "claude-opus-4-5-20251101",
+  "opus": "claude-opus-4-6",
   "qwen": "qwen3:14b",
   "tts": "gemini-2.5-flash-preview-tts",
   "quant": "hf.co/unsloth/gpt-oss-20b-GGUF:Q8_0"

@@ -17,7 +17,7 @@ def research_prompt(query: str) -> Conversation:
     options = ConduitOptions(
         project_name="research",
         cache=settings.default_cache("research"),
-        verbosity=Verbosity.COMPLETE,
+        verbosity=Verbosity.PROGRESS,
         tool_registry=registry,
         use_cache=False,
     )
