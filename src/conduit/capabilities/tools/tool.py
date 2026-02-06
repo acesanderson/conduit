@@ -12,10 +12,6 @@ if TYPE_CHECKING:
 JsonType = Literal["string", "number", "boolean", "integer", "object", "array"]
 
 
-class ToolCallError(Exception):
-    """Custom exception for ToolCall errors."""
-
-
 class Property(BaseModel):
     type: JsonType
     description: str | None = None

@@ -1,11 +1,20 @@
 from __future__ import annotations
-from conduit.capabilities.tools.tool import Tool, ToolCallError
+from conduit.capabilities.tools.tool import Tool
+from conduit.domain.exceptions.exceptions import (
+    ToolError,
+    ToolExecutionError,
+    ToolConfigurationError,
+)
+
 from conduit.capabilities.tools.tool_function import ToolFunction
 from conduit.domain.message.message import ToolCall
 from typing import TYPE_CHECKING
+import logging
 
 if TYPE_CHECKING:
     from conduit.capabilities.skills.registry import SkillRegistry
+
+logger = logging.getLogger(__name__)
 
 
 class ToolRegistry:
@@ -34,11 +43,21 @@ class ToolRegistry:
         if tool.name == "enable_skill" and self._skill_registry is not None:
             func_args["_skill_registry"] = self._skill_registry
             func_args["_tool_registry"] = self
-
         try:
             result = await tool.func(**func_args)
+        except ToolExecutionError as e:
+            # Return error to LLM
+            logger.error(f"Tool '{tool.name}' failed (recoverable): {e}")
+            return {"error": str(e)}
+        except ToolConfigurationError as e:
+            # Log and crash
+            logger.error(f"Tool '{tool.name}' misconfigured: {e}")
+            raise ToolError(f"Configuration error in '{tool.name}': {e}") from e
         except Exception as e:
-            raise ToolCallError(f"Error calling tool '{tool.name}': {e}") from e
+            # Unknown errors - log and crash (fail-safe)
+            logger.error(f"Unexpected error in tool '{tool.name}': {e}")
+            raise ToolError(f"Error calling tool '{tool.name}': {e}") from e
+
         return result if isinstance(result, str) else str(result)
 
     def list_tools(self) -> list[str]:
