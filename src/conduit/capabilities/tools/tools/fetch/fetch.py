@@ -1,14 +1,20 @@
 import io
 import logging
 from typing import Annotated, Any
-from collections import defaultdict
-from urllib.parse import urlparse
 from conduit.domain.exceptions.exceptions import (
     ToolExecutionError,
     ToolConfigurationError,
 )
+from conduit.capabilities.tools.tools.fetch.rotator import UserAgentRotator
 
 logger = logging.getLogger(__name__)
+
+# We rotate user-agents globally
+_agent_rotator = UserAgentRotator()
+
+# --- GLOBAL INSTANCES ---
+# Session pool instance
+_session_pool = None
 
 
 # --- SESSION POOL ---
@@ -16,6 +22,8 @@ class SessionPool:
     """Manages persistent sessions per domain for performance and anti-bot consistency."""
 
     def __init__(self):
+        from collections import defaultdict
+
         self._sessions = {}  # domain -> AsyncSession
         self._locks = defaultdict(lambda: None)  # domain -> asyncio.Lock (lazy init)
 
@@ -31,7 +39,11 @@ class SessionPool:
         async with self._locks[domain]:
             if domain not in self._sessions:
                 logger.info(f"Creating new session for {domain}")
-                self._sessions[domain] = AsyncSession(impersonate="chrome120")
+                # Use rotated headers for session creation
+                headers = _agent_rotator.get_random_headers()
+                self._sessions[domain] = AsyncSession(
+                    impersonate="chrome120", headers=headers
+                )
             return self._sessions[domain]
 
     async def reset_session(self, domain: str):
@@ -60,8 +72,79 @@ class SessionPool:
         self._sessions.clear()
 
 
-# Global session pool instance
-_session_pool = SessionPool()
+def _get_session_pool():
+    """Lazy initialization of session pool."""
+    global _session_pool
+    if _session_pool is None:
+        _session_pool = SessionPool()
+    return _session_pool
+
+
+# --- JAVASCRIPT DETECTION ---
+def _is_javascript_heavy(html: str) -> bool:
+    """
+    Heuristics to detect if a page is primarily JavaScript-rendered.
+    Returns True if content likely needs browser execution to be useful.
+    """
+    # Very short HTML (< 5KB) with lots of <script> tags
+    if len(html) < 5000 and html.count("<script") > 5:
+        return True
+
+    # Common JS framework indicators
+    js_framework_indicators = [
+        "data-reactroot",
+        "data-react-",
+        "ng-app",
+        "ng-version",
+        "__NEXT_DATA__",
+        'id="__nuxt"',
+        "_next/static",
+        "webpack",
+    ]
+
+    return any(indicator in html for indicator in js_framework_indicators)
+
+
+# --- PLAYWRIGHT FALLBACK ---
+async def _fetch_with_playwright(url: str) -> str:
+    """
+    Use Playwright to fetch and render JavaScript-heavy pages.
+    Falls back when static HTML scraping is insufficient.
+    """
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        raise ToolConfigurationError(
+            "Playwright is not installed. This page requires JavaScript rendering. "
+            "Install with: pip install playwright && playwright install chromium"
+        )
+
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+
+            # Set realistic headers
+            headers = _agent_rotator.get_random_headers()
+            await page.set_extra_http_headers(headers)
+
+            # Set reasonable timeout
+            await page.goto(url, wait_until="networkidle", timeout=30000)
+
+            # Wait a bit for any lazy-loaded content
+            await page.wait_for_timeout(1000)
+
+            # Get the rendered HTML
+            content = await page.content()
+            await browser.close()
+
+            return content
+
+    except Exception as e:
+        raise ToolExecutionError(
+            f"Playwright rendering failed for {url}: {str(e)}. "
+            "The page may have protection against automation or require user interaction."
+        )
 
 
 # CONVERSION FUNCTIONS
@@ -198,9 +281,12 @@ async def fetch_url(
     Fetch a URL and convert it to clean Markdown.
     Supports HTML, PDF, Office documents, and YouTube transcripts.
     Uses persistent sessions per domain for performance and anti-bot consistency.
+    Automatically falls back to Playwright for JavaScript-heavy pages.
+    Rotates User-Agent headers to avoid tracking.
     """
     import mimetypes
     import asyncio
+    from urllib.parse import urlparse
 
     # Validate inputs
     if not url or not url.strip():
@@ -228,7 +314,8 @@ async def fetch_url(
     except Exception as e:
         raise ToolExecutionError(f"Failed to parse URL '{url}': {str(e)}")
 
-    session = await _session_pool.get_session(domain)
+    session_pool = _get_session_pool()
+    session = await session_pool.get_session(domain)
 
     # 3. Fetch with Session Priming + Retry Logic
     max_retries = 3
@@ -241,7 +328,9 @@ async def fetch_url(
             if attempt == 0 and not primed:
                 logger.info(f"Priming session for {domain}")
                 try:
-                    await session.get(base_url, timeout=10)
+                    # Use rotated headers for priming request
+                    prime_headers = _agent_rotator.get_random_headers()
+                    await session.get(base_url, timeout=10, headers=prime_headers)
                     primed = True
                 except Exception:
                     pass  # Continue even if priming fails
@@ -249,16 +338,17 @@ async def fetch_url(
                 # Small delay after priming
                 await asyncio.sleep(1)
 
-            # Now fetch the actual URL
+            # Now fetch the actual URL with fresh rotated headers
             logger.info(f"Attempt {attempt + 1}/{max_retries}: Fetching {url}")
-            response = await session.get(url, timeout=30)
+            fetch_headers = _agent_rotator.get_random_headers()
+            response = await session.get(url, timeout=30, headers=fetch_headers)
 
             # Check for blocks
             if response.status_code == 403:
                 logger.warning(f"Access denied (403) for {url}")
                 if attempt < max_retries - 1:
-                    await _session_pool.reset_session(domain)
-                    session = await _session_pool.get_session(domain)
+                    await session_pool.reset_session(domain)
+                    session = await session_pool.get_session(domain)
                     primed = False
                     await asyncio.sleep(2**attempt)
                     continue
@@ -275,8 +365,8 @@ async def fetch_url(
             if response.status_code == 429:
                 logger.warning(f"Rate limited (429) for {url}")
                 if attempt < max_retries - 1:
-                    await _session_pool.reset_session(domain)
-                    session = await _session_pool.get_session(domain)
+                    await session_pool.reset_session(domain)
+                    session = await session_pool.get_session(domain)
                     primed = False
                     await asyncio.sleep(2**attempt)
                     continue
@@ -328,8 +418,28 @@ async def fetch_url(
                 f"Content too large: {size_mb:.1f}MB exceeds 50MB limit. Try a different source or page."
             )
 
-    # 5. MIME Type Dispatcher
+    # 5. Detect JavaScript-heavy pages and use Playwright if needed
     content_type = response.headers.get("content-type", "").lower().split(";")[0]
+
+    if content_type in ("text/html", "application/xhtml+xml"):
+        html_text = response.text
+
+        # Check if page is JavaScript-heavy
+        if _is_javascript_heavy(html_text):
+            logger.info(f"Detected JavaScript-heavy page, using Playwright for {url}")
+            try:
+                rendered_html = await _fetch_with_playwright(url)
+                full_md = _convert_html_to_md(rendered_html)
+                return _paginate_content(full_md, url, page)
+            except ToolExecutionError:
+                # If Playwright fails, try to process original HTML anyway
+                logger.warning(
+                    f"Playwright failed for {url}, attempting to process static HTML"
+                )
+                full_md = _convert_html_to_md(html_text)
+                return _paginate_content(full_md, url, page)
+
+    # 6. MIME Type Dispatcher for non-JS content
     extension = mimetypes.guess_extension(content_type) or ""
 
     try:
