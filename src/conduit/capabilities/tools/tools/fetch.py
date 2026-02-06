@@ -2,6 +2,7 @@ import io
 import logging
 from typing import Annotated, Any
 from conduit.domain.exceptions.exceptions import ToolError
+from functools import lru_cache
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +117,7 @@ def _paginate_content(full_content: str, url: str, page: int) -> dict[str, Any]:
 # --- MAIN TOOLS ---
 
 
+@lru_cache
 async def fetch_url(
     url: Annotated[str, "The URL to fetch"],
     page: Annotated[int, "The page number to view (1-indexed)."] = 1,
@@ -124,8 +126,10 @@ async def fetch_url(
     Fetch a URL and convert it to clean Markdown.
     Supports HTML, PDF, Office documents, and YouTube transcripts.
     """
-    from httpx import AsyncClient, HTTPError
+    from curl_cffi.requests import AsyncSession
+    from urllib.parse import urlparse
     import mimetypes
+    import asyncio
 
     # 1. Domain Fork: YouTube
     if "youtube.com" in url or "youtu.be" in url:
@@ -133,20 +137,54 @@ async def fetch_url(
         full_md = await _fetch_youtube_via_siphon(url)
         return _paginate_content(full_md, url, page)
 
-    # 2. Standard Fetch
-    async with AsyncClient() as client:
-        try:
-            response = await client.get(
-                url,
-                follow_redirects=True,
-                headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
-                },
-                timeout=30,
+    # 2. Standard Fetch with Session Priming + Retry Logic
+    max_retries = 3
+    response = None
+
+    async with AsyncSession(impersonate="chrome120") as session:
+        for attempt in range(max_retries):
+            try:
+                # Prime the session by visiting the homepage first
+                if attempt == 0:
+                    parsed = urlparse(url)
+                    base_url = f"{parsed.scheme}://{parsed.netloc}"
+                    logger.info(f"Priming session with {base_url}")
+                    try:
+                        await session.get(base_url, timeout=10)
+                    except Exception:
+                        pass  # Continue even if priming fails
+
+                    # Small delay after priming
+                    await asyncio.sleep(1)
+
+                # Now fetch the actual URL
+                logger.info(f"Attempt {attempt + 1}/{max_retries}: Fetching {url}")
+                response = await session.get(url, timeout=30)
+
+                # Check for blocks
+                if response.status_code in [403, 429]:
+                    logger.warning(f"Blocked with {response.status_code}, retrying...")
+                    await asyncio.sleep(2**attempt)  # Exponential backoff
+                    continue
+
+                if response.status_code >= 400:
+                    raise Exception(f"HTTP {response.status_code}")
+
+                # Success
+                break
+
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    raise ToolError(
+                        f"Failed to fetch {url} after {max_retries} attempts: {e}"
+                    )
+                logger.warning(f"Attempt {attempt + 1} failed: {e}")
+                await asyncio.sleep(2**attempt)
+
+        if not response or response.status_code >= 400:
+            raise ToolError(
+                f"Failed to fetch {url}: HTTP {response.status_code if response else 'No response'}"
             )
-            response.raise_for_status()
-        except HTTPError as e:
-            raise ToolError(f"Failed to fetch {url}: {e}")
 
     # 3. MIME Type Dispatcher
     content_type = response.headers.get("content-type", "").lower().split(";")[0]

@@ -50,6 +50,7 @@ dependencies = [
     "asyncpg>=0.31.0",
     "datasets>=4.4.2",
     "semchunk>=3.2.5",
+    "curl-cffi>=0.14.0",
 ]
 
 [project.optional-dependencies]
