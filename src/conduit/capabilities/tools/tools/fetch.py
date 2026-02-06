@@ -1,38 +1,108 @@
 import io
 import logging
 from typing import Annotated, Any
-from conduit.domain.exceptions.exceptions import ToolError
-from functools import lru_cache
+from collections import defaultdict
+from urllib.parse import urlparse
+from conduit.domain.exceptions.exceptions import (
+    ToolExecutionError,
+    ToolConfigurationError,
+)
 
 logger = logging.getLogger(__name__)
+
+
+# --- SESSION POOL ---
+class SessionPool:
+    """Manages persistent sessions per domain for performance and anti-bot consistency."""
+
+    def __init__(self):
+        self._sessions = {}  # domain -> AsyncSession
+        self._locks = defaultdict(lambda: None)  # domain -> asyncio.Lock (lazy init)
+
+    async def get_session(self, domain: str):
+        """Get or create a persistent session for the given domain."""
+        from curl_cffi.requests import AsyncSession
+        import asyncio
+
+        # Lazy-initialize lock for this domain
+        if self._locks[domain] is None:
+            self._locks[domain] = asyncio.Lock()
+
+        async with self._locks[domain]:
+            if domain not in self._sessions:
+                logger.info(f"Creating new session for {domain}")
+                self._sessions[domain] = AsyncSession(impersonate="chrome120")
+            return self._sessions[domain]
+
+    async def reset_session(self, domain: str):
+        """Force-reset a session (useful after 403/429 blocks)."""
+        import asyncio
+
+        if self._locks[domain] is None:
+            self._locks[domain] = asyncio.Lock()
+
+        async with self._locks[domain]:
+            if domain in self._sessions:
+                try:
+                    await self._sessions[domain].close()
+                except Exception:
+                    pass
+                del self._sessions[domain]
+                logger.info(f"Reset session for {domain}")
+
+    async def cleanup(self):
+        """Close all sessions (call on shutdown)."""
+        for session in self._sessions.values():
+            try:
+                await session.close()
+            except Exception:
+                pass
+        self._sessions.clear()
+
+
+# Global session pool instance
+_session_pool = SessionPool()
 
 
 # CONVERSION FUNCTIONS
 def _convert_html_to_md(html_text: str) -> str:
     """Standard HTML denoising using readabilipy and markdownify."""
-    import markdownify
-    import readabilipy
+    try:
+        import markdownify
+        import readabilipy
+    except ImportError as e:
+        raise ToolConfigurationError(
+            f"Missing required dependency: {e.name}. Install with: pip install markdownify readabilipy"
+        )
 
     ret = readabilipy.simple_json_from_html_string(html_text, use_readability=True)
     if not ret["content"]:
-        return "<error>Page failed to be simplified from HTML</error>"
+        raise ToolExecutionError(
+            "Page failed to be simplified from HTML. The page may be dynamically generated or blocked."
+        )
 
     return markdownify.markdownify(ret["content"], heading_style=markdownify.ATX)
 
 
 def _convert_binary_to_md(content_bytes: bytes, extension: str) -> str:
     """Uses MarkItDown locally to handle PDFs, Office docs, etc."""
-    from markitdown import MarkItDown
+    try:
+        from markitdown import MarkItDown
+    except ImportError:
+        raise ToolConfigurationError(
+            "MarkItDown is not installed. Install with: pip install markitdown"
+        )
 
     md = MarkItDown()
     stream = io.BytesIO(content_bytes)
 
-    # We provide the extension hint to help MarkItDown select the right parser
     try:
         result = md.convert_stream(stream, file_extension=extension)
         return result.text_content
     except Exception as e:
-        return f"<error>MarkItDown failed to convert {extension} file: {str(e)}</error>"
+        raise ToolExecutionError(
+            f"Failed to convert {extension} file: {str(e)}. The file may be encrypted, corrupted, or in an unsupported format."
+        )
 
 
 async def _fetch_youtube_via_siphon(url: str) -> str:
@@ -46,7 +116,12 @@ async def _fetch_youtube_via_siphon(url: str) -> str:
         from siphon_api.api.to_siphon_request import create_siphon_request
         from siphon_api.enums import ActionType
         from siphon_api.models import ContentData
+    except ImportError:
+        raise ToolConfigurationError(
+            "YouTube support requires 'siphon-client' and 'headwater-client' packages. Install them to use this feature."
+        )
 
+    try:
         # 1. Build the ephemeral extraction request
         params = SiphonRequestParams(action=ActionType.EXTRACT)
         request = create_siphon_request(source=url, request_params=params)
@@ -58,17 +133,15 @@ async def _fetch_youtube_via_siphon(url: str) -> str:
         payload = response.payload
         if isinstance(payload, ContentData):
             return payload.text
-        return (
-            f"<error>Siphon returned unexpected payload type: {type(payload)}</error>"
+
+        raise ToolExecutionError(
+            f"Siphon returned unexpected payload type: {type(payload)}"
         )
 
-    except ImportError:
-        return (
-            "<error>YouTube support requires 'siphon-client' and 'headwater-client' "
-            "to be installed. Please install them to use this feature.</error>"
-        )
     except Exception as e:
-        return f"<error>Siphon YouTube extraction failed: {str(e)}</error>"
+        if isinstance(e, (ToolConfigurationError, ToolExecutionError)):
+            raise
+        raise ToolExecutionError(f"YouTube transcript extraction failed: {str(e)}")
 
 
 def _paginate_content(full_content: str, url: str, page: int) -> dict[str, Any]:
@@ -117,7 +190,6 @@ def _paginate_content(full_content: str, url: str, page: int) -> dict[str, Any]:
 # --- MAIN TOOLS ---
 
 
-@lru_cache
 async def fetch_url(
     url: Annotated[str, "The URL to fetch"],
     page: Annotated[int, "The page number to view (1-indexed)."] = 1,
@@ -125,11 +197,17 @@ async def fetch_url(
     """
     Fetch a URL and convert it to clean Markdown.
     Supports HTML, PDF, Office documents, and YouTube transcripts.
+    Uses persistent sessions per domain for performance and anti-bot consistency.
     """
-    from curl_cffi.requests import AsyncSession
-    from urllib.parse import urlparse
     import mimetypes
     import asyncio
+
+    # Validate inputs
+    if not url or not url.strip():
+        raise ToolConfigurationError("URL parameter cannot be empty")
+
+    if page < 1:
+        raise ToolConfigurationError(f"Page number must be >= 1, got {page}")
 
     # 1. Domain Fork: YouTube
     if "youtube.com" in url or "youtu.be" in url:
@@ -137,56 +215,120 @@ async def fetch_url(
         full_md = await _fetch_youtube_via_siphon(url)
         return _paginate_content(full_md, url, page)
 
-    # 2. Standard Fetch with Session Priming + Retry Logic
-    max_retries = 3
-    response = None
-
-    async with AsyncSession(impersonate="chrome120") as session:
-        for attempt in range(max_retries):
-            try:
-                # Prime the session by visiting the homepage first
-                if attempt == 0:
-                    parsed = urlparse(url)
-                    base_url = f"{parsed.scheme}://{parsed.netloc}"
-                    logger.info(f"Priming session with {base_url}")
-                    try:
-                        await session.get(base_url, timeout=10)
-                    except Exception:
-                        pass  # Continue even if priming fails
-
-                    # Small delay after priming
-                    await asyncio.sleep(1)
-
-                # Now fetch the actual URL
-                logger.info(f"Attempt {attempt + 1}/{max_retries}: Fetching {url}")
-                response = await session.get(url, timeout=30)
-
-                # Check for blocks
-                if response.status_code in [403, 429]:
-                    logger.warning(f"Blocked with {response.status_code}, retrying...")
-                    await asyncio.sleep(2**attempt)  # Exponential backoff
-                    continue
-
-                if response.status_code >= 400:
-                    raise Exception(f"HTTP {response.status_code}")
-
-                # Success
-                break
-
-            except Exception as e:
-                if attempt == max_retries - 1:
-                    raise ToolError(
-                        f"Failed to fetch {url} after {max_retries} attempts: {e}"
-                    )
-                logger.warning(f"Attempt {attempt + 1} failed: {e}")
-                await asyncio.sleep(2**attempt)
-
-        if not response or response.status_code >= 400:
-            raise ToolError(
-                f"Failed to fetch {url}: HTTP {response.status_code if response else 'No response'}"
+    # 2. Extract domain and get persistent session
+    try:
+        parsed = urlparse(url)
+        if not parsed.scheme or not parsed.netloc:
+            raise ToolExecutionError(
+                f"Invalid URL format: {url}. URLs must include scheme (http:// or https://) and domain."
             )
 
-    # 3. MIME Type Dispatcher
+        domain = parsed.netloc
+        base_url = f"{parsed.scheme}://{domain}"
+    except Exception as e:
+        raise ToolExecutionError(f"Failed to parse URL '{url}': {str(e)}")
+
+    session = await _session_pool.get_session(domain)
+
+    # 3. Fetch with Session Priming + Retry Logic
+    max_retries = 3
+    response = None
+    primed = False
+
+    for attempt in range(max_retries):
+        try:
+            # Prime the session on first attempt (if not already primed for this session)
+            if attempt == 0 and not primed:
+                logger.info(f"Priming session for {domain}")
+                try:
+                    await session.get(base_url, timeout=10)
+                    primed = True
+                except Exception:
+                    pass  # Continue even if priming fails
+
+                # Small delay after priming
+                await asyncio.sleep(1)
+
+            # Now fetch the actual URL
+            logger.info(f"Attempt {attempt + 1}/{max_retries}: Fetching {url}")
+            response = await session.get(url, timeout=30)
+
+            # Check for blocks
+            if response.status_code == 403:
+                logger.warning(f"Access denied (403) for {url}")
+                if attempt < max_retries - 1:
+                    await _session_pool.reset_session(domain)
+                    session = await _session_pool.get_session(domain)
+                    primed = False
+                    await asyncio.sleep(2**attempt)
+                    continue
+                else:
+                    raise ToolExecutionError(
+                        f"Access denied to {url}. The site may require authentication, is blocking bots, or is behind a firewall. Try a different URL or search for alternative sources."
+                    )
+
+            if response.status_code == 404:
+                raise ToolExecutionError(
+                    f"Page not found (404): {url}. The URL may be incorrect or the page may have been removed."
+                )
+
+            if response.status_code == 429:
+                logger.warning(f"Rate limited (429) for {url}")
+                if attempt < max_retries - 1:
+                    await _session_pool.reset_session(domain)
+                    session = await _session_pool.get_session(domain)
+                    primed = False
+                    await asyncio.sleep(2**attempt)
+                    continue
+                else:
+                    raise ToolExecutionError(
+                        f"Rate limited by {domain}. The site is blocking too many requests. Try again later or use a different source."
+                    )
+
+            if response.status_code >= 500:
+                raise ToolExecutionError(
+                    f"Server error ({response.status_code}): {url}. The website is experiencing technical difficulties. Try again later or use a different source."
+                )
+
+            if response.status_code >= 400:
+                raise ToolExecutionError(
+                    f"HTTP error {response.status_code} for {url}. The request failed for an unknown reason."
+                )
+
+            # Success
+            break
+
+        except ToolExecutionError:
+            raise
+        except asyncio.TimeoutError:
+            if attempt == max_retries - 1:
+                raise ToolExecutionError(
+                    f"Request timeout for {url}. The site is too slow or unresponsive. Try a different source."
+                )
+            logger.warning(f"Timeout on attempt {attempt + 1}")
+            await asyncio.sleep(2**attempt)
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise ToolExecutionError(
+                    f"Network error while fetching {url}: {str(e)}. Check your internet connection or try a different URL."
+                )
+            logger.warning(f"Attempt {attempt + 1} failed: {e}")
+            await asyncio.sleep(2**attempt)
+
+    if not response:
+        raise ToolExecutionError(f"Failed to fetch {url} after {max_retries} attempts")
+
+    # 4. Check content size
+    content_length = response.headers.get("content-length")
+    if content_length:
+        size_bytes = int(content_length)
+        size_mb = size_bytes / (1024 * 1024)
+        if size_mb > 50:
+            raise ToolExecutionError(
+                f"Content too large: {size_mb:.1f}MB exceeds 50MB limit. Try a different source or page."
+            )
+
+    # 5. MIME Type Dispatcher
     content_type = response.headers.get("content-type", "").lower().split(";")[0]
     extension = mimetypes.guess_extension(content_type) or ""
 
@@ -217,8 +359,12 @@ async def fetch_url(
                 else:
                     full_md = response.text
 
+    except ToolExecutionError:
+        raise
+    except ToolConfigurationError:
+        raise
     except Exception as e:
-        raise ToolError(f"Conversion error for {url}: {str(e)}")
+        raise ToolExecutionError(f"Failed to process content from {url}: {str(e)}")
 
     return _paginate_content(full_md, url, page)
 
@@ -232,9 +378,15 @@ async def web_search(
     import os
     import httpx
 
+    # Validate input
+    if not query or not query.strip():
+        raise ToolConfigurationError("Search query cannot be empty")
+
     api_key = os.getenv("BRAVE_API_KEY")
     if not api_key:
-        raise ToolError("Missing BRAVE_API_KEY environment variable.")
+        raise ToolConfigurationError(
+            "BRAVE_API_KEY environment variable not set. Configure your API key to use web search."
+        )
 
     url = "https://api.search.brave.com/res/v1/web/search"
     headers = {
@@ -269,8 +421,28 @@ async def web_search(
             "result": "\n---\n".join(results),
             "next_step_hint": "Use fetch_url to see full page content or transcripts.",
         }
+
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 401:
+            raise ToolConfigurationError(
+                "Invalid Brave Search API key. Check your BRAVE_API_KEY configuration."
+            )
+        elif e.response.status_code == 429:
+            raise ToolExecutionError(
+                "Brave Search rate limit exceeded. Try again in a few moments."
+            )
+        else:
+            raise ToolExecutionError(
+                f"Brave Search API error ({e.response.status_code}): {str(e)}"
+            )
+
+    except httpx.TimeoutException:
+        raise ToolExecutionError(
+            "Search request timed out. Check your internet connection or try again."
+        )
+
     except Exception as e:
-        return {"error": f"Search failed: {str(e)}"}
+        raise ToolExecutionError(f"Search failed: {str(e)}")
 
 
 __all__ = ["fetch_url", "web_search"]
