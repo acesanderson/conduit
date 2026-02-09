@@ -81,7 +81,11 @@ class PerplexityClient(Client):
         """
         # load client_params
         client_params = request.params.client_params or {}
-        allowed_params = {"return_citations", "search_recency_filter"}
+        allowed_params = {
+            "return_citations",
+            "search_recency_filter",
+            "search_domain_filter",
+        }
         for param in client_params.keys():
             if param not in allowed_params:
                 raise ValueError(
@@ -188,6 +192,23 @@ class PerplexityClient(Client):
         payload = self._convert_request(request)
         payload_dict = payload.model_dump(exclude_none=True)
 
+        # The OpenAI SDK rejects these if passed as top-level kwargs.
+        pplx_params = {
+            "return_citations",
+            "return_images",
+            "return_related_questions",
+            "search_recency_filter",
+            "search_domain_filter",
+        }
+
+        extra_body = {}
+        for param in list(payload_dict.keys()):
+            if param in pplx_params:
+                extra_body[param] = payload_dict.pop(param)
+
+        if extra_body:
+            payload_dict["extra_body"] = extra_body
+
         # Track timing
         start_time = time.time()
 
@@ -265,6 +286,23 @@ class PerplexityClient(Client):
         """
         payload = self._convert_request(request)
         payload_dict = payload.model_dump(exclude_none=True)
+
+        # The OpenAI SDK rejects these if passed as top-level kwargs.
+        pplx_params = {
+            "return_citations",
+            "return_images",
+            "return_related_questions",
+            "search_recency_filter",
+            "search_domain_filter",
+        }
+
+        extra_body = {}
+        for param in list(payload_dict.keys()):
+            if param in pplx_params:
+                extra_body[param] = payload_dict.pop(param)
+
+        if extra_body:
+            payload_dict["extra_body"] = extra_body
 
         # Track timing
         start_time = time.time()
