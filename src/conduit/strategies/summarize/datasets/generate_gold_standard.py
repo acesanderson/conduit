@@ -1,85 +1,53 @@
-import os
-import json
-import asyncio
-import google.generativeai as genai
-from tqdm import tqdm
 from conduit.config import settings
-from conduit.strategies.summarize.datasets.corpus import fetch_siphon_stratified
+from conduit.strategies.summarize.datasets.corpus import build_composite_dataset
+from conduit.strategies.summarize.datasets.gold_standard import (
+    GoldStandardSummary,
+    GoldStandardEntry,
+    GoldStandardDatum,
+)
 from conduit.core.prompt.prompt_loader import PromptLoader
+from conduit.async_ import ConduitAsync, GenerationParams, ConduitOptions, Verbosity
+from conduit.config import settings
 from pathlib import Path
+import asyncio
 
 MODEL_NAME = "gemini3"
 OUTPUT_FILE = settings.paths["DATA_DIR"] / "gold_standard.json"
 PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 PROMPT_LOADER = PromptLoader(PROMPTS_DIR)
+PROJECT_NAME = "gold_standard_summarization"
+GOLD_STANDARD_PROMPT = PROMPT_LOADER["gold_standard"]
+DATASET = asyncio.run(build_composite_dataset())
+
+"""
+Dataset schema:
+"category": category,
+"source_id": source_id_fn(item, i),
+"text": text,
+"token_count": count,
+"""
 
 
-async def generate_gold_summary(model, text):
-    """Sends a single doc to Gemini Cloud."""
-    try:
-        response = await model.generate_content_async(
-            GOLDEN_PROMPT.format(text=text),
-            generation_config={"response_mime_type": "application/json"},
-        )
-        return json.loads(response.text)
-    except Exception as e:
-        print(f"❌ Error generating summary: {e}")
-        return None
-
-
-async def main():
-    # 1. Setup
-    api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        raise ValueError("Please set GOOGLE_API_KEY environment variable.")
-
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(MODEL_NAME)
-
-    # 2. Build Data
-    dataset = build_composite_dataset()
-    print(f"📦 Total Documents: {len(dataset)}")
-
-    confirm = input("   Proceed? (y/n): ")
-    if confirm.lower() != "y":
-        return
-
-    # 3. Execution Loop
-    results = []
-    print("🚀 Starting Generation...")
-
-    # Semaphore to prevent hitting rate limits (5 concurrent requests)
-    sem = asyncio.Semaphore(5)
-
-    async def process_doc(doc):
-        async with sem:
-            res = await generate_gold_summary(model, doc["text"])
-            if res:
-                return {
-                    "id": doc["source_id"],
-                    "category": doc["category"],
-                    "source_text": doc["text"],  # Save source for reference
-                    "gold_summary": res["summary"],
-                    "gold_facts": res["key_facts"],
-                    "theme": res["main_theme"],
-                }
-            return None
-
-    # Run tasks
-    tasks = [process_doc(doc) for doc in dataset]
-    completed_docs = []
-
-    for f in tqdm(asyncio.as_completed(tasks), total=len(tasks)):
-        result = await f
-        if result:
-            completed_docs.append(result)
-
-    # 4. Save
-    with open(OUTPUT_FILE, "w") as f:
-        json.dump(completed_docs, f, indent=2)
-
-    print(f"\n✅ Done! Saved {len(completed_docs)} gold records to {OUTPUT_FILE}")
+async def generate_gold_standard(doc: GoldStandardEntry) -> GoldStandardDatum:
+    params = GenerationParams(
+        model=MODEL_NAME,
+        output_type="structured_response",
+        response_model=GoldStandardSummary,
+    )
+    options = ConduitOptions(
+        project_name=PROJECT_NAME,
+        cache=settings.default_cache(PROJECT_NAME),
+        verbosity=Verbosity.PROGRESS,
+    )
+    conduit = ConduitAsync(prompt=GOLD_STANDARD_PROMPT)
+    conversation = await conduit.run(
+        input_variables={"text": doc.text}, params=params, options=options
+    )
+    summary = conversation.last.parsed
+    return GoldStandardDatum(entry=doc, summary=summary)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Grab just one GoldStandardEntry from the dataset
+    sample_doc = GoldStandardEntry(**DATASET[0])
+    sample_summary = asyncio.run(generate_gold_standard(sample_doc))
