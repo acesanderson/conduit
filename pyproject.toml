@@ -31,6 +31,7 @@ dependencies = [
     "headwater_api",
     "headwater_client",
     "siphon_api",
+    "siphon_server",
     # Dev tools
     "ruff>=0.12.4",
     "ty>=0.0.1a15",
@@ -134,6 +135,7 @@ dbclients = { path = "../dbclients-project", editable = true }
 headwater_api = { path = "../headwater/headwater-api", editable = true }
 headwater_client = { path = "../headwater/headwater-client", editable = true }
 siphon_api = { path = "../siphon/siphon-api", editable = true }
+siphon_server = { path = "../siphon/siphon-server", editable = true }
 
 [project.scripts]
 chat = "conduit.apps.scripts.chat_cli:main"
