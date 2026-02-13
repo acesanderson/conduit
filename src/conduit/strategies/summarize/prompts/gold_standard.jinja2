@@ -1,9 +1,13 @@
 Summarize the following document for a "Gold Standard" benchmark dataset.
 
-<document>
-{{ text }}
-</document>
+<Target_Length>
+The "summary" field in your response must be approximately {{ target_tokens }} tokens long. 
+Adjust your level of detail to hit this length while maintaining high information density.
+</Target_Length>
 
-Follow the provided schema strictly. Focus on information density: extract every vital entity and 
-milestone without using filler phrases. Ensure the logical sequence reflects the actual 
-narrative or procedural flow of the source.
+<Document>
+{{ text }}
+</Document>
+
+Follow the provided schema strictly. Ensure the logical sequence reflects the actual 
+narrative or procedural flow. Focus on "Atomic Facts" that are discrete and independent.
