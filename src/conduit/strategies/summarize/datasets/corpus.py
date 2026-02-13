@@ -1,13 +1,12 @@
 import asyncio
-import sys
 from datasets import Dataset, load_dataset, concatenate_datasets, Features, Value
 from sqlalchemy import func
-from conduit.async_ import ModelAsync  # <--- As requested
+from conduit.async_ import ModelAsync
 from siphon_server.database.postgres.connection import SessionLocal
 from siphon_server.database.postgres.models import ProcessedContentORM
 from uuid import uuid4
 
-# Initialize Tokenizer (Global)
+# Initialize Tokenizer (Global) # <--- As requested
 # We use 'gpt-4o' for accurate counting, matching your standard
 tokenizer = ModelAsync("gpt-4o")
 
@@ -72,7 +71,7 @@ async def fetch_siphon_stratified():
     ]
 
     selected_docs = []
-    print(f"🔌 Connecting to Siphon DB...")
+    print(f"Connecting to Siphon DB...")
 
     try:
         for tier in tiers:
@@ -113,7 +112,7 @@ async def fetch_siphon_stratified():
                     )
                     found_in_tier += 1
 
-            print(f"     ✅ Selected {found_in_tier}/{tier['target']} docs.")
+            print(f"Selected {found_in_tier}/{tier['target']} docs.")
 
     finally:
         db.close()
@@ -152,7 +151,7 @@ async def build_public_dataset(name, split, category, source_id_fn, text_fn):
 
 
 async def build_composite_dataset():
-    print("\n🏗️  Building Composite Dataset (Async)...")
+    print("\nBuilding Composite Dataset (Async)...")
 
     # 1. Siphon Data (Async)
     siphon_ds = await fetch_siphon_stratified()
@@ -205,7 +204,7 @@ if __name__ == "__main__":
     # The Entry Point
     ds = asyncio.run(build_composite_dataset())
 
-    print(f"\n📦 Final Count: {len(ds)} documents")
+    print(f"\nFinal Count: {len(ds)} documents")
     if len(ds) > 0:
         from collections import Counter
 
