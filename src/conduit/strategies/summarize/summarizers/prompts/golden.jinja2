@@ -1,0 +1,12 @@
+You are an expert summarization engine building a Ground Truth dataset.
+Analyze the following document and generate a "Gold Standard" summary.
+
+<Document>
+{{ document }}
+</Document>
+
+**Instructions:**
+1. **Entity Density:** The summary must define all key entities (People, Laws, Technologies) explicitly.
+2. **Logical Flow:** Maintain the exact chronological or logical progression of the original text.
+3. **No Fluff:** Do not use phrases like "The text discusses..." or "In this video...". Start directly with the content.
+4. **Length:** detailed and comprehensive. Aim for ~5-10% of the original length.
