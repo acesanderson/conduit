@@ -55,6 +55,7 @@ SERVER_MODELS_PATH = STATE_DIR / "server_models.json"
 OLLAMA_MODELS_PATH = STATE_DIR / "ollama_models.json"
 DEFAULT_HISTORY_FILE = DATA_DIR / "conduit" / "history.json"
 DEFAULT_LOG_FILE = DATA_DIR / "conduit" / "conduit.log"
+DATASETS_DIR = DATA_DIR / "datasets"
 
 
 @dataclass
@@ -156,6 +157,7 @@ def load_settings() -> Settings:
         "OLLAMA_MODELS_PATH": OLLAMA_MODELS_PATH,
         "DEFAULT_HISTORY_FILE": DEFAULT_HISTORY_FILE,
         "DEFAULT_LOG_FILE": DEFAULT_LOG_FILE,
+        "DATASETS_DIR": DATASETS_DIR,
     }
 
     # Default params
