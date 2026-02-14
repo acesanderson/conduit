@@ -90,6 +90,7 @@ async def middleware_context_manager(request: GenerationRequest):
     if request.options.cache is not None and request.options.use_cache:
         cached_result = await request.options.cache.get(request)
         if isinstance(cached_result, GenerationResponse):
+            cached_result.metadata.cache_hit = True
             ctx["cache_hit"] = True
             ctx["result"] = cached_result
             # Reconstruct parsed field for structured responses

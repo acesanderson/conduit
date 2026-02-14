@@ -25,3 +25,6 @@ class ResponseMetadata(BaseModel):
     stop_reason: str | StopReason = Field(
         ..., description="Reason for stopping the generation"
     )
+    cache_hit: bool = Field(
+        default=False, description="Whether the response was served from cache"
+    )
