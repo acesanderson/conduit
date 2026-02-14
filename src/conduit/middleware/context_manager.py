@@ -33,6 +33,43 @@ async def middleware_context_manager(request: GenerationRequest):
     else:
         verbosity = request.options.verbosity
 
+    # DEBUG PAYLOAD LOGGING: compare params to final payload
+    if request.options.debug_payload:
+        from conduit.core.model.models.modelstore import ModelStore
+        import json
+
+        client = ModelStore.get_client(request.params.model, "sdk")
+        raw_payload = client._convert_request(request)
+
+        # USE mode="json" TO ENSURE ENUMS (Role) AND TYPES ARE CONVERTED TO PRIMITIVES
+        debug_info = {
+            "request": request.model_dump(mode="json", exclude_none=True),
+            "final_payload": raw_payload.model_dump(mode="json", exclude_none=True),
+        }
+
+        # Now standard json.dumps will work perfectly
+        debug_json = json.dumps(debug_info, indent=2)
+
+        logger.info(f"DEBUG PAYLOAD: {debug_json}")
+
+        if request.options.console:
+            from rich.panel import Panel
+            from rich.syntax import Syntax
+
+            syntax = Syntax(
+                debug_json,
+                "json",
+                theme="monokai",
+                word_wrap=True,
+            )
+            request.options.console.print(
+                Panel(
+                    syntax,
+                    title="[bold red]LLM API Request Payload[/bold red]",
+                    border_style="red",
+                )
+            )
+
     # --- 1. SETUP ---
     handler = _get_progress_handler(request)
     model_name = request.params.model
@@ -57,8 +94,10 @@ async def middleware_context_manager(request: GenerationRequest):
             ctx["result"] = cached_result
             # Reconstruct parsed field for structured responses
             if request.params.response_model and cached_result.message.content:
-                cached_result.message.parsed = request.params.response_model.model_validate_json(
-                    cached_result.message.content
+                cached_result.message.parsed = (
+                    request.params.response_model.model_validate_json(
+                        cached_result.message.content
+                    )
                 )
             logger.info("Cache hit.")
 

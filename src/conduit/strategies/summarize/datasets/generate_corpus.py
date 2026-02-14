@@ -5,10 +5,13 @@ from conduit.async_ import ModelAsync
 from siphon_server.database.postgres.connection import SessionLocal
 from siphon_server.database.postgres.models import ProcessedContentORM
 from uuid import uuid4
+from conduit.config import settings
+
 
 # Initialize Tokenizer (Global) # <--- As requested
 # We use 'gpt-4o' for accurate counting, matching your standard
 tokenizer = ModelAsync("gpt-4o")
+DATASETS_DIR = settings.paths["DATASETS_DIR"]
 
 
 async def get_token_count(text: str) -> int:
@@ -200,6 +203,12 @@ async def build_composite_dataset():
     return combined
 
 
+def save_dataset(ds: Dataset, name: str = "summarization_corpus.parquet") -> None:
+    path = f"{DATASETS_DIR}/{name}"
+    ds.to_parquet(path_or_buf=path)
+    print(f"Dataset saved to: {path}")
+
+
 if __name__ == "__main__":
     # The Entry Point
     ds = asyncio.run(build_composite_dataset())
@@ -214,3 +223,5 @@ if __name__ == "__main__":
         avg_tokens = sum(ds["token_count"]) / len(ds)
         print(f"   Avg Tokens: {int(avg_tokens)}")
         print(f"   Sample ID: {ds[0]['source_id']}")
+
+    save_dataset(ds)
