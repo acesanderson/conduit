@@ -1,5 +1,17 @@
+"""
+Gold standard summarizations, for this exercise, is these params:
+- temp: 0.0 (we want the best possible summary, not a variety)
+- model: Gemini 3 (the best we have access to at the moment)
+- summarization is one-shot, with the gold standard prompt
+
+We are generating the following for each doc:
+- summary
+- token count of the summary (to validate that it meets the target compression ratio)
+- entities and key info in the summary (to validate that it captures the important info from the original text)
+"""
+
 from conduit.config import settings
-from conduit.strategies.summarize.datasets.load_corpus import load_corpus
+from conduit.strategies.summarize.datasets.load_datasets import load_corpus
 from conduit.strategies.summarize.datasets.gold_standard import (
     GoldStandardSummary,
     GoldStandardEntry,
@@ -9,8 +21,9 @@ from conduit.strategies.summarize.compression import get_target_summary_length
 from conduit.core.prompt.prompt_loader import PromptLoader
 from conduit.config import settings
 from pathlib import Path
-import asyncio
+from datasets import Dataset
 
+# General configs
 MODEL_NAME = "gemini3"
 OUTPUT_FILE = settings.paths["DATA_DIR"] / "gold_standard.json"
 PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
@@ -18,16 +31,15 @@ PROMPT_LOADER = PromptLoader(PROMPTS_DIR)
 PROJECT_NAME = "gold_standard_summarization"
 GOLD_STANDARD_PROMPT = PROMPT_LOADER["gold_standard"]
 CORPUS_DATASET = load_corpus()
-DRY_RUN = False  # Set to True to just print prompts without making API calls
-DEBUG_PAYLOAD = True
+GOLD_STANDARD_DATASET_PATH = (
+    settings.paths["DATASETS_DIR"] / "gold_standard_dataset.parquet"
+)
 
-"""
-Dataset schema:
-"category": category,
-"source_id": source_id_fn(item, i),
-"text": text,
-"token_count": count,
-"""
+# Test configs
+DRY_RUN = False  # Set to True to just print prompts without making API calls
+DEBUG_PAYLOAD = (
+    False  # Set to True to include the full API payload in the logs for debugginTrueg
+)
 
 
 async def generate_single_gold_standard(doc: GoldStandardEntry) -> GoldStandardDatum:
@@ -138,20 +150,23 @@ async def validate_datum(
     return True
 
 
+def save_gold_standard_data(dataset: Dataset, path: Path = GOLD_STANDARD_DATASET_PATH):
+    """
+    Save the gold standard data to a Parquet file.
+    """
+    dataset.to_parquet(str(path))
+    print(f"Gold standard dataset saved to {path}")
+
+
 if __name__ == "__main__":
-    # Grab just one GoldStandardEntry from the dataset
-    # for d in CORPUS_DATASET:
-    #     entry = GoldStandardEntry(**d)
-    #     print(entry.token_count, get_target_summary_length(entry.token_count), sep="\t")
-    # sample_doc = GoldStandardEntry(**CORPUS_DATASET[0])
-    # sample_summary = asyncio.run(generate_single_gold_standard(sample_doc))
-    # print(sample_doc.token_count)
-    # input_vars = asyncio.run(
-    #     generate_gold_standards([GoldStandardEntry(**d) for d in CORPUS_DATASET])
-    # )
-    entries = [GoldStandardEntry(**d) for d in list(CORPUS_DATASET)[:3]]
+    import asyncio
+
+    entries = [GoldStandardEntry(**d) for d in CORPUS_DATASET]
     gold_standard_data = asyncio.run(generate_gold_standards(entries, dry_run=DRY_RUN))
     for datum in gold_standard_data:
         is_valid = asyncio.run(validate_datum(datum))
         print(f"Datum valid: {is_valid}")
-    # Save the gold standard data to a JSON file
+    gold_standard_dataset = Dataset.from_list(
+        [datum.model_dump() for datum in gold_standard_data]
+    )
+    save_gold_standard_data(gold_standard_dataset)
