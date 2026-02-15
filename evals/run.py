@@ -38,9 +38,4 @@ async def run_config(config: dict[str, str | float], text: str) -> None:
 if __name__ == "__main__":
     EXAMPLE = DATASET[0]
     EXAMPLE_TEXT = EXAMPLE["entry"]["text"]
-
-    print("RecursiveSummarizer Schema:")
-    print(json.dumps(RecursiveSummarizer().schema, indent=2))
-    print("\nConfig Dictionary:")
-    print(json.dumps(CONFIG_DICT, indent=2))
     asyncio.run(run_config(CONFIG_DICT, text=EXAMPLE_TEXT))
