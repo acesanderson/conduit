@@ -1,4 +1,5 @@
 from __future__ import annotations
+import sys
 from typing import Any, TYPE_CHECKING
 from conduit.core.workflow.context import context
 
@@ -21,6 +22,10 @@ class ConduitHarness:
         self._final_used_keys: set[str] = set()
 
     def validate_config(self, workflow: Workflow):
+        """
+        Validates config against the workflow schema.
+        Exits process with a formatted diff if non-compliant.
+        """
         schema = getattr(workflow, "schema", {})
         config_keys = set(self.config.keys())
         missing_hard = []
@@ -29,14 +34,11 @@ class ConduitHarness:
             is_provided = any(k in config_keys for k in details["keys"])
 
             if not is_provided:
-                # Failure Case 1: Defaults are disabled globally
                 if not self.use_defaults:
-                    missing_hard.append(f"{logical_name} (Defaults disabled)")
-                # Failure Case 2: Defaults enabled, but this param has no default in code
+                    missing_hard.append(logical_name)
                 elif not details["has_code_default"]:
                     missing_hard.append(f"{logical_name} (No default in code)")
 
-        # Infrastructure and detected keys
         all_valid_keys = {k for d in schema.values() for k in d["keys"]}
         all_valid_keys.update({"workflow_target", "entry_point"})
         unexpected = [k for k in config_keys if k not in all_valid_keys]
@@ -45,33 +47,59 @@ class ConduitHarness:
             self._print_diff(missing_hard, unexpected)
 
         if missing_hard:
-            raise ConfigurationError(
-                f"Workflow rejected due to non-compliant config: {missing_hard}"
-            )
+            # Swallow the exception by exiting cleanly with the printed messaging
+            sys.exit(1)
 
     def _print_diff(self, missing: list[str], unexpected: list[str]):
         from rich.console import Console
         from rich.panel import Panel
         from rich.table import Table
+        from rich.text import Text
 
         console = Console()
-        table = Table(box=None, show_header=False)
+
+        # We use a table for structural layout inside the panel
+        layout_table = Table.grid(padding=(0, 1))
 
         if missing:
-            table.add_row("[bold red]Missing (Required):[/]", ", ".join(missing))
-        if unexpected:
-            table.add_row("[bold yellow]Unused Config:[/]", ", ".join(unexpected))
+            layout_table.add_row(
+                Text("Config dict is missing required params:", style="bold red")
+            )
+            # Add each missing param as a bullet point
+            for param in missing:
+                layout_table.add_row(f"  • [cyan]{param}[/cyan]")
 
+            if not self.use_defaults:
+                layout_table.add_row(
+                    Text(
+                        "(Note: use_defaults=False; code-level fallbacks ignored)",
+                        style="dim",
+                    )
+                )
+
+        if unexpected:
+            if missing:
+                layout_table.add_row("")  # Spacer
+            layout_table.add_row(
+                Text("Config dict has unexpected params:", style="bold yellow")
+            )
+            for param in unexpected:
+                layout_table.add_row(f"  • [yellow]{param}[/yellow]")
+
+        console.print("\n")
         console.print(
             Panel(
-                table,
-                title="[bold]Workflow Configuration Validation[/]",
+                layout_table,
+                title="[bold red]Workflow Configuration Non-Compliance[/]"
+                if missing
+                else "[bold yellow]Workflow Configuration Warning[/]",
                 border_style="red" if missing else "yellow",
+                expand=False,
+                padding=(1, 2),
             )
         )
 
     async def run(self, workflow: Workflow, *args, **kwargs) -> Any:
-        # Mount context-level configuration policy
         token_defaults = context.use_defaults.set(self.use_defaults)
         token_conf = context.config.set(self.config)
         token_trace = context.trace.set(self.trace_log)
@@ -81,7 +109,6 @@ class ConduitHarness:
         token_access = context.access.set(used_keys)
 
         try:
-            # Validate AFTER mounting context so resolve_param works if called during validation
             self.validate_config(workflow)
             return await workflow(*args, **kwargs)
         finally:
@@ -142,3 +169,8 @@ class ConduitHarness:
                 entry["step"], str(entry["duration"]), entry["status"], meta_str, output
             )
         console.print(table)
+
+    @property
+    def trace(self) -> list:
+        """Exposes the trace log for the current execution."""
+        return self.trace_log

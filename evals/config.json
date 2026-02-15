@@ -5,5 +5,11 @@
   "MapReduceSummarizer.model": "gpt-oss:latest",
   "MapReduceSummarizer.concurrency_limit": 5,
   "MapReduceSummarizer.temperature": 0.0,
-  "MapReduceSummarizer.target_tokens": 150
+  "MapReduceSummarizer.target_tokens": 150,
+  "OneShotSummarizer.max_tokens": null,
+  "OneShotSummarizer.top_p": null,
+  "OneShotSummarizer.project_name": "conduit",
+  "MapReduceSummarizer.max_tokens": null,
+  "MapReduceSummarizer.top_p": null,
+  "MapReduceSummarizer.project_name": "conduit"
 }
