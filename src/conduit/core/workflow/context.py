@@ -24,6 +24,11 @@ class WorkflowContext:
         default_factory=lambda: ContextVar("config_discovery", default=None)
     )
 
+    # Use Defaults Flag (Read-Only for steps, set by the workflow runner)
+    use_defaults: ContextVar[bool] = field(
+        default_factory=lambda: ContextVar("use_defaults", default=False)
+    )
+
     # Access Log (Write-Only, for drift detection)
     access: ContextVar[set | None] = field(
         default_factory=lambda: ContextVar("config_access", default=None)

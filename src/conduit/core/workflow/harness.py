@@ -1,105 +1,118 @@
-from typing import Any
+from __future__ import annotations
+from typing import Any, TYPE_CHECKING
 from conduit.core.workflow.context import context
-from conduit.core.workflow.protocols import Workflow
-import ast
-import inspect
-from collections import deque
+
+if TYPE_CHECKING:
+    from conduit.core.workflow.protocols import Workflow
+
+
+class ConfigurationError(Exception):
+    """Raised when the workflow configuration does not meet the Strategy requirements."""
+
+    pass
 
 
 class ConduitHarness:
-    """
-    The runtime container that manages Observability and Configuration contexts.
-    """
-
-    def __init__(self, config: dict = None):
+    def __init__(self, config: dict = None, use_defaults: bool = False):
         self.config = config or {}
+        self.use_defaults = use_defaults
         self.trace_log: list = []
-        # These are populated after a run()
         self._discovered_config: dict[str, Any] = {}
         self._final_used_keys: set[str] = set()
 
+    def validate_config(self, workflow: Workflow):
+        schema = getattr(workflow, "schema", {})
+        config_keys = set(self.config.keys())
+        missing_hard = []
+
+        for logical_name, details in schema.items():
+            is_provided = any(k in config_keys for k in details["keys"])
+
+            if not is_provided:
+                # Failure Case 1: Defaults are disabled globally
+                if not self.use_defaults:
+                    missing_hard.append(f"{logical_name} (Defaults disabled)")
+                # Failure Case 2: Defaults enabled, but this param has no default in code
+                elif not details["has_code_default"]:
+                    missing_hard.append(f"{logical_name} (No default in code)")
+
+        # Infrastructure and detected keys
+        all_valid_keys = {k for d in schema.values() for k in d["keys"]}
+        all_valid_keys.update({"workflow_target", "entry_point"})
+        unexpected = [k for k in config_keys if k not in all_valid_keys]
+
+        if missing_hard or unexpected:
+            self._print_diff(missing_hard, unexpected)
+
+        if missing_hard:
+            raise ConfigurationError(
+                f"Workflow rejected due to non-compliant config: {missing_hard}"
+            )
+
+    def _print_diff(self, missing: list[str], unexpected: list[str]):
+        from rich.console import Console
+        from rich.panel import Panel
+        from rich.table import Table
+
+        console = Console()
+        table = Table(box=None, show_header=False)
+
+        if missing:
+            table.add_row("[bold red]Missing (Required):[/]", ", ".join(missing))
+        if unexpected:
+            table.add_row("[bold yellow]Unused Config:[/]", ", ".join(unexpected))
+
+        console.print(
+            Panel(
+                table,
+                title="[bold]Workflow Configuration Validation[/]",
+                border_style="red" if missing else "yellow",
+            )
+        )
+
     async def run(self, workflow: Workflow, *args, **kwargs) -> Any:
-        """
-        Executes a workflow within the managed context.
-        """
-        # Mount Context
+        # Mount context-level configuration policy
+        token_defaults = context.use_defaults.set(self.use_defaults)
         token_conf = context.config.set(self.config)
         token_trace = context.trace.set(self.trace_log)
-
-        # Initialize logs
         token_discovery = context.discovery.set({})
-        # Track accessed keys for this run
+
         used_keys = set()
         token_access = context.access.set(used_keys)
 
         try:
+            # Validate AFTER mounting context so resolve_param works if called during validation
+            self.validate_config(workflow)
             return await workflow(*args, **kwargs)
         finally:
-            # Capture state before reset
             discovery_snapshot = context.discovery.get()
             if discovery_snapshot:
                 self._discovered_config = discovery_snapshot.copy()
-
             self._final_used_keys = used_keys.copy()
 
-            # Unmount Context
+            context.use_defaults.reset(token_defaults)
             context.config.reset(token_conf)
             context.trace.reset(token_trace)
             context.discovery.reset(token_discovery)
             context.access.reset(token_access)
 
-    @property
-    def trace(self) -> list:
-        return self.trace_log
-
     def report_available_config(self) -> dict:
-        """
-        Returns a structured dictionary of all configuration options
-        that were requested during the workflow execution.
-
-        Returns:
-            {
-                "global": { "key": default_value },
-                "scoped": { "ScopeName": { "key": default_value } }
-            }
-        """
         report = {"global": {}, "scoped": {}}
-
         for full_key, default_val in self._discovered_config.items():
             if "." in full_key:
                 scope, key = full_key.split(".", 1)
-                if scope not in report["scoped"]:
-                    report["scoped"][scope] = {}
-                report["scoped"][scope][key] = default_val
+                report["scoped"].setdefault(scope, {})[key] = default_val
             else:
                 report["global"][full_key] = default_val
-
         return report
 
     def report_unused_config(self) -> list[str]:
-        """
-        Returns a list of keys present in the harness config that were
-        NEVER accessed by the workflow.
-
-        This works by comparing the input config keys against the
-        accessed keys tracked during execution.
-        """
-        unused = []
-
-        # Keys that were actually read by resolve_param
         accessed_keys = self._final_used_keys
-
-        for user_key in self.config.keys():
-            if user_key not in accessed_keys:
-                unused.append(user_key)
-
+        unused = [k for k in self.config.keys() if k not in accessed_keys]
         unused.sort()
         return unused
 
     def view_trace(self):
-        """
-        Simple pretty-printer for the trace log using Rich.
-        """
         from rich.console import Console
         from rich.table import Table
 
@@ -112,26 +125,20 @@ class ConduitHarness:
         table.add_column("Output", overflow="fold")
 
         for entry in self.trace_log:
-            output = str(entry["output"])
-            if len(output) > 50:
-                output = output[:47] + "..."
-
-            # Format metadata nicely
+            output = (
+                str(entry["output"])[:47] + "..."
+                if len(str(entry["output"])) > 50
+                else str(entry["output"])
+            )
             meta_str = ""
             if entry.get("metadata"):
-                # Simplify config resolution display
                 if "config_resolutions" in entry["metadata"]:
-                    resolutions = entry["metadata"].pop("config_resolutions")
-                    entry["metadata"]["configs_resolved"] = len(resolutions)
-
+                    entry["metadata"]["configs_resolved"] = len(
+                        entry["metadata"].pop("config_resolutions")
+                    )
                 meta_str = ", ".join(f"{k}: {v}" for k, v in entry["metadata"].items())
 
             table.add_row(
-                entry["step"],
-                str(entry["duration"]),
-                entry["status"],
-                meta_str,
-                output,
+                entry["step"], str(entry["duration"]), entry["status"], meta_str, output
             )
-
         console.print(table)

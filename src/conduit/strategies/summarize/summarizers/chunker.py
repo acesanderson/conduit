@@ -27,23 +27,23 @@ class Chunker(ChunkingStrategy):
         # Rationale: Fits comfortably within a 16k context window (common safety limit),
         # leaving ~4k buffer for System Prompt + Summary Output.
         # For 128k context models, override this to ~120,000 via config.
-        chunk_size = get_param("chunk_size", default=12000)
+        chunk_size = get_param("chunk_size")
 
         # Overlap size.
         # DEFAULT: 500 (Fixed Token Count).
         # Rationale: 500 tokens (~300 words) captures roughly 2-3 paragraphs.
         # This ensures that if a split happens mid-topic, the next chunk has enough
         # 'lookback' to restore the context. Avoid percentages for large chunks.
-        overlap = get_param("overlap", default=500)
+        overlap = get_param("overlap")
 
         # Tokenizer model string.
         # DEFAULT: "gpt-4o".
         # Rationale: Uses the 'o200k_base' encoding, which is the standard for
         # modern high-performance models (GPT-4o, etc).
-        model_name = get_param("tokenizer_model", default="gpt-4o")
+        model_name = get_param("tokenizer_model")
 
         # Optimization flag.
-        memoize = get_param("memoize", default=True)
+        memoize = get_param("memoize")
 
         # --- 2. SETUP ---
         try:

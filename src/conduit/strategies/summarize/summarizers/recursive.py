@@ -45,8 +45,8 @@ class RecursiveSummarizer(SummarizationStrategy):
     async def __call__(self, text: str, *args, **kwargs) -> str:
         # --- 1. RESOLVE EXPERIMENT PARAMS FROM HARNESS ---
         # If these keys exist in the Harness config, they will override the defaults here.
-        model = get_param("model", default="gpt3")
         cw_ratio = get_param("effective_context_window_ratio", default=0.5)
+        model = get_param("OneShotSummarizer.model", default="gpt3")
 
         # --- 2. EXECUTE DECISION LOGIC ---
         context_window = self.model_store.get_context_window(model)
@@ -91,7 +91,7 @@ if __name__ == "__main__":
 
         # Create a config with experiment parameters
         config = {
-            "model": "gpt3",
+            "model": "gpt-oss:latest",
             "effective_context_window_ratio": 0.5,
         }
 

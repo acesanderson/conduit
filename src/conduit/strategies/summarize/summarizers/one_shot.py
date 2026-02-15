@@ -14,8 +14,15 @@ class OneShotSummarizer(SummarizationStrategy):
             "prompt", default="Summarize the following text:\n\n{{text}}"
         )
 
-        # Run the conduit
+        # Determine target tokens based on compression ratio and local tokenizer estimate
         from conduit.core.model.model_async import ModelAsync
+        from conduit.strategies.summarize.compression import get_target_summary_length
+
+        tokenizer = ModelAsync(model=model).tokenize
+        text_token_size: int = await tokenizer(text)
+        target_tokens = get_target_summary_length(text_token_size)
+
+        # Run the conduit
         from conduit.core.prompt.prompt import Prompt
         from conduit.domain.request.generation_params import GenerationParams
         from conduit.domain.config.conduit_options import ConduitOptions
@@ -30,7 +37,9 @@ class OneShotSummarizer(SummarizationStrategy):
             project_name=get_param("project_name", default="conduit")
         )
         model = ModelAsync(model=model)
-        rendered = Prompt(prompt).render({"text": text})
+        rendered = Prompt(prompt).render(
+            {"text": text, "target_tokens": str(target_tokens)}
+        )
         response = await model.query(
             query_input=rendered,
             params=generation_params,
@@ -38,6 +47,8 @@ class OneShotSummarizer(SummarizationStrategy):
         )
         assert isinstance(response, GenerationResponse)
         # Collect trace metadata
+        add_metadata("text_token_size", text_token_size)
+        add_metadata("target_tokens", target_tokens)
         add_metadata("input_tokens", response.metadata.input_tokens)
         add_metadata("output_tokens", response.metadata.output_tokens)
         return str(response.content)
