@@ -183,8 +183,8 @@ def _generate_hierarchy_graph(root_func) -> str:
 
         parent_name = current_func.__name__
         try:
-            src = inspect.getsource(current_func)
-            src = inspect.cleandoc(src)
+            # Same dedent fix as schema
+            src = textwrap.dedent(inspect.getsource(current_func))
             tree = ast.parse(src)
             func_globals = getattr(current_func, "__globals__", {})
         except (OSError, TypeError):
@@ -194,16 +194,37 @@ def _generate_hierarchy_graph(root_func) -> str:
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
                 target_name = None
+                # Handle direct calls: func()
                 if isinstance(node.func, ast.Name):
                     target_name = node.func.id
+                # Handle class instantiation calls: MapReduceSummarizer()()
+                elif isinstance(node.func, ast.Call) and isinstance(
+                    node.func.func, ast.Name
+                ):
+                    target_name = node.func.func.id
+                # Handle self calls: self.one_shot()
+                elif isinstance(node.func, ast.Attribute):
+                    target_name = node.func.attr
 
                 if target_name and target_name in func_globals:
                     child = func_globals[target_name]
-                    if getattr(child, "__wrapped__", None):
+                    # This is the key: check if the global object is a @step or Strategy
+                    if hasattr(child, "__wrapped__") or hasattr(child, "schema"):
                         if target_name not in found_deps:
                             found_deps.add(target_name)
                             edges.append(f"  {parent_name} --> {target_name}")
-                            queue.append(getattr(child, "__wrapped__"))
+                            # Get the actual function for the next iteration
+                            underlying = getattr(child, "__wrapped__", child)
+                            # If it's a class with a __call__, follow that
+                            if inspect.isclass(underlying) and hasattr(
+                                underlying, "__call__"
+                            ):
+                                underlying = getattr(
+                                    underlying.__call__,
+                                    "__wrapped__",
+                                    underlying.__call__,
+                                )
+                            queue.append(underlying)
 
     return "graph LR\n" + "\n".join(edges)
 
