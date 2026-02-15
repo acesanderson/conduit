@@ -1,0 +1,18 @@
+{
+    '__call__.model': 'dynamic',
+    '__call__.effective_context_window_ratio': 'dynamic',
+    'OneShotSummarizer.model': 'dynamic',
+    'OneShotSummarizer.prompt': 'dynamic',
+    'OneShotSummarizer.max_tokens': 'dynamic',
+    'OneShotSummarizer.temperature': 'dynamic',
+    'OneShotSummarizer.top_p': 'dynamic',
+    'OneShotSummarizer.project_name': 'dynamic',
+    'MapReduceSummarizer.model': 'dynamic',
+    'MapReduceSummarizer.prompt': 'dynamic',
+    'MapReduceSummarizer.concurrency_limit': 'dynamic',
+    'MapReduceSummarizer.max_tokens': 'dynamic',
+    'MapReduceSummarizer.temperature': 'dynamic',
+    'MapReduceSummarizer.top_p': 'dynamic',
+    'MapReduceSummarizer.project_name': 'dynamic',
+    'MapReduceSummarizer.target_tokens': 'dynamic'
+}

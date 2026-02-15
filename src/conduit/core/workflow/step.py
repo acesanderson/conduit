@@ -1,11 +1,4 @@
-"""
-Workflow step decorator and parameter resolution system for Conduit's async task orchestration.
-
-This module provides core infrastructure for the `@step` decorator—enabling automatic input binding,
-context variable management, and telemetry collection within async workflows. It also injects
-introspection capabilities (.diagram, .schema) as properties on decorated functions.
-"""
-
+from __future__ import annotations
 import ast
 import functools
 import inspect
@@ -13,87 +6,68 @@ import textwrap
 import time
 from collections import deque
 from collections.abc import Callable, Awaitable
-from typing import Any, TypeVar, ParamSpec, cast
+from typing import Any, TypeVar, ParamSpec, cast, TYPE_CHECKING
 
 from conduit.core.workflow.context import context
 
-# Typing vars
+if TYPE_CHECKING:
+    from conduit.core.workflow.protocols import Workflow
+
 P = ParamSpec("P")
 R = TypeVar("R")
 
 
-# --- 1. CORE UTILITIES ---
-
-
 def resolve_param(
     key: str,
-    default: Any,
+    default: Any = None,
     overrides: dict | None = None,
     scope: str | None = None,
 ) -> Any:
     """
-    Resolves a parameter value in strict precedence:
-    1. Runtime Override (Explicit argument passed to the function)
-    2. Harness Configuration (ContextVars via get_param)
-    3. Hardcoded Default (provided as arg)
+    RESOLVE PARAM WITH EXPLICIT DEFAULT POLICY:
+    1. Runtime Override (highest priority)
+    2. Scoped Config (Scope.key)
+    3. Global Config (key)
+    4. Code-level Default (ONLY if context.use_defaults is True)
+    5. Raise KeyError
     """
-    resolution_source = "default"
-    value = default
-    active_key = None
-
     if scope is None:
         try:
-            scope = inspect.stack()[1].function
-        except (IndexError, AttributeError):
+            stack = inspect.stack()
+            caller_frame = None
+            for frame_info in stack[1:]:
+                if frame_info.function not in ("resolve_param", "get_param"):
+                    caller_frame = frame_info.frame
+                    break
+
+            if caller_frame and "self" in caller_frame.f_locals:
+                scope = caller_frame.f_locals["self"].__class__.__name__
+            elif caller_frame:
+                scope = caller_frame.f_code.co_name
+        except Exception:
             scope = "unknown"
 
-    # 1. RUNTIME OVERRIDE
-    runtime_args = overrides
-    if runtime_args is None:
-        runtime_args = context.args.get() or {}
+    # Tier 1: Runtime
+    runtime_args = overrides or context.args.get() or {}
+    if key in runtime_args:
+        return runtime_args[key]
 
-    if key in runtime_args and runtime_args[key] is not None:
-        value = runtime_args[key]
-        resolution_source = "runtime_kwarg"
+    # Tier 2 & 3: Config
+    cfg = context.config.get()
+    if scope and f"{scope}.{key}" in cfg:
+        return cfg[f"{scope}.{key}"]
+    if key in cfg:
+        return cfg[key]
 
-    # 2. CONFIG LOOKUP
-    if resolution_source == "default":
-        cfg = context.config.get()
-        if scope:
-            scoped_key = f"{scope}.{key}"
-            if scoped_key in cfg:
-                value = cfg[scoped_key]
-                resolution_source = f"config_scoped ({scoped_key})"
-                active_key = scoped_key
+    # Tier 4: Authorized Default
+    if context.use_defaults.get() is True:
+        return default
 
-        if resolution_source == "default" and key in cfg:
-            value = cfg[key]
-            resolution_source = f"config_global ({key})"
-            active_key = key
-
-    # 3. TELEMETRY
-    meta = context.step_meta.get()
-    if meta is not None:
-        if "config_resolutions" not in meta:
-            meta["config_resolutions"] = {}
-        meta["config_resolutions"][key] = {
-            "value": str(value),
-            "source": resolution_source,
-        }
-
-    # 4. DISCOVERY
-    discovery_log = context.discovery.get()
-    if discovery_log is not None:
-        canonical_key = f"{scope}.{key}" if scope else key
-        discovery_log[canonical_key] = default
-
-    # 5. DRIFT DETECTION
-    if "config" in resolution_source and active_key:
-        accessed = context.access.get()
-        if accessed is not None:
-            accessed.add(active_key)
-
-    return value
+    # Tier 5: Hard Failure
+    raise KeyError(
+        f"Required parameter '{key}' not found in configuration (scope: {scope}). "
+        "Code-level defaults are disabled in this Harness."
+    )
 
 
 def get_param(key: str, default: Any = None, scope: str | None = None) -> Any:
@@ -101,19 +75,13 @@ def get_param(key: str, default: Any = None, scope: str | None = None) -> Any:
 
 
 def add_metadata(key: str, value: Any) -> None:
-    """
-    Add metadata to the current step's execution trace.
-    """
     meta = context.step_meta.get()
     if meta is not None:
         meta[key] = value
 
 
-# --- 2. STATIC ANALYSIS LOGIC ---
-
-
-def _static_scan_workflow(root_func) -> dict:
-    schema = {}
+def _static_scan_workflow(root_func) -> dict[str, dict]:
+    param_requirements = {}
     visited = set()
     root = getattr(root_func, "__wrapped__", root_func)
     queue = deque([root])
@@ -122,22 +90,19 @@ def _static_scan_workflow(root_func) -> dict:
     while queue:
         current_func = queue.popleft()
         try:
-            # 1. Get raw source
-            raw_src = inspect.getsource(current_func)
-            # 2. Aggressively dedent so the function starts at column 0
-            src = textwrap.dedent(raw_src)
-            # 3. Parse the now-valid syntax tree
+            src = textwrap.dedent(inspect.getsource(current_func))
             tree = ast.parse(src)
 
+            scope = (
+                current_func.__qualname__.split(".")[0]
+                if "." in current_func.__qualname__
+                else current_func.__name__
+            )
+
             func_scope = getattr(current_func, "__globals__", {}).copy()
-            # If it's a method, we need the class's namespace
-            if inspect.ismethod(current_func) or "." in current_func.__qualname__:
-                # Attempt to find the class owning this method
-                cls_name = current_func.__qualname__.split(".")[0]
-                # This is a bit of a hack, but standard for static analysis:
-                # we look for the class in the module where the function was defined.
+            if "." in current_func.__qualname__:
                 module = inspect.getmodule(current_func)
-                cls = getattr(module, cls_name, None)
+                cls = getattr(module, scope, None)
                 if cls:
                     func_scope.update(cls.__dict__)
         except (OSError, TypeError):
@@ -145,7 +110,6 @@ def _static_scan_workflow(root_func) -> dict:
 
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
-                # 1. Detect direct resolve_param calls
                 call_id = ""
                 if isinstance(node.func, ast.Name):
                     call_id = node.func.id
@@ -153,20 +117,25 @@ def _static_scan_workflow(root_func) -> dict:
                     call_id = node.func.attr
 
                 if call_id in ("resolve_param", "get_param"):
-                    if len(node.args) > 0 and isinstance(node.args[0], ast.Constant):
+                    if node.args and isinstance(node.args[0], ast.Constant):
                         key = node.args[0].value
-                        # Default parsing logic...
-                        schema[f"{current_func.__name__}.{key}"] = "dynamic"
+                        has_code_default = len(node.args) > 1 or any(
+                            kw.arg == "default" for kw in node.keywords
+                        )
 
-                # 2. Recursive Search: Follow the call tree
+                        logical_name = f"{scope}.{key}"
+                        param_requirements[logical_name] = {
+                            "keys": [logical_name, key],
+                            "has_code_default": has_code_default,
+                        }
+
                 target_obj = func_scope.get(call_id)
                 if target_obj:
-                    # Follow both standard decorators and our StepWrapper
                     underlying = getattr(target_obj, "__wrapped__", target_obj)
                     if callable(underlying) and underlying not in visited:
                         visited.add(underlying)
                         queue.append(underlying)
-    return schema
+    return param_requirements
 
 
 def _generate_hierarchy_graph(root_func) -> str:
@@ -180,132 +149,74 @@ def _generate_hierarchy_graph(root_func) -> str:
         if current_func in visited_funcs:
             continue
         visited_funcs.add(current_func)
-
         parent_name = current_func.__name__
         try:
-            # Same dedent fix as schema
             src = textwrap.dedent(inspect.getsource(current_func))
             tree = ast.parse(src)
             func_globals = getattr(current_func, "__globals__", {})
         except (OSError, TypeError):
             continue
 
-        found_deps = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
                 target_name = None
-                # Handle direct calls: func()
                 if isinstance(node.func, ast.Name):
                     target_name = node.func.id
-                # Handle class instantiation calls: MapReduceSummarizer()()
                 elif isinstance(node.func, ast.Call) and isinstance(
                     node.func.func, ast.Name
                 ):
                     target_name = node.func.func.id
-                # Handle self calls: self.one_shot()
                 elif isinstance(node.func, ast.Attribute):
                     target_name = node.func.attr
 
                 if target_name and target_name in func_globals:
                     child = func_globals[target_name]
-                    # This is the key: check if the global object is a @step or Strategy
                     if hasattr(child, "__wrapped__") or hasattr(child, "schema"):
-                        if target_name not in found_deps:
-                            found_deps.add(target_name)
-                            edges.append(f"  {parent_name} --> {target_name}")
-                            # Get the actual function for the next iteration
-                            underlying = getattr(child, "__wrapped__", child)
-                            # If it's a class with a __call__, follow that
-                            if inspect.isclass(underlying) and hasattr(
-                                underlying, "__call__"
-                            ):
-                                underlying = getattr(
-                                    underlying.__call__,
-                                    "__wrapped__",
-                                    underlying.__call__,
-                                )
-                            queue.append(underlying)
-
+                        edges.append(f"  {parent_name} --> {target_name}")
+                        underlying = getattr(child, "__wrapped__", child)
+                        if inspect.isclass(underlying) and hasattr(
+                            underlying, "__call__"
+                        ):
+                            underlying = getattr(
+                                underlying.__call__, "__wrapped__", underlying.__call__
+                            )
+                        queue.append(underlying)
     return "graph LR\n" + "\n".join(edges)
 
 
-# --- 3. THE CLASS WRAPPER ---
-
-
 class StepWrapper:
-    """
-    A callable object that wraps the step function.
-    Provides attribute access (.diagram, .schema) while maintaining callability.
-    """
-
     def __init__(self, func: Callable):
         self._func = func
         self._sig = inspect.signature(func)
         functools.update_wrapper(self, func)
 
     def __get__(self, instance, owner):
-        """
-        Descriptor protocol support.
-        Ensures that when a @step decorated method is accessed on an instance,
-        we return a bound callable (via partial application) so 'self' is passed correctly.
-        """
         if instance is None:
             return self
-
-        # Create the bound method
         bound_method = functools.partial(self.__call__, instance)
-
-        # PROXY the properties so they are accessible on the bound instance
-        # This makes summarizer.__call__.schema work
         setattr(bound_method, "schema", self.schema)
         setattr(bound_method, "diagram", self.diagram)
-
-        # Keep internal references for static analysis
         setattr(bound_method, "__wrapped__", self._func)
-
         return bound_method
 
     async def __call__(self, *args, **kwargs):
-        # 1. Bind Args
         bound = self._sig.bind(*args, **kwargs)
         bound.apply_defaults()
-        unified_args = dict(bound.arguments)
+        unified_args = {
+            k: v for k, v in bound.arguments.items() if k not in ("self", "cls")
+        }
 
-        # Handle **kwargs
-        var_kw = next(
-            (
-                p.name
-                for p in self._sig.parameters.values()
-                if p.kind == inspect.Parameter.VAR_KEYWORD
-            ),
-            None,
-        )
-        if var_kw and var_kw in unified_args:
-            extra = unified_args.pop(var_kw)
-            if extra:
-                unified_args.update(extra)
-
-        # 2. Context
         start = time.time()
         token_args = context.args.set(unified_args)
         current_meta = {}
         token_meta = context.step_meta.set(current_meta)
-
-        # Initialize defaults to prevent UnboundLocalError in finally block
-        result = None
-        status = "unknown"
+        result, status = None, "unknown"
 
         try:
             result = await self._func(*args, **kwargs)
             status = "success"
         except Exception as e:
-            result = str(e)
-            status = "error"
-            raise
-        except BaseException as e:
-            # Handle Cancellation/SystemExit
-            result = f"<{type(e).__name__}>"
-            status = "cancelled"
+            result, status = str(e), "error"
             raise
         finally:
             duration = time.time() - start
@@ -323,25 +234,18 @@ class StepWrapper:
                 )
             context.args.reset(token_args)
             context.step_meta.reset(token_meta)
-
         return result
 
     @property
     def diagram(self) -> str:
-        """Lazy-loaded Mermaid graph."""
         return _generate_hierarchy_graph(self._func)
 
     @property
     def schema(self) -> dict:
-        """Lazy-loaded config schema."""
         return _static_scan_workflow(self._func)
 
 
 def step(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
     if not inspect.iscoroutinefunction(func):
-        raise TypeError(
-            f"@step requires async functions. {func.__name__} must be defined with `async def`."
-        )
-
-    # Return the class wrapper instead of a function closure
+        raise TypeError(f"@step requires async functions: {func.__name__}")
     return cast(Callable[P, Awaitable[R]], StepWrapper(func))

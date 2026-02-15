@@ -98,29 +98,3 @@ class MapReduceSummarizer(SummarizationStrategy):
         add_metadata("output_tokens", total_output_tokens)
 
         return final_summary
-
-
-async def main():
-    from conduit.core.workflow.workflow import ConduitHarness
-    from pathlib import Path
-
-    ESSAYS_DIR = Path(__file__).parent.parent / "essays"
-    text = (ESSAYS_DIR / "conduit.txt").read_text()
-    config = {
-        "MapReduceSummarizer.prompt": chunk_summarization_prompt,
-        "model": "gpt3",
-        "OneShotSummarizer.prompt": "Summarize the key speakers in this text:\n\n{{text}}",
-        "chunk_size": 8000,
-        "concurrency_limit": 5,
-    }
-    workflow = MapReduceSummarizer()
-    harness = ConduitHarness(config=config)
-    response = await harness.run(workflow, text=text)
-    print(response)
-    return response, harness
-
-
-if __name__ == "__main__":
-    import asyncio
-
-    response, harness = asyncio.run(main())

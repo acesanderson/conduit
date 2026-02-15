@@ -1,0 +1,9 @@
+{
+  "effective_context_window_ratio": 0.8,
+  "OneShotSummarizer.model": "gpt-oss:latest",
+  "OneShotSummarizer.temperature": 0.0,
+  "MapReduceSummarizer.model": "gpt-oss:latest",
+  "MapReduceSummarizer.concurrency_limit": 5,
+  "MapReduceSummarizer.temperature": 0.0,
+  "MapReduceSummarizer.target_tokens": 150
+}
