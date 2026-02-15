@@ -1,27 +1,4 @@
-# AGENT CONTEXT: PROJECT "TAP"
-
-## Tech Stack
-
-* **Python:** 3.12+
-* **UI Framework:** `textual` (latest stable)
-* **Rendering:** `rich` (latest stable)
-* **Core Library:** `conduit` (internal library - assume available in `PYTHONPATH`)
-
-## Core Philosophy
-
-* **State is a Tree:** The data model is a DAG (Directed Acyclic Graph) of messages.
-* **UI is a List:** The view is a flattened linear projection of the *active branch*.
-* **Immutability:** Never mutate history; always fork.
-
-## Testing Strategy
-
-* **NO UI MOCKS:** Do not try to test `App.run()` or simulate keystrokes in unit tests.
-* **Logic First:** Test `TapConversationManager` heavily (branching, flattening, navigating).
-* **Tooling:** Use `pytest`.
-
----
-
-# Tap TUI — UX & Architecture Specification (v0.3.1)
+# Tap TUI — UX & Architecture Specification (v0.4.0)
 
 > **Status:** Foundational / normative
 > **Audience:** Future-you, collaborators, LLM copilots
@@ -38,14 +15,7 @@ It is:
 * stateful
 * optimized for long-lived, high-trust use
 
-Tap is **not**:
-
-* a chat toy
-* a passive dashboard
-* a tree visualizer
-* a prompt playground
-
-Tap renders a **linearized event stream** and allows **precise, reversible interaction** with it.
+Tap renders a **linearized event stream** and allows **precise, reversible interaction** with it via a Directed Acyclic Graph (DAG) state model.
 
 ---
 
@@ -54,794 +24,168 @@ Tap renders a **linearized event stream** and allows **precise, reversible inter
 ### 1.1 Event
 
 An **event** is an atomic, ordered item in a transcript.
-
-Event types include (non-exhaustive):
-
-* `UserMessage`
-* `AssistantMessage`
-* `SystemEvent`
-* `ToolEvent` (future)
+Event types: `UserMessage`, `AssistantMessage`, `SystemEvent`, `ToolEvent`.
 
 Each event has:
 
-* stable identity
-* type
+* stable identity and type
 * renderable content
-* metadata (branch index, cached flag, timestamps, etc.)
-* declared capabilities:
-* expandable
-* editable
-* branchable
-* deletable
-
-
-
-Events are **never mutated in place** once committed to a conversation.
-
-Deletion of events (for context pruning) creates a new conversation with the deleted events omitted.
+* **Metadata Store:** includes `toc_summary` (one-liner), timestamps, and branch indices.
 
 ### 1.2 Conversation
 
-A **conversation** is an immutable, persisted record consisting of:
-
-* an ordered event stream
-* a single active branch path
-
-Any modification to history creates a **new conversation**.
-The previous conversation remains addressable and unchanged.
-
-Modifications include:
-
-* Editing a message (creates a branch)
-* Deleting a message (creates a pruned conversation)
-* Branching from a point in history
-
-All modifications preserve the original conversation for recovery.
+An **immutable** record consisting of an ordered event stream and a single active branch path. Any modification (editing, deleting, branching) creates a **new conversation** object.
 
 ### 1.3 Branch
 
-A **branch** is an alternate event sequence diverging at a specific event.
-
-Properties:
-
-* local to a single event
-* navigated horizontally
-* never merged implicitly
-* never destroyed implicitly
-
-Branching is explicit, visible, and reversible.
+An alternate event sequence diverging at a specific event. Navigated horizontally; never implicitly merged or destroyed.
 
 ---
 
 ## 2. Layout model
 
-Tap has a **single persistent layout**.
+Tap has a **single vertical split layout**.
 
-### 2.1 Vertical split
+### 2.1 Top pane — Transcript View
 
-The UI is split vertically into two panes:
+* Displays the conversation event stream.
+* Event-based selection (not line-based).
+* **Outline Lens:** Can toggle into a collapsed "Table of Contents" view.
 
-#### Top pane — Transcript View
+### 2.2 Bottom pane — Input Editor
 
-* Displays the conversation event stream
-* Scrollable
-* Event-based selection (not line-based)
-* Rendering is derived entirely from application state
-* Uses Rich renderables defined per event type
-
-#### Bottom pane — Input Editor
-
-* Fixed height: **exactly 5 lines**
-* Always visible
-* Multiline text input
-* Not scroll-linked to the transcript
-
-The bottom pane **never resizes**.
-The top pane flexes to fill remaining space.
+* **Fixed height: exactly 5 lines.**
+* Always visible; multiline text input.
+* Not scroll-linked to the transcript.
 
 ---
 
 ## 3. Interaction modes
 
-Tap operates in **exactly one global mode** at any time.
-
-Modes determine:
-
-* which component has focus
-* which keybindings are active
-* how input is interpreted
-
 ### 3.1 Normal mode
 
-**Purpose:** navigation, inspection, structural actions
-
-#### Focus
-
-* Focus is on the Transcript View
-* Exactly **one event is always selected**
-* Default selection on entry: latest event
-
-Selection is **event-based**, not cursor- or line-based.
+**Purpose:** navigation, inspection, structural actions.
 
 #### Navigation
 
-* `j / k` or `↑ / ↓` → move selection vertically
-* `h / l` or `← / →` → navigate branches (if available)
+* `j / k` or `↑ / ↓` → move selection vertically.
+* `h / l` or `← / →` → navigate branches (cycle alternate responses).
+* **`TAB`** → Toggle **Outline Lens** (TOC view).
 
-Navigation never mutates conversation state.
+#### Actions
 
-#### Deletion keybindings
-
-* `D` → delete selected message (requires confirmation)
-* `m` → mark message for range deletion
-* `D` (when mark is set) → delete from marked message to selected message (requires confirmation)
-
-Deletion requires visual confirmation and creates a new conversation with the deletion applied.
-
-**Note:** This does not violate the Vim motion constraint as these are explicit single-key bindings for specific actions, not general Vim verb-noun grammar.
-
-#### Actions (non-exhaustive)
-
-* Toggle expand / collapse (only if event is expandable)
-* Copy event content to clipboard
-* Edit / rewrite selected message
-* Regenerate selected assistant message
-* Delete selected message (context pruning)
-* Open input editor for appending
-* Enter command mode (`:`)
-
-Actions operate on **the selected event only**.
-
-Message deletion is a **destructive operation** used for context window pruning and requires confirmation.
+* `A` → amend highlighted `UserMessage`.
+* `C` → rewrite highlighted `UserMessage` (creates new branch).
+* `O` → open main input for appending.
+* `D` → delete selected message (confirmation required).
+* `m` → mark message for range deletion.
+* `:` → Enter command mode.
 
 ### 3.2 Insert mode
 
-**Purpose:** authoring intent
+**Purpose:** authoring intent.
 
-#### Focus
-
-* Focus moves to the Input Editor (bottom pane)
-* Transcript remains visible but inert
-* Selection is preserved and does not change
-
-#### Input semantics
-
-* Input is multiline by default
-* `Shift+Enter` inserts a newline
-* `Enter` submits input
-
-#### Submission rules
-
-* If no assistant is pending:
-* submission creates a new `UserMessage`
-
-
-* If an assistant is pending:
-* submitted text is appended to the most recent `UserMessage`
-* the assistant task is cancelled and restarted
-
-
-
-#### Exit
-
-* `ESC` exits Insert mode
-* Focus returns to Transcript View
-* Unsubmitted input is preserved
-
-#### Constraints
-
-* **Strict Constraint:** Do not implement Vim motions beyond `h/j/k/l`.
-* Do not implement counts (e.g., `5j`).
-* Do not implement verbs (e.g., `d` for delete).
-* Only the specific bindings listed in this spec are allowed.
+* `Enter` → Submit input.
+* `Shift+Enter` → Insert newline.
+* `ESC` → Exit to Normal mode.
 
 ### 3.3 Command mode
 
-**Purpose:** explicit command execution (Vim-style)
+**Purpose:** explicit command execution (Vim-style).
 
-Command mode is an **overlay**, not part of the main layout.
-
-#### Entry
-
-* Entered explicitly (e.g. via `:` in Normal mode)
-
-#### Behavior
-
-* A floating command-line popup appears
-* Overlay captures **all input exclusively**
-* Normal and Insert bindings are suspended
-
-#### Exit and execution
-
-* `Enter` executes the command
-* `ESC` aborts and returns to Normal mode
-
-Command mode does not modify state unless a command is explicitly executed.
-
-#### Command prefix compatibility
-
-Tap supports commands written in either style:
-
-* Vim style: `:help`, `:set model haiku`
-* Slash style (legacy compatibility): `/help`, `/set model haiku`
-
-Tap normalizes these internally before parsing.
-
-### 3.4 Mode transitions
-
-Global invariants:
-
-* `ESC` always returns to Normal mode
-* Mode transitions never:
-* destroy unsubmitted input
-* change the active conversation implicitly
-* change the active branch implicitly
-
-
+* Floating overlay capturing all input.
+* Supports prefix compatibility: `:set model` or `/set model`.
 
 ---
 
-## 4. Transcript semantics
+## 4. Transcript & Outline Semantics
 
-### 4.1 Transcript model
+### 4.1 Outline Lens (TOC)
 
-* Transcript is a vertical, ordered stream of events
-* Rendering is fully derived from state
-* Terminal scrollback is never the source of truth
+The Outline Lens is a rendering filter for the Transcript View that collapses messages into single-line summaries for rapid scanning.
 
-### 4.2 Expand / collapse (accordion behavior)
+* **Selection Invariant:** The currently selected event in Normal mode remains selected when toggling the Lens.
+* **Rapid Rewind:** Users can toggle the Lens, move `j/k` quickly to a previous turn, and hit `C` or `h/l` to pivot history from that specific point.
 
-* Events may declare themselves expandable
-* Expand/collapse state is per-event
-* Expand/collapse:
-* does not affect selection
-* does not affect branching
-* is fully reversible
+### 4.2 Asynchronous Summarization
 
+Summarization is a non-blocking side-effect that occurs after an event is committed to history.
 
+1. **Commit:** Main message is saved to the repository.
+2. **Trigger:** An async task is dispatched to the background worker.
+3. **Escalation:** If a user toggles the Outline Lens while an event is "Summary Pending," that specific task is moved to the top of the queue.
+4. **Placeholder:** While pending, the TUI displays an ephemeral summary based on **Lead Sentence Extraction**.
 
-### 4.3 Compact view (rendering lens)
+### 4.3 Summarization Strategies
 
-Compact view is **not a mode**.
+Tap uses a hierarchy of strategies to populate `metadata['toc_summary']`:
 
-Properties:
-
-* Truncates event content (e.g. first ~90 chars)
-* Does not affect:
-* selection
-* focus
-* active branch
-* conversation identity
-
-
-* Resets every session
-
-Actions:
-
-* Expand all
-* Collapse all
+| Strategy | Type | Use Case |
+| --- | --- | --- |
+| **LLM Summary** | Async/LLM | Preferred for `AssistantMessage`. 5-8 word intent summary using a lightweight model. |
+| **Lead Sentence** | CPU-Bound | First salient sentence. Used as an instant fallback or for `SystemEvents`. |
+| **Key-Phrase Ranking** | CPU-Bound | Top 3-4 nouns (e.g., `Postgres |
+| **Intent Snippet** | Heuristic | First 50 chars of `UserMessage`. Default for human prompts. |
 
 ---
 
-## 5. Editing & branching
+## 5. Editing & Branching
 
-### 5.1 Edit entry points (Normal mode)
+### 5.1 Edit Submission
 
-There are exactly three ways to leave Normal mode to edit text:
+On submission from any edit path (`A`, `C`, or `O`), a **new conversation** is created (forked). The original conversation remains addressable.
 
-#### `A` — amend highlighted message
+### 5.2 Editing while Assistant Pending
 
-* Applies to selected `UserMessage`
-* Editor prefilled with existing content
-* Cursor at end
-
-#### `C` — rewrite highlighted message
-
-* Applies to selected `UserMessage`
-* Editor starts empty
-
-#### `O` — open main input
-
-* Focus moves to Input Editor
-* Cursor positioned to append a new message
-
-### 5.2 Edit submission semantics
-
-On submission from any edit path:
-
-* A **new conversation** is created
-* Original conversation remains unchanged
-* New conversation becomes active
-* Branch provenance is preserved
-
-### 5.3 Editing while assistant pending
-
-If:
-
-* assistant is streaming
-* selected event is the most recent `UserMessage`
-* user initiates editing
-
-Then:
-
-* assistant task is cancelled
-* user message becomes editable
-* submission creates a new conversation branch
-
-### 5.4 Message deletion (context pruning)
-
-**Purpose:** Remove messages from conversation history to manage context window size.
-
-#### Deletion semantics
-
-When a message is deleted:
-
-* A **new conversation** is created with the deleted message(s) omitted
-* Original conversation remains unchanged
-* New conversation becomes active
-* Deletion affects the linear history leading to the current leaf
-
-#### Deletion scope
-
-Deletion operates in two modes:
-
-* **Single message deletion:** Deletes only the selected message
-* **Range deletion:** Deletes from a marked message up to (and including) the selected message
-
-#### Branch handling
-
-If the deleted message has branches:
-
-* All branches at that point are preserved in the original conversation
-* The new conversation reflects the deletion along the active path only
-* Branches are not automatically merged or destroyed
-
-#### Deletion constraints
-
-* Cannot delete the root `SystemMessage`
-* Cannot delete messages if deletion would violate the invariant that two `UserMessage` events cannot exist consecutively
-* If deletion would create an invalid state, it must be rejected with a clear error message
-
-#### Confirmation required
-
-Deletion is a **destructive operation** and requires explicit confirmation:
-
-* Visual confirmation dialog must be shown
-* Confirmation should indicate:
-  * Number of messages to be deleted
-  * Whether branches exist at the deletion point
-  * That the operation creates a new conversation
-* Accidental deletions can be recovered by switching back to the previous conversation
+If an assistant is streaming and the user initiates an edit on the preceding `UserMessage`, the assistant task is **cancelled immediately**, and the user enters Insert mode to modify the prompt.
 
 ---
 
-## 6. Branch navigation
+## 6. Context Pruning (Deletion)
 
-### 6.1 Visibility
+### 6.1 Range Deletion
 
-* Branch indicators are always visible when branches exist
-* When event is not selected → indicators subdued
-* When selected → indicators fully visible
-
-### 6.2 Navigation
-
-* `h / l` cycles alternates
-* Only branchable events respond
-
-### 6.3 Active path invariant
-
-Branching never changes the active path implicitly:
-
-* creating a branch does not switch conversations
-* viewing alternates does not commit to them
-* active path changes only via explicit user action
+* `m` marks the start of a range.
+* Selecting a second message and hitting `D` deletes the range.
+* **Safety:** Cannot delete the root `SystemMessage` or create a state where two `UserMessage` events are consecutive.
 
 ---
 
-## 7. Streaming behavior
+## 7. Streaming & Scrolling
 
-### 7.1 Logical streaming
+### 7.1 Sticky Scroll
 
-* Assistant messages may stream incrementally
-* Streaming mutates render state, not event identity
-
-### 7.2 Streaming + navigation
-
-If:
-
-* assistant is streaming
-* selection moves away
-
-Then:
-
-* streaming continues logically
-* streaming pauses visually for that event
-* navigation remains unaffected
-
-When selection returns:
-
-* live streaming view resumes
-
-### 7.3 Streaming + Scrolling (Sticky Scroll)
-
-* **Invariant:** If the Transcript View is scrolled to the absolute bottom (showing the latest tokens), it must **automatically scroll** to keep new tokens visible as they arrive.
-* **Invariant:** If the user has scrolled up to inspect history, incoming tokens must **not** hijack the scroll position. The view must remain stable.
-* **Implementation:** Use `scroll_to_end(animate=False)` explicitly on stream updates *only if* the user was already at the bottom.
+* If the user is at the absolute bottom, the view auto-scrolls to keep new tokens visible.
+* If the user has scrolled up to inspect history, the view remains stable (no scroll-hijacking).
 
 ---
 
-## 8. Safety & trust guarantees
+## 8. Safety & Trust
 
-Tap must never:
-
-* lose a branch
-* overwrite an event
-* change active path implicitly
-* clear context implicitly
-
-Destructive actions:
-
-* require explicit confirmation
-* are visually distinct
-* are never bound to ambiguous keys
-* are fully recoverable (original conversation remains accessible)
-
-Message deletion:
-
-* is explicit and requires confirmation
-* creates a new conversation (fork) with deletions applied
-* never modifies the original conversation
-* preserves all branches in the original conversation
-* can be undone by switching back to the pre-deletion conversation
-
-Unsubmitted input:
-
-* preserved across mode switches
-* survives redraws and overlays whenever possible
+* **No Implicit Mutation:** Any destructive action creates a fork, ensuring history is never truly lost.
+* **Confirmation Dialogs:** Required for `D` (deletion) and `/wipe`.
+* **Persistent Input:** Unsubmitted text in the Input Editor survives mode transitions and most UI crashes.
 
 ---
 
-## 9. Input invariants
+## 9. Internal Design: Summarization Flow
 
-* Two `UserMessage` events may never exist consecutively
-* Until an `AssistantMessage` exists:
-* the most recent `UserMessage` is mutable
+1. **Engine** produces `AssistantMessage`.
+2. **Middleware** interceptor detects `GenerationResponse`.
+3. **NLP Processor** (Background Task):
+* Estimates tokens.
+* Selects strategy (Lead Sentence if model is slow, LLM Summary if available).
+* Injects result into `message.metadata['toc_summary']`.
 
 
-* Submitting while assistant pending appends to that message
-
----
-
-## 10. Environment constraints
-
-Tap must remain usable in:
-
-* SSH sessions
-* tmux panes
-* mouse-less environments
-
-Therefore:
-
-* no mouse dependency
-* no reliance on Unicode-heavy glyphs
-* indicators degrade gracefully
+4. **Repository** upserts the message with enriched metadata.
+5. **TUI** reacts to metadata update and refreshes the current line in the Transcript View.
 
 ---
 
-## 11. Command system specification
+**Next Step:** Would you like me to create the Phase 1.1 `TapNode` and `TapConversationManager` Python classes, ensuring they include the `metadata` slots for these `toc_summary` fields?
 
-### 11.1 Command registry
 
-Tap maintains a registry of commands.
 
-Properties:
 
-* Commands may be single-token (`help`) or multi-word (`set model`).
-* Each command has:
-* a name (string)
-* a handler (async)
-* metadata (help text, usage)
 
-
-
-Help and completion are generated from this registry.
-
-### 11.2 Parsing and resolution rules
-
-Given a command line entered in Command mode:
-
-1. **Normalize prefix**
-* Strip a leading `:` or `/` if present.
-
-
-2. **Resolve command name by longest match**
-* Match the longest registered command prefix against the input string.
-* This prioritizes multi-word commands over shorter prefixes.
-
-
-3. **Parse arguments**
-* Arguments are tokenized by whitespace, **except** quoted substrings:
-* `"like this"` is treated as one argument.
-
-
-
-
-4. **Unknown commands**
-* If no handler is found, Tap must render a visible error (e.g. a `SystemEvent`):
-* “Unknown command: … (try :help)”
-
-
-
-
-
-### 11.3 Execution semantics
-
-* Commands execute asynchronously.
-* Commands may:
-* return renderable output
-* return no output but cause state changes
-* request explicit UI actions (e.g. exit, clear screen)
-
-
-
-Command execution must be explicit and must not occur on overlay open.
-
-### 11.4 Output routing (high-trust rule)
-
-Tap must not rely on terminal stdout/stderr printing for user-visible output.
-
-Command results must be routed as either:
-
-* a persisted `SystemEvent` appended to the transcript (default), or
-* an ephemeral UI notification (only for intentionally transient feedback)
-
-Commands that only mutate state may still emit a `SystemEvent` for auditability.
-
----
-
-## 12. Technical specification: implementation with Textual
-
-This section describes **how the above UX maps onto Textual conceptually**, without prescribing code.
-
-### 12.1 Application state
-
-The Textual app owns:
-
-* global mode (`Normal | Insert | Command`)
-* active conversation
-* selected event ID
-* transcript scroll position
-* input buffer state
-* overlay stack (command mode, dialogs)
-* streaming task state (assistant run, cancellation tokens)
-
-Widgets **do not own domain state**.
-
-### 12.2 Widget responsibilities
-
-#### Transcript View widget
-
-* **Structure:** Must be implemented as a `ListView`.
-* **Children:** Each child is a `ListItem` containing a single `Static` widget.
-* **Rendering:** The `Static` widget holds the `conduit` Message object and renders it via `update(message)`.
-* **Selection:** Do not track index manually. Use `ListView.index` and `highlighted_child`.
-* **Scrolling:** Handles sticky scrolling logic defined in Section 7.3.
-
-#### Input Editor widget
-
-* Maintains editable text buffer
-* Emits submit events upward
-* Does not decide submission semantics
-* Preserves unsubmitted input across mode transitions
-
-#### Command Overlay widget
-
-* Captures all input while active
-* Provides completion and help affordances from the command registry
-* Parses and dispatches commands as application actions
-* Dismisses itself explicitly on execution or abort
-
-### 12.3 Focus and key routing
-
-* Keybindings are resolved at the application level.
-* Active mode determines which bindings are enabled.
-* Focus is shifted explicitly on mode transitions.
-* Overlays suspend underlying input handling entirely.
-
-### 12.4 Rendering model
-
-* All rendering is derived from application state.
-* Rich renderables are used for event display.
-* No widget relies on terminal scrollback.
-* Redraws are idempotent and safe.
-
-### 12.5 Concurrency and streaming
-
-* Assistant streaming runs as background tasks.
-* UI updates are reactive to state changes.
-* Streaming can be visually suppressed per event without cancelling the task.
-
-### 12.6 Output and logging constraints
-
-* User-visible output must be represented as events or UI notifications.
-* Stray stdout/stderr output is considered a UI corruption risk.
-* Logging should be directed to a file or a dedicated in-app debug surface.
-
----
-
-# Tap TUI Implementation Plan
-
-## Phase 1: The Domain Core (The Tree)
-
-**Goal:** Create the data structure that handles branching, which `conduit`'s native linear `Conversation` does not support.
-
-### Chunk 1.1: The Tree Node
-
-* **File:** `tap/domain/state.py`
-* **Requirements:**
-* Define `TapNode`: A wrapper class.
-* **Attributes:**
-* `id`: UUID (stable identity).
-* `parent_id`: UUID | None.
-* `children_ids`: list[UUID] (ordered).
-* `message`: `conduit.domain.message.message.Message` (The actual payload).
-* `is_active_path`: boolean (helper for UI rendering).
-* **Invariants:** `message` content is immutable once finalized.
-
-### Chunk 1.2: The Tree Manager
-
-* **File:** `tap/domain/manager.py`
-* **Requirements:**
-* Define `TapConversationManager`.
-* **State:**
-* `nodes`: dict[UUID, TapNode].
-* `root_id`: UUID.
-* `current_leaf_id`: UUID (The tip of the currently viewed branch).
-* **Methods:**
-* `add_message(message: Message, parent_id: UUID) -> UUID`: Appends a new node.
-* `get_thread(leaf_id: UUID) -> conduit.domain.conversation.Conversation`: Walks backwards from leaf to root to construct a linear Conduit conversation for the Engine.
-* `branch_at(node_id: UUID, new_message: Message) -> UUID`: Creates a sibling for `node_id`'s child (or a child of `node_id`), automatically switching `current_leaf_id` to this new path.
-* `Maps_horizontal(node_id: UUID, direction: int)`: Logic to find the next/prev sibling and recalculate the `current_leaf_id` based on the most recently used path down that branch.
-
-### Chunk 1.3: Unit Tests (Logic Only)
-
-* **File:** `tests/test_domain_state.py`
-* **Tests:**
-* Verify `get_thread` returns messages in correct chronological order.
-* Verify `branch_at` creates a new path without destroying the old one.
-* Verify flattening the tree produces a valid `conduit.Conversation`.
-
----
-
-## Phase 2: TUI Scaffold (Read-Only)
-
-**Goal:** Get the existing `conduit` Rich renderables showing up in a Textual App.
-
-### Chunk 2.1: The Layout & Widget
-
-* **File:** `tap/ui/app.py`
-* **Requirements:**
-* `TranscriptView(ListView)`: A widget that takes a list of `TapNode`s.
-* `InputArea(TextArea)`: Fixed height (5 lines), docked bottom.
-* **Rendering:** Use `ListItem` containing a `Static`. Pass `node.message` directly to the `Static`. Textual will call `__rich_console__` automatically.
-* **Styling:** Minimal CSS to handle the split view.
-
-### Chunk 2.2: State Wiring
-
-* **File:** `tap/controller.py`
-* **Requirements:**
-* Initialize `TapConversationManager` with a `SystemMessage`.
-* On `mount`: Populate `TranscriptView` with the initial thread.
-* **Manual Check:** Run the app. Ensure the System Message renders nicely using the existing Conduit styles.
-
----
-
-## Phase 3: Interaction & Engine Wiring
-
-**Goal:** Connect the TUI to the `conduit` Engine.
-
-### Chunk 3.1: The Controller & Async Loop
-
-* **File:** `tap/controller.py` (Update)
-* **Requirements:**
-* Implement `submit_message(text: str)`:
-
-1. Create `UserMessage(content=text)`.
-2. Update Domain Tree (`add_message`).
-3. Update UI (push widget).
-4. **Async Task:** Call the model.
-
-* **Implementation Detail:** Do not use `Engine.run` for this version. You must use `ModelAsync.pipe(request)` directly in the Tap Controller to receive an async generator of tokens. This allows the TUI to update the UI on every token yield without modifying the core `conduit` library.
-
-### Chunk 3.2: Keyboard Bindings & Modes
-
-* **File:** `tap/ui/app.py`
-* **Requirements:**
-* **Normal Mode:** `j/k` scroll, `i` enter insert mode.
-* **Insert Mode:** `Esc` to normal, `Enter` to submit.
-* **Branching:** `h/l` calls `manager.navigate_horizontal`.
-
----
-
-## Phase 4: Message Deletion (Context Pruning)
-
-**Goal:** Implement message deletion for context window management.
-
-### Chunk 4.1: Domain Support for Deletion
-
-* **File:** `tap/domain/manager.py` (Update)
-* **Requirements:**
-* Add `TapConversationManager` methods:
-  * `delete_message(node_id: UUID) -> tuple[UUID, Conversation]`: Creates a new conversation with the specified message removed from the active path. Returns the new root ID and the resulting conversation.
-  * `delete_range(start_node_id: UUID, end_node_id: UUID) -> tuple[UUID, Conversation]`: Deletes all messages in the range from start to end (inclusive) along the active path.
-  * `can_delete(node_id: UUID) -> tuple[bool, str]`: Validates whether a message can be deleted. Returns (is_valid, error_message).
-* **Validation rules:**
-  * Cannot delete root SystemMessage
-  * Cannot delete if it would create consecutive UserMessages
-  * Must maintain conversation validity
-
-### Chunk 4.2: UI Confirmation Dialog
-
-* **File:** `tap/ui/dialogs.py`
-* **Requirements:**
-* Create `DeletionConfirmationDialog(ModalScreen)`:
-  * Shows message count to be deleted
-  * Warns if branches exist at deletion point
-  * Shows preview of resulting conversation structure
-  * Buttons: "Delete" (destructive style) and "Cancel"
-* Returns user choice via callback
-
-### Chunk 4.3: Mark System for Range Deletion
-
-* **File:** `tap/controller.py` (Update)
-* **Requirements:**
-* Add state for message marking:
-  * `marked_node_id: UUID | None`
-* Implement `toggle_mark()`:
-  * Sets/clears mark on selected message
-  * Visual indicator in transcript view
-* Implement `get_deletion_range() -> tuple[UUID, UUID] | None`:
-  * Returns (start, end) if mark is set
-  * Returns None if no mark
-
-### Chunk 4.4: Keybindings and Actions
-
-* **File:** `tap/ui/app.py` (Update)
-* **Requirements:**
-* Add to Normal mode bindings:
-  * `D` → trigger deletion flow
-  * `m` → toggle mark on selected message
-* Deletion flow:
-  1. Check if mark is set (range deletion) or single deletion
-  2. Validate deletion with `can_delete()`
-  3. Show confirmation dialog with appropriate details
-  4. On confirmation:
-     - Call `delete_message()` or `delete_range()`
-     - Create new conversation with deletion applied
-     - Switch to new conversation
-     - Clear mark if set
-  5. On cancel: return to normal mode
-
-### Chunk 4.5: Unit Tests
-
-* **File:** `tests/test_deletion.py`
-* **Tests:**
-* Verify single message deletion creates valid conversation
-* Verify range deletion removes correct messages
-* Verify validation prevents invalid deletions (root, consecutive users)
-* Verify original conversation remains unchanged
-* Verify branches are preserved in original conversation
-* Verify mark system correctly identifies ranges
-
-### Chunk 4.6: Visual Indicators
-
-* **File:** `tap/ui/widgets.py` (Update)
-* **Requirements:**
-* Add visual indicator for marked messages:
-  * Subtle border or icon on marked message
-  * Should be visible but not distracting
-* Update transcript rendering to show:
-  * When deletion would affect the current view
-  * Clear visual feedback during marking
-
----

@@ -1,4 +1,7 @@
 from typing import Any, Protocol, runtime_checkable
+from abc import ABC, abstractmethod
+from typing import Any
+from conduit.core.workflow.step import StepWrapper
 
 
 @runtime_checkable
@@ -10,14 +13,35 @@ class Step(Protocol):
     def __call__(self, *args: Any, **kwargs: Any) -> Any: ...
 
 
-@runtime_checkable
-class Strategy(Step, Protocol):
+class Strategy(ABC):
     """
-    A Step that adheres to a strict interface.
-    Inherit this for plugins like Summarizer, Researcher, etc.
+    Abstract base class for workflow strategies that enforces telemetry-enabled async execution.
     """
 
-    pass
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+
+        # FIX: Only validate if the class is NOT an Abstract Base Class
+        if ABC not in cls.__bases__ and "__call__" in cls.__dict__:
+            from conduit.core.workflow.step import StepWrapper
+
+            if not isinstance(cls.__call__, StepWrapper):
+                raise TypeError(
+                    f"Concrete Strategy '{cls.__name__}' must decorate __call__ with @step to enable telemetry."
+                )
+
+    @property
+    def schema(self) -> dict:
+        return getattr(self.__call__, "schema", {})
+
+    @property
+    def diagram(self) -> str:
+        return getattr(self.__call__, "diagram", "")
+
+    @abstractmethod
+    async def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        """Requirement: Must be an async @step."""
+        ...
 
 
 @runtime_checkable
