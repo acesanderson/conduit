@@ -22,7 +22,6 @@ import os
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 from importlib.metadata import version
-import asyncio
 
 if TYPE_CHECKING:
     from conduit.storage.odometer.odometer_registry import OdometerRegistry
