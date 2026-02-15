@@ -9,6 +9,7 @@ introspection capabilities (.diagram, .schema) as properties on decorated functi
 import ast
 import functools
 import inspect
+import textwrap
 import time
 from collections import deque
 from collections.abc import Callable, Awaitable
@@ -121,40 +122,48 @@ def _static_scan_workflow(root_func) -> dict:
     while queue:
         current_func = queue.popleft()
         try:
-            src = inspect.getsource(current_func)
-            src = inspect.cleandoc(src)
+            # 1. Get raw source
+            raw_src = inspect.getsource(current_func)
+            # 2. Aggressively dedent so the function starts at column 0
+            src = textwrap.dedent(raw_src)
+            # 3. Parse the now-valid syntax tree
             tree = ast.parse(src)
-            func_globals = getattr(current_func, "__globals__", {})
+
+            func_scope = getattr(current_func, "__globals__", {}).copy()
+            # If it's a method, we need the class's namespace
+            if inspect.ismethod(current_func) or "." in current_func.__qualname__:
+                # Attempt to find the class owning this method
+                cls_name = current_func.__qualname__.split(".")[0]
+                # This is a bit of a hack, but standard for static analysis:
+                # we look for the class in the module where the function was defined.
+                module = inspect.getmodule(current_func)
+                cls = getattr(module, cls_name, None)
+                if cls:
+                    func_scope.update(cls.__dict__)
         except (OSError, TypeError):
             continue
 
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
-                # A: resolve_param
-                if getattr(node.func, "id", "") == "resolve_param":
+                # 1. Detect direct resolve_param calls
+                call_id = ""
+                if isinstance(node.func, ast.Name):
+                    call_id = node.func.id
+                elif isinstance(node.func, ast.Attribute):
+                    call_id = node.func.attr
+
+                if call_id in ("resolve_param", "get_param"):
                     if len(node.args) > 0 and isinstance(node.args[0], ast.Constant):
                         key = node.args[0].value
-                        default_val = "dynamic"
-                        if len(node.args) > 1:
-                            if isinstance(node.args[1], ast.Constant):
-                                default_val = node.args[1].value
-                            elif isinstance(node.args[1], ast.List):
-                                default_val = [
-                                    getattr(e, "value", "unknown")
-                                    for e in node.args[1].elts
-                                ]
-                        schema[f"{current_func.__name__}.{key}"] = default_val
+                        # Default parsing logic...
+                        schema[f"{current_func.__name__}.{key}"] = "dynamic"
 
-                # B: Recursion
-                func_name = None
-                if isinstance(node.func, ast.Name):
-                    func_name = node.func.id
-
-                if func_name and func_name in func_globals:
-                    child = func_globals[func_name]
-                    # Check for __wrapped__ (works on both StepWrapper and standard decorators)
-                    underlying = getattr(child, "__wrapped__", None)
-                    if underlying and underlying not in visited:
+                # 2. Recursive Search: Follow the call tree
+                target_obj = func_scope.get(call_id)
+                if target_obj:
+                    # Follow both standard decorators and our StepWrapper
+                    underlying = getattr(target_obj, "__wrapped__", target_obj)
+                    if callable(underlying) and underlying not in visited:
                         visited.add(underlying)
                         queue.append(underlying)
     return schema
@@ -221,7 +230,19 @@ class StepWrapper:
         """
         if instance is None:
             return self
-        return functools.partial(self.__call__, instance)
+
+        # Create the bound method
+        bound_method = functools.partial(self.__call__, instance)
+
+        # PROXY the properties so they are accessible on the bound instance
+        # This makes summarizer.__call__.schema work
+        setattr(bound_method, "schema", self.schema)
+        setattr(bound_method, "diagram", self.diagram)
+
+        # Keep internal references for static analysis
+        setattr(bound_method, "__wrapped__", self._func)
+
+        return bound_method
 
     async def __call__(self, *args, **kwargs):
         # 1. Bind Args

@@ -1,15 +1,14 @@
 from abc import ABC, abstractmethod
-from conduit.core.workflow.step import step
+from conduit.core.workflow.protocols import Strategy
 
 
-class SummarizationStrategy(ABC):
+class SummarizationStrategy(Strategy, ABC):
     """
     Abstract base class for summarization strategies.
     These are Steps that are ready to roll.
     Each of these need to be wrapped with @step.
     """
 
-    @step
     @abstractmethod
     async def __call__(self, text: str, **kwargs) -> str:
         """
@@ -18,14 +17,13 @@ class SummarizationStrategy(ABC):
         ...
 
 
-class ChunkingStrategy(ABC):
+class ChunkingStrategy(Strategy, ABC):
     """
     Abstract base class for chunking strategies.
     These are Steps that are ready to roll.
     Each of these need to be wrapped with @step.
     """
 
-    @step
     @abstractmethod
     async def __call__(self, text: str, **kwargs) -> list[str]:
         """
