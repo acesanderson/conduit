@@ -23,14 +23,6 @@ def resolve_param(
     overrides: dict | None = None,
     scope: str | None = None,
 ) -> Any:
-    """
-    RESOLVE PARAM WITH EXPLICIT DEFAULT POLICY:
-    1. Runtime Override (highest priority)
-    2. Scoped Config (Scope.key)
-    3. Global Config (key)
-    4. Code-level Default (ONLY if context.use_defaults is True)
-    5. Raise KeyError
-    """
     if scope is None:
         try:
             stack = inspect.stack()
@@ -39,7 +31,6 @@ def resolve_param(
                 if frame_info.function not in ("resolve_param", "get_param"):
                     caller_frame = frame_info.frame
                     break
-
             if caller_frame and "self" in caller_frame.f_locals:
                 scope = caller_frame.f_locals["self"].__class__.__name__
             elif caller_frame:
@@ -47,26 +38,21 @@ def resolve_param(
         except Exception:
             scope = "unknown"
 
-    # Tier 1: Runtime
     runtime_args = overrides or context.args.get() or {}
     if key in runtime_args:
         return runtime_args[key]
 
-    # Tier 2 & 3: Config
     cfg = context.config.get()
     if scope and f"{scope}.{key}" in cfg:
         return cfg[f"{scope}.{key}"]
     if key in cfg:
         return cfg[key]
 
-    # Tier 4: Authorized Default
     if context.use_defaults.get() is True:
         return default
 
-    # Tier 5: Hard Failure
     raise KeyError(
-        f"Required parameter '{key}' not found in configuration (scope: {scope}). "
-        "Code-level defaults are disabled in this Harness."
+        f"Required parameter '{key}' not found in configuration (scope: {scope})."
     )
 
 
@@ -92,7 +78,6 @@ def _static_scan_workflow(root_func) -> dict[str, dict]:
         try:
             src = textwrap.dedent(inspect.getsource(current_func))
             tree = ast.parse(src)
-
             scope = (
                 current_func.__qualname__.split(".")[0]
                 if "." in current_func.__qualname__
@@ -122,7 +107,6 @@ def _static_scan_workflow(root_func) -> dict[str, dict]:
                         has_code_default = len(node.args) > 1 or any(
                             kw.arg == "default" for kw in node.keywords
                         )
-
                         logical_name = f"{scope}.{key}"
                         param_requirements[logical_name] = {
                             "keys": [logical_name, key],
@@ -143,7 +127,6 @@ def _generate_hierarchy_graph(root_func) -> str:
     root = getattr(root_func, "__wrapped__", root_func)
     queue = deque([root])
     edges = []
-
     while queue:
         current_func = queue.popleft()
         if current_func in visited_funcs:
@@ -156,7 +139,6 @@ def _generate_hierarchy_graph(root_func) -> str:
             func_globals = getattr(current_func, "__globals__", {})
         except (OSError, TypeError):
             continue
-
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
                 target_name = None
@@ -168,7 +150,6 @@ def _generate_hierarchy_graph(root_func) -> str:
                     target_name = node.func.func.id
                 elif isinstance(node.func, ast.Attribute):
                     target_name = node.func.attr
-
                 if target_name and target_name in func_globals:
                     child = func_globals[target_name]
                     if hasattr(child, "__wrapped__") or hasattr(child, "schema"):
@@ -205,13 +186,11 @@ class StepWrapper:
         unified_args = {
             k: v for k, v in bound.arguments.items() if k not in ("self", "cls")
         }
-
         start = time.time()
         token_args = context.args.set(unified_args)
         current_meta = {}
         token_meta = context.step_meta.set(current_meta)
         result, status = None, "unknown"
-
         try:
             result = await self._func(*args, **kwargs)
             status = "success"
@@ -219,7 +198,7 @@ class StepWrapper:
             result, status = str(e), "error"
             raise
         finally:
-            duration = time.time() - start
+            duration = round(time.time() - start, 4)
             trace = context.trace.get()
             if trace is not None:
                 trace.append(
@@ -227,7 +206,7 @@ class StepWrapper:
                         "step": self._func.__qualname__,
                         "inputs": unified_args,
                         "output": result,
-                        "duration": round(duration, 4),
+                        "duration": duration,
                         "status": status,
                         "metadata": current_meta,
                     }
