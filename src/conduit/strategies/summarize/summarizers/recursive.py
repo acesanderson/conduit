@@ -1,20 +1,13 @@
 """
-# File-Level Docstring for `recursive.py`
-
-Adaptive summarization orchestrator that recursively applies one-shot or map-reduce strategies based on input token count and model context window constraints. The `RecursiveSummarizer` is a `@step`-decorated workflow that intelligently routes text through either direct summarization (when content fits the effective context window via `OneShotSummarizer`) or chunked map-reduce pipelines (when text exceeds the threshold via `MapReduceSummarizer`), then recursively refines intermediate results until the final summary is achieved. All strategy selection and compression parameters are resolved from the Harness configuration layer via `get_param()`, enabling experiment-driven optimization without code changes—users can adjust `model`, `effective_context_window_ratio`, prompt templates, and chunking parameters purely through config dictionaries passed to `ConduitHarness`.
-
-The recursion pattern ensures that large documents are progressively compressed across multiple passes: a map-reduce chunking phase produces intermediate summaries, which are fed back into the orchestrator for another decision cycle, until the output fits the threshold and triggers the one-shot finalizer. Metadata is automatically collected at each step (input token estimates, threshold comparisons, nested step traces) for observability within the Harness.
-
-Usage:
 ```python
 from conduit.core.workflow.harness import ConduitHarness
 from conduit.strategies.summarize.summarizers.recursive import RecursiveSummarizer
 
 config = {
-    "model": "gpt-4o",
+    "model": "gpt-oss:latest",
     "effective_context_window_ratio": 0.6,
-    "OneShotSummarizer.prompt": "Summarize concisely: {{text}}",
-    "MapReduceSummarizer.prompt": "Summarize chunk {{chunk_index}}/{{total_chunks}}: {{chunk}}",
+    "OneShotSummarizer.prompt": "Summarize concisely: {{ text }}",
+    "MapReduceSummarizer.prompt": "Summarize chunk {{ chunk_index }}/{{ total_chunks }}: {{ chunk }}",
     "chunk_size": 8000,
     "overlap": 500,
 }
