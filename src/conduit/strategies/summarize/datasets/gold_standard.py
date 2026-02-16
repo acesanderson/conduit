@@ -53,6 +53,16 @@ class GoldStandardSummary(BaseModel):
         description="A list of primary entities (People, Organizations, Specific Technologies, or Laws) mentioned."
     )
 
+    # Embeddings
+    summary_embedding: list[float] | None = Field(
+        default=None,
+        description="A dense vector representation of the summary, used for semantic similarity and recall evaluation.",
+    )
+    entity_list_embeddings: list[list[float]] | None = Field(
+        default=None,
+        description="A list of dense vector representations for each entity in the entity list.",
+    )
+
 
 class GoldStandardDatum(BaseModel):
     entry: GoldStandardEntry

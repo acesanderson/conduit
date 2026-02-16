@@ -1,14 +1,11 @@
 """
-Gold standard summarizations, for this exercise, is these params:
-- temp: 0.0 (we want the best possible summary, not a variety)
-- model: Gemini 3 (the best we have access to at the moment)
-- summarization is one-shot, with the gold standard prompt
-
-We are generating the following for each doc:
-- summary
-- token count of the summary (to validate that it meets the target compression ratio)
-- entities and key info in the summary (to validate that it captures the important info from the original text)
+Gold standard summarizations generation script.
 """
+
+import asyncio
+from pathlib import Path
+from asyncio import Semaphore
+from datasets import Dataset
 
 from conduit.config import settings
 from conduit.strategies.summarize.datasets.load_datasets import load_corpus
@@ -19,9 +16,8 @@ from conduit.strategies.summarize.datasets.gold_standard import (
 )
 from conduit.strategies.summarize.compression import get_target_summary_length
 from conduit.core.prompt.prompt_loader import PromptLoader
-from conduit.config import settings
-from pathlib import Path
-from datasets import Dataset
+from headwater_api.classes import EmbeddingsRequest, ChromaBatch
+from headwater_client.client.headwater_client_async import HeadwaterAsyncClient
 
 # General configs
 MODEL_NAME = "gemini3"
@@ -34,43 +30,11 @@ CORPUS_DATASET = load_corpus()
 GOLD_STANDARD_DATASET_PATH = (
     settings.paths["DATASETS_DIR"] / "gold_standard_dataset.parquet"
 )
+EMBEDDINGS_MODEL = "google/embeddinggemma-300m"
 
 # Test configs
-DRY_RUN = False  # Set to True to just print prompts without making API calls
-DEBUG_PAYLOAD = (
-    False  # Set to True to include the full API payload in the logs for debugginTrueg
-)
-
-
-async def generate_single_gold_standard(doc: GoldStandardEntry) -> GoldStandardDatum:
-    """
-    For testing.
-    """
-    from conduit.async_ import ConduitAsync, GenerationParams, ConduitOptions, Verbosity
-
-    params = GenerationParams(
-        model=MODEL_NAME,
-        output_type="structured_response",
-        response_model=GoldStandardSummary,
-        temperature=0.0,
-    )
-    options = ConduitOptions(
-        project_name=PROJECT_NAME,
-        cache=settings.default_cache(PROJECT_NAME),
-        verbosity=Verbosity.PROGRESS,
-        debug_payload=DEBUG_PAYLOAD,
-    )
-    conduit = ConduitAsync(prompt=GOLD_STANDARD_PROMPT)
-    conversation = await conduit.run(
-        input_variables={
-            "text": doc.text,
-            "target_tokens": get_target_summary_length(doc.token_count),
-        },
-        params=params,
-        options=options,
-    )
-    summary = conversation.last.parsed
-    return GoldStandardDatum(entry=doc, summary=summary)
+DRY_RUN = False
+DEBUG_PAYLOAD = False
 
 
 async def generate_gold_standards(
@@ -98,8 +62,8 @@ async def generate_gold_standards(
         verbosity=Verbosity.PROGRESS,
         debug_payload=DEBUG_PAYLOAD,
     )
+
     if dry_run:
-        # Just print the rendered prompts
         for doc in docs:
             prompt_str = GOLD_STANDARD_PROMPT.render(
                 input_variables={
@@ -109,28 +73,84 @@ async def generate_gold_standards(
             )
             print(prompt_str)
         return []
+
     conduit = ConduitBatchAsync(prompt=GOLD_STANDARD_PROMPT)
     input_variables_list = [
         {"text": doc.text, "target_tokens": get_target_summary_length(doc.token_count)}
         for doc in docs
     ]
-    summaries = await conduit.run(
+
+    summaries_responses = await conduit.run(
         input_variables_list=input_variables_list,
         prompt_strings_list=[],
         params=params,
         options=options,
-        max_concurrent=5,  # Adjust based on your resources and rate limits
+        max_concurrent=5,
     )
-    data = [
-        GoldStandardDatum(entry=doc, summary=summary.last.parsed)
+    summaries = [summary.last.parsed for summary in summaries_responses]
+
+    # Use a single client session for all embedding requests
+    async with HeadwaterAsyncClient() as client:
+        # Pass the specific embeddings API sub-client down
+        summary_embeddings = await generate_summary_embeddings(
+            summaries, client.embeddings
+        )
+        entity_list_embeddings = await generate_entity_list_embeddings(
+            summaries, client.embeddings
+        )
+
+    for summary, summary_embedding, entity_embeddings in zip(
+        summaries, summary_embeddings, entity_list_embeddings
+    ):
+        summary.summary_embedding = summary_embedding
+        summary.entity_list_embeddings = entity_embeddings
+
+    return [
+        GoldStandardDatum(entry=doc, summary=summary)
         for doc, summary in zip(docs, summaries)
     ]
-    return data
 
 
-async def validate_datum(
-    datum: GoldStandardDatum,
-) -> bool:
+async def generate_summary_embeddings(
+    summaries: list[GoldStandardSummary], embeddings_client
+) -> list[list[float]]:
+    """
+    Generate embeddings for the summary using a shared client.
+    """
+    ids = [str(i) for i in range(len(summaries))]
+    documents = [summary.summary for summary in summaries]
+    batch = ChromaBatch(ids=ids, documents=documents)
+    embedding_request = EmbeddingsRequest(
+        model=EMBEDDINGS_MODEL,
+        batch=batch,
+    )
+    embedding_response = await embeddings_client.generate_embeddings(embedding_request)
+    return embedding_response.embeddings
+
+
+async def generate_entity_list_embeddings(
+    summaries: list[GoldStandardSummary], embeddings_client
+) -> list[list[list[float]]]:
+    """
+    Generate embeddings for entity lists with a semaphore to prevent network exhaustion.
+    """
+    # Semaphore limits concurrent HTTP requests to the server
+    sem = Semaphore(2)
+
+    async def sem_task(summary):
+        async with sem:
+            ids = [str(i) for i in range(len(summary.entity_list))]
+            batch = ChromaBatch(ids=ids, documents=summary.entity_list)
+            req = EmbeddingsRequest(model=EMBEDDINGS_MODEL, batch=batch)
+            return await embeddings_client.generate_embeddings(req)
+
+    # Gather all tasks, but the semaphore inside sem_task ensures only 5 run at once
+    embedding_responses = await asyncio.gather(*(sem_task(s) for s in summaries))
+
+    return [resp.embeddings for resp in embedding_responses]
+
+
+async def validate_datum(datum: GoldStandardDatum) -> bool:
     """
     Validate that the summary meets the target token count.
     """
@@ -139,15 +159,13 @@ async def validate_datum(
     tokenize = ModelAsync(MODEL_NAME).tokenize
     summary_token_count = await tokenize(datum.summary.summary)
     target_token_count = get_target_summary_length(datum.entry.token_count)
+
     print(
-        f"Original text token count: {datum.entry.token_count}, "
-        f"Summary token count: {summary_token_count}, "
-        f"Target token count: {target_token_count}",
-        sep="\n",
+        f"Original text tokens: {datum.entry.token_count}, "
+        f"Summary tokens: {summary_token_count}, "
+        f"Target tokens: {target_token_count}"
     )
-    if summary_token_count > target_token_count:
-        return False
-    return True
+    return summary_token_count <= target_token_count
 
 
 def save_gold_standard_data(dataset: Dataset, path: Path = GOLD_STANDARD_DATASET_PATH):
@@ -159,14 +177,19 @@ def save_gold_standard_data(dataset: Dataset, path: Path = GOLD_STANDARD_DATASET
 
 
 if __name__ == "__main__":
-    import asyncio
 
-    entries = [GoldStandardEntry(**d) for d in CORPUS_DATASET]
-    gold_standard_data = asyncio.run(generate_gold_standards(entries, dry_run=DRY_RUN))
-    for datum in gold_standard_data:
-        is_valid = asyncio.run(validate_datum(datum))
-        print(f"Datum valid: {is_valid}")
-    gold_standard_dataset = Dataset.from_list(
-        [datum.model_dump() for datum in gold_standard_data]
-    )
-    save_gold_standard_data(gold_standard_dataset)
+    async def main():
+        entries = [GoldStandardEntry(**d) for d in CORPUS_DATASET]
+        gold_standard_data = await generate_gold_standards(entries, dry_run=DRY_RUN)
+
+        for datum in gold_standard_data:
+            is_valid = await validate_datum(datum)
+            print(f"Datum valid: {is_valid}")
+
+        if gold_standard_data:
+            gold_standard_dataset = Dataset.from_list(
+                [datum.model_dump() for datum in gold_standard_data]
+            )
+            save_gold_standard_data(gold_standard_dataset)
+
+    asyncio.run(main())
