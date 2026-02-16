@@ -21,6 +21,11 @@ def fuzzy_search(query: str, limit: int = 3):
     return matches
 
 
+"""
+["BAAI/bge-large-en-v1.5","BAAI/bge-base-en-v1.5","BAAI/bge-reranker-v2-m3","sentence-transformers/all-mpnet-base-v2","sentence-transformers/all-MiniLM-L6-v2","nomic-ai/nomic-embed-text-v1.5","intfloat/e5-large-v2","google/embeddinggemma-300m"]
+"""
+
+
 def main():
     parser = argparse.ArgumentParser(description="CLI for managing models.")
     parser.add_argument(
@@ -35,8 +40,28 @@ def main():
     parser.add_argument(
         "-a", "--aliases", action="store_true", help="Display model aliases."
     )
+    parser.add_argument(
+        "-e",
+        "--embeddings",
+        action="store_true",
+        help="Display models that support embeddings.",
+    )
     args = parser.parse_args()
     # Validate arguments
+    if args.embeddings:
+        from conduit.embeddings.generate_embeddings import list_embedding_models
+
+        embedding_model_str = list_embedding_models()
+        # Convert the string representation of the list to an actual list
+        embedding_models = embedding_model_str.strip("[]").replace('"', "").split(",")
+
+        from rich.console import Console
+
+        console = Console()
+        console.print("Embedding models:", style="bold green")
+        for model in embedding_models:
+            console.print(f"  - {model}", style="cyan")
+        return
     if args.type:
         if args.type not in modeltypes:
             raise ValueError(

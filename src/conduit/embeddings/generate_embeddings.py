@@ -55,6 +55,30 @@ def quick_embedding(query_string: str) -> list[list[float]]:
     return embeddings
 
 
+def list_embedding_models() -> list[str]:
+    """
+    List available embedding models from the server.
+    """
+    client = HeadwaterClient()
+    return client.embeddings.list_embedding_models()
+
+
 def validate_model(model_name: str) -> bool:
     embedding_models = load_embedding_models()
     return model_name in embedding_models
+
+
+if __name__ == "__main__":
+    # Test basic embedding generation
+    # model = "google/embeddinggemma-300m"
+    # ids = ["doc1", "doc2"]
+    # documents = ["Hello world", "This is a test"]
+    # embeddings = generate_embeddings(ids, documents, model=model)
+    #
+    # print(f"Generated {len(embeddings)} embeddings")
+    # print(f"Embedding dimensions: {len(embeddings[0])}")
+    #
+    # # Test quick embedding
+    # query_embedding = quick_embedding("Quick test query")
+    # print(f"Quick embedding shape: {len(query_embedding[0])} dimensions")
+    print(list_embedding_models())
