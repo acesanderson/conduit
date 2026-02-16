@@ -1,86 +1,71 @@
-## `evals/LOSS_FUNCTION_SPEC.md`
-
-# Summarization Loss Function: Multi-Factor Recall ()
+# Summarization Loss Function: Multi-Factor Recall () - V4
 
 ## 1. Objective
 
-To quantify the delta between a locally generated summary and the Gemini 3 "Golden" reference. This loss function is the primary metric for identifying the "Golden Config" through hyperparameter optimization.
+To quantify the delta between a generated summary and a Gemini 3 "Golden" reference. This version utilizes **pre-computed embeddings** within the `GoldStandardSummary` to minimize runtime latency and ensure consistency across large-scale evaluations.
 
 ## 2. Mathematical Definition
 
-The total loss is a weighted sum of four normalized components. We define success as the minimization of :
+The total loss is a weighted sum of five normalized components:
 
-### Weights ()
+### Updated Weight Schedule
 
-The weights are tuned to prioritize **Recall** of information over stylistic alignment:
-
-* ** (Fact Weight):** 0.40
-* ** (Entity Weight):** 0.25
-* ** (Semantic Weight):** 0.20
-* ** (Penalty Weight):** 0.15
+| Component | Weight () | Metric | Data Source |
+| --- | --- | --- | --- |
+| ** (Facts)** | **0.40** | Bidirectional NLI ( Score) | `key_facts` |
+| ** (Entities)** | **0.20** | Cosine Similarity Matrix | `entity_list_embeddings` |
+| ** (Flow)** | **0.20** | Kendall’s Tau / Inversion Count | `logical_outline` |
+| ** (Semantic)** | **0.15** | Cosine Distance | `summary_embedding` |
+| ** (Length)** | **0.05** | Sublinear Tiered Penalty | `token_count` |
 
 ---
 
-## 3. Component Breakdown
+## 3. Component Breakdown (Optimized)
 
-### A. Atomic Fact Recall ()
+### A. Semantic Similarity ()
 
-Measures the preservation of discrete truth units.
+Direct comparison between the pre-computed golden vector and the live-generated vector.
 
-* **Source:** `summary.key_facts`
-* **Method:** Natural Language Inference (NLI) for Entailment.
 * **Calculation:** 
-
-
-where  is the total number of golden facts.
+* **Model:** `google/embeddinggemma-300m` (bfloat16).
 
 ### B. Entity Preservation ()
 
-Ensures key actors, places, and technologies are maintained.
+Validates presence and context of key actors using a many-to-many similarity matrix.
 
-* **Source:** `summary.entity_list`
-* **Method:** Fuzzy string matching (Levenshtein distance).
-* **Calculation:** 
+* **Logic:** For each vector in `entity_list_embeddings`, find the max similarity in the generated text's entity space.
+* **Verification:** A match is only valid if .
 
+### C. Bidirectional Atomic Fact Recall ()
 
-### C. Semantic Similarity ()
+*Requires dynamic NLI Cross-Encoding.*
 
-A high-level "vibe check" using vector space proximity.
+* **Recall:** Do the `key_facts` exist in the generation?
+* **Precision:** Does the generation contain facts not supported by the gold summary?
 
-* **Source:** `summary.summary` (Narrative)
-* **Method:** Cosine similarity of sentence embeddings.
-* **Calculation:** 
+### D. Structural Monotonicity ()
 
+Validates the `logical_outline` sequence.
 
-where  and  are the embedding vectors of the local and golden summaries.
-
-### D. Length Penalty ()
-
-Punishes deviation from the user-defined token target.
-
-* **Calculation:** 
-
+* **Scoring:** Uses NLI to locate outline points in the generation, then calculates the **Inversion Count** to penalize out-of-order information.
 
 ---
 
-## 4. Evaluation Constraints
+## 4. Operational Guardrails (Hard Fails)
 
-### Hard Fails (Score = 1.0)
+The evaluator returns  (Max Loss) if:
 
-The Harness will assign a maximum loss if any of the following triggers occur:
-
-1. **JSON Malformation:** Failure to parse structured output (if requested).
-2. **Meta-Commentary:** Inclusion of "AI-speak" (e.g., "In this summary...", "The document states...").
-3. **Truncation:** If the summary ends mid-sentence due to context window limits.
+1. **Meta-Commentary:** Presence of "This summary..." or "The author...".
+2. **Truncation:** String ends without valid terminal punctuation.
+3. **Embedding Mismatch:** If the generated vector dimensions do not match the `summary_embedding` dimensions (indicating a model version conflict).
 
 ---
 
-## 5. Implementation Roadmap
+## 5. Updated Implementation Roadmap
 
-The evaluation harness must execute these metrics in order of computational cost:
+1. **Phase 1: Guardrails & Length:** Immediate filter based on regex and `get_target_summary_length`.
+2. **Phase 2: Live Vectorization:** Generate  and local entity vectors for the *generated* text only.
+3. **Phase 3: Static Alignment:** Compute  and  by comparing live vectors against the `GoldStandardSummary` embeddings.
+4. **Phase 4: Batched NLI:** Run the Cross-Encoder for  and .
+5. **Phase 5: Aggregation:** Final weighted scalar calculation.
 
-1. **Heuristics** (Length, Regex) -> *Fastest*
-2. **Deterministic** (Entities)
-3. **Semantic** (Embeddings)
-4. **Inference-based** (Fact NLI) -> *Slowest*
----
