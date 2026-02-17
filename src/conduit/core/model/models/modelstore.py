@@ -340,6 +340,8 @@ class ModelStore:
         """
         Get all models as ModelSpec objects.
         """
+        from conduit.core.model.models.modelspecs_CRUD import get_all_modelspecs
+
         return get_all_modelspecs()
 
     @classmethod
