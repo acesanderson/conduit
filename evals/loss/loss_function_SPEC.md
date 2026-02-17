@@ -1,91 +1,78 @@
-## `evals/LOSS_FUNCTION_SPEC_V3_FINAL.md`
-
-# Summarization Loss Function: Multi-Factor Recall ()
+# Summarization Loss Function: Multi-Factor Recall () - V4
 
 ## 1. Objective
 
-To quantify the delta between a generated summary and a Gemini 3 "Golden" reference. This loss function prioritizes **Information Recall** and **Logical Flow** while acting as a guardrail against hallucinations and length deviance.
+To quantify the delta between a generated summary and a Gemini 3 "Golden" reference. This version utilizes **pre-computed embeddings** within the `GoldStandardSummary` to minimize runtime latency and ensure consistency across large-scale evaluations.
 
 ## 2. Mathematical Definition
 
-The total loss is the weighted sum of five independent, normalized components:
+The total loss is a weighted sum of five normalized components:
 
-### Final Weight Schedule ()
+### Updated Weight Schedule
 
-| Component | Weight | Focus | Metric |
+| Component | Weight () | Metric | Data Source |
 | --- | --- | --- | --- |
-| ** (Facts)** | **0.40** | Content Accuracy | Bidirectional NLI ( Score) |
-| ** (Entities)** | **0.20** | Key Actors | Fuzzy String Match + Context Check |
-| ** (Flow)** | **0.20** | Logical Sequence | Monotonicity of Outline |
-| ** (Semantic)** | **0.15** | Narrative "Vibe" | Cosine Distance (Vector Space) |
-| ** (Length)** | **0.05** | Conciseness | Sublinear Tiered Penalty |
+| ** (Facts)** | **0.40** | Bidirectional NLI ( Score) | `key_facts` |
+| ** (Entities)** | **0.20** | Cosine Similarity Matrix | `entity_list_embeddings` |
+| ** (Flow)** | **0.20** | Kendall’s Tau / Inversion Count | `logical_outline` |
+| ** (Semantic)** | **0.15** | Cosine Distance | `summary_embedding` |
+| ** (Length)** | **0.05** | Sublinear Tiered Penalty | `token_count` |
 
 ---
 
-## 3. Component Breakdown
+## 3. Component Breakdown (Optimized)
 
-### A. Bidirectional Atomic Fact Recall ()
+### A. Semantic Similarity ()
 
-Measures the overlap of discrete truth units between the gold standard and the generation.
+Direct comparison between the pre-computed golden vector and the live-generated vector.
 
-* **Recall ():** . (Is the info present?)
-* **Precision ():** . (Is the summary faithful?)
 * **Calculation:** 
+* **Model:** `google/embeddinggemma-300m` (bfloat16).
 
 ### B. Entity Preservation ()
 
-Ensures People, Organizations, and Technologies are correctly identified.
+Validates presence and context of key actors using a many-to-many similarity matrix.
 
-* **Logic:** Uses fuzzy matching (threshold > 0.9). To prevent false positives (e.g., "Washington State" vs "George Washington"), a match is only valid if the surrounding context window has a semantic similarity  to the source.
+* **Logic:** For each vector in `entity_list_embeddings`, find the max similarity in the generated text's entity space.
+* **Verification:** A match is only valid if .
 
-### C. Structural Monotonicity ()
+### C. Bidirectional Atomic Fact Recall ()
 
-Validates that the summary visits the `logical_outline` points in the correct order.
+*Requires dynamic NLI Cross-Encoding.*
 
-* **Scoring:** * **Coverage (70%):** Percentage of outline points found in the summary via NLI.
-* **Order (30%):** Penalty applied if Point  appears before Point .
+* **Recall:** Do the `key_facts` exist in the generation?
+* **Precision:** Does the generation contain facts not supported by the gold summary?
 
+### D. Structural Monotonicity ()
 
+Validates the `logical_outline` sequence.
 
-### D. Semantic Similarity ()
-
-A high-level proximity check using sentence embeddings.
-
-* **Method:** Cosine distance () between the global mean-pooled vector of the generated summary and the golden narrative.
-
-### E. Sublinear Length Penalty ()
-
-A gentle guardrail against extreme length deviance.
-
-* **Target:** Defined by `get_target_summary_length(input_tokens)`.
-* **Calculation:** . This ensures that being 10% off doesn't ruin an otherwise perfect factual score.
+* **Scoring:** Uses NLI to locate outline points in the generation, then calculates the **Inversion Count** to penalize out-of-order information.
 
 ---
 
-## 4. Operational Guardrails
+## 4. Operational Guardrails (Hard Fails)
 
-### Hard Fails ()
+The evaluator returns  (Max Loss) if:
 
-The evaluator immediately returns maximum loss if:
-
-1. **Meta-Commentary:** Contains phrases like "This summary covers..." or "The document states...".
-2. **JSON Failure:** If structured output was requested and is unparseable.
-3. **Truncation:** The text ends mid-sentence.
+1. **Meta-Commentary:** Presence of "This summary..." or "The author...".
+2. **Truncation:** String ends without valid terminal punctuation.
+3. **Embedding Mismatch:** If the generated vector dimensions do not match the `summary_embedding` dimensions (indicating a model version conflict).
 
 ---
 
-## 5. Technical Implementation Roadmap
+## 5. Updated Implementation Roadmap
 
-1. **Phase 1: Heuristics (Regex/Len)** - Filter out "garbage" outputs immediately.
-2. **Phase 2: Vectorization** - Embed the gold and gen texts once. Compute .
-3. **Phase 3: Batched NLI** - Collate all pairs (Fact-Sentence, Sentence-Fact, Outline-Sentence) into a single tensor.
-4. **Phase 4: Aggregation** - Weight the scores and log individual component values for debugging.
+1. **Phase 1: Guardrails & Length:** Immediate filter based on regex and `get_target_summary_length`.
+2. **Phase 2: Live Vectorization:** Generate  and local entity vectors for the *generated* text only.
+3. **Phase 3: Static Alignment:** Compute  and  by comparing live vectors against the `GoldStandardSummary` embeddings.
+4. **Phase 4: Batched NLI:** Run the Cross-Encoder for  and .
+5. **Phase 5: Aggregation:** Final weighted scalar calculation.
 
-## Supporting context
-### Gold Standard Model
-
+### Gold Standard data model
 ```python
 from pydantic import BaseModel, Field
+
 
 class GoldStandardEntry(BaseModel):
     category: str = Field(
@@ -139,14 +126,22 @@ class GoldStandardSummary(BaseModel):
         description="A list of primary entities (People, Organizations, Specific Technologies, or Laws) mentioned."
     )
 
+    # Embeddings
+    summary_embedding: list[float] | None = Field(
+        default=None,
+        description="A dense vector representation of the summary, used for semantic similarity and recall evaluation.",
+    )
+    entity_list_embeddings: list[list[float]] | None = Field(
+        default=None,
+        description="A list of dense vector representations for each entity in the entity list.",
+    )
+
 
 class GoldStandardDatum(BaseModel):
     entry: GoldStandardEntry
     summary: GoldStandardSummary
 ```
-
-### Compression Ratio Function
-
+### Compression function
 ```python
 from dataclasses import dataclass
 

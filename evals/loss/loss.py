@@ -1,32 +1,8 @@
-import abc
 import asyncio
 import re
-import difflib
-import numpy as np
-from pydantic import BaseModel
-from pydantic import Field
+import numpy
 from dataclasses import dataclass
-from sentence_transformers import CrossEncoder
-
-# --- 1. Data Models ---
-
-
-class ComponentScore(BaseModel):
-    score: float = Field(..., ge=0.0, le=1.0)
-    raw_value: float
-    metadata: dict | None = None
-
-
-class SummarizationEval(BaseModel):
-    total_loss: float
-    is_hard_fail: bool
-    fail_reason: str | None = None
-    metrics: dict[str, ComponentScore]
-    tokens_actual: int
-    tokens_target: int
-
-
-# --- 2. Length Logic ---
+from headwater_api.classes import QuickEmbeddingRequest
 
 
 @dataclass
@@ -37,215 +13,200 @@ class CompressionTier:
     max_tokens: int
 
 
-COMPRESSION_SCHEDULE = [
-    CompressionTier(max_input=2000, ratio=0.15, min_tokens=300, max_tokens=400),
-    CompressionTier(max_input=10000, ratio=0.10, min_tokens=400, max_tokens=1000),
-    CompressionTier(max_input=40000, ratio=0.05, min_tokens=1000, max_tokens=2000),
-]
+@dataclass
+class EvalComponent:
+    score: float
+    weight: float
+    raw_metrics: dict
 
 
-def get_target_summary_length(input_tokens: int) -> int:
-    for tier in COMPRESSION_SCHEDULE:
-        if input_tokens <= tier.max_input:
-            raw = int(input_tokens * tier.ratio)
-            return max(tier.min_tokens, min(raw, tier.max_tokens))
-    return 2500
+class SummaryEval:
+    def __init__(self, total_loss, is_hard_fail, fail_reason=None, components=None):
+        self.total_loss = total_loss
+        self.is_hard_fail = is_hard_fail
+        self.fail_reason = fail_reason
+        self.components = components or {}
 
 
-# --- 3. Async Evaluators ---
+class MultiFactorLoss:
+    def __init__(
+        self,
+        hw_client,
+        gliner_model,
+        nli_model,
+        compression_schedule: list,
+        entity_threshold: float = 0.85,
+    ):
+        self.hw_client = hw_client
+        self.gliner = gliner_model
+        self.nli = nli_model
+        self.schedule = compression_schedule
+        self.entity_threshold = entity_threshold
 
+    async def _get_embedding(self, text: str) -> list[float]:
+        req = QuickEmbeddingRequest(query=text, model="google/embedding-gemma-300m")
+        resp = await self.hw_client.quick_embedding(req)
+        return resp.embeddings
 
-class BaseEvaluator(abc.ABC):
-    @abc.abstractmethod
-    async def compute(self, gold: BaseModel, gen_text: str) -> ComponentScore: ...
+    def _get_target_length(self, input_tokens: int) -> int:
+        for tier in self.schedule:
+            if input_tokens <= tier.max_input:
+                raw = int(input_tokens * tier.ratio)
+                return max(tier.min_tokens, min(raw, tier.max_tokens))
+        return 2500
 
+    async def evaluate(self, gold_datum, generated_text: str) -> SummaryEval:
+        # Phase 1: Operational Guardrails
+        if re.search(r"(?i)(this summary|the author|in conclusion)", generated_text):
+            return SummaryEval(1.0, True, "Meta-commentary detected")
 
-class FactEvaluator(BaseEvaluator):
-    """Component A: Bidirectional Atomic Fact Recall (w=0.40)"""
+        if not re.search(r"[.!?]$", generated_text.strip()):
+            return SummaryEval(1.0, True, "Truncated output (no terminal punctuation)")
 
-    def __init__(self, model: CrossEncoder):
-        self.model = model
-
-    async def compute(self, gold: BaseModel, gen_text: str) -> ComponentScore:
-        gen_sents = [
-            s.strip() for s in re.split(r"(?<=[.!?]) +", gen_text) if s.strip()
+        # Phase 2-4: Concurrent Evaluation
+        tasks = [
+            self._calc_semantic(generated_text, gold_datum.summary.summary_embedding),
+            self._calc_entities(generated_text, gold_datum.summary),
+            self._calc_facts(generated_text, gold_datum.summary.key_facts),
+            self._calc_structure(generated_text, gold_datum.summary.logical_outline),
+            self._calc_length(generated_text, gold_datum.entry.token_count),
         ]
-        gold_facts = gold.key_facts
 
-        # We run inference in threads to avoid blocking the event loop
-        # Recall (Gold -> Gen)
-        recall_hits = 0
-        for fact in gold_facts:
-            pairs = [[fact, s] for s in gen_sents]
-            if not pairs:
-                break
-            logits = await asyncio.to_thread(self.model.predict, pairs)
-            if any(l.argmax() == 1 for l in logits):
-                recall_hits += 1
+        results = await asyncio.gather(*tasks)
 
-        # Precision (Gen -> Gold)
-        precision_hits = 0
-        for s in gen_sents:
-            pairs = [[s, fact] for fact in gold_facts]
-            logits = await asyncio.to_thread(self.model.predict, pairs)
-            if any(l.argmax() == 1 for l in logits):
-                precision_hits += 1
-
-        r = recall_hits / len(gold_facts) if gold_facts else 1.0
-        p = precision_hits / len(gen_sents) if gen_sents else 1.0
-        f_score = 2 * (p * r) / (p + r) if (p + r) > 0 else 0.0
-
-        return ComponentScore(
-            score=f_score, raw_value=f_score, metadata={"p": p, "r": r}
-        )
-
-
-class EntityEvaluator(BaseEvaluator):
-    """Component B: Entity Preservation (w=0.20)"""
-
-    async def compute(self, gold: BaseModel, gen_text: str) -> ComponentScore:
-        hits = 0
-        gen_words = gen_text.split()
-
-        # Fuzzy matching is fast but technically CPU-bound; running in thread for purity
-        def sync_match():
-            m = 0
-            for ent in gold.entity_list:
-                if difflib.get_close_matches(ent, gen_words, n=1, cutoff=0.9):
-                    m += 1
-            return m
-
-        hits = await asyncio.to_thread(sync_match)
-        score = hits / len(gold.entity_list) if gold.entity_list else 1.0
-        return ComponentScore(score=score, raw_value=float(hits))
-
-
-class FlowEvaluator(BaseEvaluator):
-    """Component C: Structural Monotonicity (w=0.20)"""
-
-    def __init__(self, model: CrossEncoder):
-        self.model = model
-
-    async def compute(self, gold: BaseModel, gen_text: str) -> ComponentScore:
-        gen_sents = [
-            s.strip() for s in re.split(r"(?<=[.!?]) +", gen_text) if s.strip()
-        ]
-        indices = []
-        for point in gold.logical_outline:
-            pairs = [[point, s] for s in gen_sents]
-            if not pairs:
-                continue
-            logits = await asyncio.to_thread(self.model.predict, pairs)
-            scores = logits[:, 1]
-            if scores.max() > 0.5:
-                indices.append(scores.argmax())
-
-        coverage = (
-            len(indices) / len(gold.logical_outline) if gold.logical_outline else 1.0
-        )
-        inversions = sum(
-            1 for i in range(len(indices) - 1) if indices[i] > indices[i + 1]
-        )
-        order_score = (
-            1.0 - (inversions / (len(indices) - 1)) if len(indices) > 1 else 1.0
-        )
-
-        final = (coverage * 0.7) + (order_score * 0.3)
-        return ComponentScore(score=final, raw_value=coverage)
-
-
-class SemanticEvaluator(BaseEvaluator):
-    """Component D: Semantic Similarity (w=0.15)"""
-
-    async def compute(self, gold: BaseModel, gen_text: str) -> ComponentScore:
-        # Use your async helper library here
-        from headwater_client.client.headwater_client_async import HeadwaterAsyncClient
-        from headwater_api.classes import QuickEmbeddingRequest
-
-        client = HeadwaterAsyncClient().embeddings
-
-        # v_gold = await your_lib.embed(gold.summary)
-        # v_gen = await your_lib.embed(gen_text)
-        return ComponentScore(score=1.0, raw_value=1.0)
-
-
-class LengthEvaluator:
-    """Component E: Sublinear Length Penalty (w=0.05)"""
-
-    async def compute(self, actual: int, target: int) -> ComponentScore:
-        ratio = actual / target
-        score = max(0.0, 1.0 - abs(1.0 - ratio))
-        return ComponentScore(score=score, raw_value=float(actual))
-
-
-# --- 4. Main Engine ---
-
-
-class SummarizationLossEngine:
-    def __init__(self, nli_model_name: str = "cross-encoder/nli-deberta-v3-small"):
-        # Load model once on init
-        model = CrossEncoder(nli_model_name)
-        self.f_eval = FactEvaluator(model)
-        self.e_eval = EntityEvaluator()
-        self.o_eval = FlowEvaluator(model)
-        self.s_eval = SemanticEvaluator()
-        self.l_eval = LengthEvaluator()
-
-        self.weights = {
-            "facts": 0.40,
-            "entities": 0.20,
-            "flow": 0.20,
-            "semantic": 0.15,
-            "length": 0.05,
-        }
-
-    def _check_hard_fails(self, gen_text: str) -> tuple[bool, str | None]:
-        if re.search(
-            r"(This summary covers|The document states|In conclusion)", gen_text, re.I
-        ):
-            return True, "Meta-commentary detected"
-        if not re.search(r"[.!?]$", gen_text.strip()):
-            return True, "Truncated output"
-        return False, None
-
-    async def evaluate(self, datum: BaseModel, gen_text: str) -> SummarizationEval:
-        is_fail, reason = self._check_hard_fails(gen_text)
-        actual_len = len(gen_text.split())
-        target_len = get_target_summary_length(datum.entry.token_count)
-
-        if is_fail:
-            return SummarizationEval(
-                total_loss=1.0,
-                is_hard_fail=True,
-                fail_reason=reason,
-                metrics={},
-                tokens_actual=actual_len,
-                tokens_target=target_len,
-            )
-
-        # Execute all metrics in parallel
-        results = await asyncio.gather(
-            self.f_eval.compute(datum.summary, gen_text),
-            self.e_eval.compute(datum.summary, gen_text),
-            self.o_eval.compute(datum.summary, gen_text),
-            self.s_eval.compute(datum.summary, gen_text),
-            self.l_eval.compute(actual_len, target_len),
-        )
-
-        scores = {
-            "facts": results[0],
-            "entities": results[1],
-            "flow": results[2],
-            "semantic": results[3],
+        components = {
+            "semantic": results[0],
+            "entity": results[1],
+            "fact": results[2],
+            "structure": results[3],
             "length": results[4],
         }
 
-        weighted_score = sum(self.weights[k] * scores[k].score for k in self.weights)
-
-        return SummarizationEval(
-            total_loss=round(1.0 - weighted_score, 4),
-            is_hard_fail=False,
-            metrics=scores,
-            tokens_actual=actual_len,
-            tokens_target=target_len,
+        total_loss = sum(c.score * c.weight for c in components.values())
+        return SummaryEval(
+            total_loss=total_loss, is_hard_fail=False, components=components
         )
+
+    async def _calc_semantic(self, text: str, gold_vec: list[float]) -> EvalComponent:
+        gen_vec = await self._get_embedding(text)
+        dot = numpy.dot(gen_vec, gold_vec)
+        norm_gen = numpy.linalg.norm(gen_vec)
+        norm_gold = numpy.linalg.norm(gold_vec)
+        score = 1.0 - (dot / (norm_gen * norm_gold))
+        return EvalComponent(
+            score=float(score), weight=0.15, raw_metrics={"cos_dist": score}
+        )
+
+    async def _calc_entities(self, text: str, gold) -> EvalComponent:
+        entities = await asyncio.to_thread(
+            self.gliner.predict_entities, text, gold.entity_list
+        )
+        if not entities:
+            return EvalComponent(1.0, 0.20, {"found": 0})
+
+        tasks = [self._get_embedding(e["text"]) for e in entities]
+        gen_vecs = await asyncio.gather(*tasks)
+
+        gold_matrix = numpy.array(gold.entity_list_embeddings)
+        gen_matrix = numpy.array(gen_vecs)
+
+        sim_matrix = numpy.dot(gold_matrix, gen_matrix.T) / (
+            numpy.linalg.norm(gold_matrix, axis=1)[:, None]
+            * numpy.linalg.norm(gen_matrix, axis=1)
+        )
+
+        matches = numpy.max(sim_matrix, axis=1) >= self.entity_threshold
+        recall = numpy.sum(matches) / len(gold.entity_list)
+        return EvalComponent(
+            score=float(1.0 - recall), weight=0.20, raw_metrics={"recall": recall}
+        )
+
+    async def _calc_facts(self, text: str, gold_facts: list[str]) -> EvalComponent:
+        pairs = [[text, fact] for fact in gold_facts]
+        results = await asyncio.to_thread(self.nli.predict, pairs)
+        entailment_scores = results[:, 2]
+        recall = numpy.mean(entailment_scores >= 0.5)
+        return EvalComponent(
+            score=float(1.0 - recall), weight=0.40, raw_metrics={"fact_recall": recall}
+        )
+
+    async def _calc_structure(self, text: str, outline: list[str]) -> EvalComponent:
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
+        if len(sentences) < 2 or len(outline) < 2:
+            return EvalComponent(0.0, 0.20, {"inversions": 0})
+
+        pairs = [[sent, point] for point in outline for sent in sentences]
+        results = await asyncio.to_thread(self.nli.predict, pairs)
+        scores = results[:, 2].reshape(len(outline), len(sentences))
+        mapped_indices = numpy.argmax(scores, axis=1)
+
+        inversions = 0
+        total_pairs = 0
+        for i in range(len(mapped_indices)):
+            for j in range(i + 1, len(mapped_indices)):
+                total_pairs += 1
+                if mapped_indices[i] > mapped_indices[j]:
+                    inversions += 1
+
+        norm_inversion_loss = inversions / total_pairs if total_pairs > 0 else 0.0
+        return EvalComponent(
+            score=float(norm_inversion_loss),
+            weight=0.20,
+            raw_metrics={"inversions": inversions},
+        )
+
+    async def _calc_length(self, text: str, input_tokens: int) -> EvalComponent:
+        target = self._get_target_length(input_tokens)
+        actual = len(text.split())
+        delta = abs(actual - target) / target
+        loss = min(1.0, delta**0.5)
+        return EvalComponent(
+            score=float(loss),
+            weight=0.05,
+            raw_metrics={"target": target, "actual": actual},
+        )
+
+
+# --- Execution Block ---
+
+
+async def main():
+    from headwater_client.client.headwater_client_async import HeadwaterAsyncClient
+    from gliner import GLiNER
+    from sentence_transformers import CrossEncoder
+
+    # Initialize dependencies
+    hw_client = HeadwaterAsyncClient().embeddings
+    gliner_model = GLiNER.from_pretrained("numind/GLiNER_L_v2")
+    nli_model = CrossEncoder("cross-encoder/nli-deberta-v3-small")
+
+    schedule = [
+        CompressionTier(max_input=2000, ratio=0.15, min_tokens=300, max_tokens=400),
+        CompressionTier(max_input=10000, ratio=0.10, min_tokens=400, max_tokens=1000),
+        CompressionTier(max_input=40000, ratio=0.05, min_tokens=1000, max_tokens=2000),
+    ]
+
+    evaluator = MultiFactorLoss(hw_client, gliner_model, nli_model, schedule)
+
+    # Placeholder: Import your GoldStandardDatum here
+    from conduit.strategies.summarize.datasets.load_datasets import load_golden_dataset
+
+    golden_data = load_golden_dataset()
+    gold_datum = golden_data[0]
+
+    # gold_datum = ...
+
+    generated_text = "The strategic plan for 2026 focuses on global tech adoption. This initiative is led by the WTO."
+
+    result = await evaluator.evaluate(gold_datum, generated_text)
+
+    if result.is_hard_fail:
+        print(f"Hard Fail: {result.fail_reason}")
+    else:
+        print(f"Total Loss: {result.total_loss}")
+        for k, v in result.components.items():
+            print(f"{k}: {v.score}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
