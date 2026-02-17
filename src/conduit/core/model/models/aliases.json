@@ -18,6 +18,7 @@
   "ollama": "mistral:latest",
   "opus": "claude-opus-4-6",
   "qwen": "qwen3:14b",
+  "sonnet": "claude-sonnet-4-6",
   "tts": "gemini-2.5-flash-preview-tts",
   "quant": "hf.co/unsloth/gpt-oss-20b-GGUF:Q8_0"
 }
