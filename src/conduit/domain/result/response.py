@@ -15,6 +15,7 @@ import logging
 
 if TYPE_CHECKING:
     from conduit.domain.conversation.conversation import Conversation
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -132,3 +133,21 @@ class GenerationResponse(BaseModel):
         image = Image.open(io.BytesIO(image_data))
         image.save("/tmp/temp_image.png")
         subprocess.run(["viu", "/tmp/temp_image.png"])
+
+    def save_image(self, path: Path):
+        """
+        Save the first generated image to a file.
+        """
+        if self.request.params.output_type != "image":
+            raise ValueError("Response is not image type.")
+        if self.message.images is None or len(self.message.images) == 0:
+            raise ValueError("No images in the response to save.")
+        import base64
+        from PIL import Image
+
+        image_data_b64 = self.message.images[0].b64_json
+        image_data = base64.b64decode(image_data_b64)
+        image = Image.open(io.BytesIO(image_data))
+        image.save(path)
+
+        print(f"Image saved to {path}")
