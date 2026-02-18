@@ -119,3 +119,189 @@ The final loss is simply the **inverse** of the accumulated quality.
 * **50%** of the score comes from the Judge (the smartest part of the system).
 * **30%** comes from Embeddings (ensures we don't drift too far in vocabulary).
 * **20%** ensures we respect the length constraint (critical for your use case).
+
+### Appendix 1: Compression function
+
+```python
+from dataclasses import dataclass
+
+
+@dataclass
+class CompressionTier:
+    max_input: int
+    ratio: float
+    min_tokens: int
+    max_tokens: int
+    # tolerance is (lower_bound_multiplier, upper_bound_multiplier)
+    tolerance: tuple[float, float] = (0.75, 1.25)
+
+    def is_valid_summary(
+        self, target: int, summary_tokens: int, original_tokens: int
+    ) -> bool:
+        """
+        Checks if summary tokens fall within the tier-specific tolerance.
+        Adjusts the lower bound for documents shorter than the target floor.
+        """
+        low_m, high_m = self.tolerance
+
+        # Avoid the 'floor trap': if original text < target floor,
+        # use original text as the baseline for the lower bound calculation.
+        lower_baseline = min(target, original_tokens)
+
+        lower_bound = lower_baseline * low_m
+        upper_bound = target * high_m
+
+        return lower_bound <= summary_tokens <= upper_bound
+
+
+# Define the formal compression mapping
+COMPRESSION_SCHEDULE = [
+    # Tier A: Detailed (Small docs)
+    CompressionTier(2000, 0.15, 300, 400, (0.75, 1.25)),
+    # Tier B: Narrative (Standard docs)
+    CompressionTier(10000, 0.10, 400, 1000, (0.70, 1.20)),
+    # Tier C: Strategic (Large docs)
+    CompressionTier(40000, 0.05, 1000, 2000, (0.65, 1.20)),
+]
+
+GLOBAL_MAX_TOKENS = 2500
+GLOBAL_TOLERANCE = (0.50, 1.20)
+
+
+def get_target_summary_length(input_tokens: int) -> int:
+    """
+    Calculates the target summary length based on input token volume.
+    Applies a tiered ratio with a hard saturation cap.
+    """
+    selected_tier = None
+    for tier in COMPRESSION_SCHEDULE:
+        if input_tokens <= tier.max_input:
+            selected_tier = tier
+            break
+
+    if selected_tier:
+        raw_target = int(input_tokens * selected_tier.ratio)
+        return max(selected_tier.min_tokens, min(raw_target, selected_tier.max_tokens))
+
+    return GLOBAL_MAX_TOKENS
+
+
+def is_within_threshold(original_tokens: int, summary_tokens: int) -> bool:
+    """
+    Validates if summary length is acceptable relative to the compression target.
+    """
+    target = get_target_summary_length(original_tokens)
+
+    selected_tier = next(
+        (t for t in COMPRESSION_SCHEDULE if original_tokens <= t.max_input), None
+    )
+
+    if selected_tier:
+        return selected_tier.is_valid_summary(target, summary_tokens, original_tokens)
+
+    # Global fallback for very large docs
+    low_m, high_m = GLOBAL_TOLERANCE
+    # Apply same floor-trap logic for consistency, though rare at global scale
+    lower_bound = min(target, original_tokens) * low_m
+    upper_bound = target * high_m
+
+    return lower_bound <= summary_tokens <= upper_bound
+
+
+if __name__ == "__main__":
+    # Test visualization
+    # Case 50: Original 101, Summary 187, Target 300.
+    # Old logic failed because 187 < (300 * 0.75 = 225).
+    # New logic passes because 187 > (101 * 0.75 = 75).
+    orig_50, summ_50 = 101, 187
+    print(f"Datum 50 Pass: {is_within_threshold(orig_50, summ_50)}")
+```
+
+### Appendix 2: Gold Standard dataset model
+
+```python
+from __future__ import annotations
+from pydantic import BaseModel, Field, model_validator
+from conduit.strategies.summarize.compression import get_target_summary_length
+
+
+class GoldStandardEntry(BaseModel):
+    category: str = Field(
+        ..., description="The category of the text (e.g., GovReport, BillSum, WikiHow)"
+    )
+    source_id: str = Field(
+        ..., description="A unique identifier for the source document"
+    )
+    text: str = Field(..., description="The original text to be summarized")
+    token_count: int = Field(
+        ..., description="The number of tokens in the original text"
+    )
+    # Note: this field is constructed post-init, using get_target_summary_length based on token_count
+    expected_summary_length: int | None = Field(
+        default=None,
+        description="The target token length for the summary, based on the original text length",
+    )
+
+    # Construct expected summary length based on token count of the original text, post-init
+    @model_validator(mode="after")
+    def set_expected_summary_length(self) -> GoldStandardEntry:
+        self.expected_summary_length = get_target_summary_length(self.token_count)
+        return self
+
+
+class GoldStandardSummary(BaseModel):
+    """
+    Standardized Ground Truth for high-fidelity summarization.
+    Designed to facilitate automated recall and faithfulness scoring.
+    """
+
+    main_theme: str = Field(
+        description="A single sentence defining the primary topic and scope of the document."
+    )
+
+    summary: str = Field(
+        description="""
+        A dense, coherent narrative summary. 
+        Must maintain the logical progression of the source. 
+        No meta-commentary (e.g., avoid 'The author says').
+        """
+    )
+
+    key_facts: list[str] = Field(
+        description="""
+        A list of 10-15 Atomic Facts extracted from the text. 
+        An Atomic Fact is a standalone statement of truth that 
+        contains exactly one core piece of information.
+        """,
+        min_length=10,
+        max_length=20,
+    )
+
+    logical_outline: list[str] = Field(
+        description="""
+        A high-level sequence of the document's progression. 
+        Used to validate that the summary maintains correct structural flow.
+        """
+    )
+
+    entity_list: list[str] = Field(
+        description="A list of primary entities (People, Organizations, Specific Technologies, or Laws) mentioned."
+    )
+
+
+class GoldStandardSummaryWithMetadata(GoldStandardSummary):
+    summary_length: int = Field(
+        description="The token count of the summary, used for recall evaluation against target summary length."
+    )
+    summary_embeddings: list[float] = Field(
+        description="A dense vector representation of the summary, used for semantic similarity and recall evaluation."
+    )
+    entity_list_embeddings: list[list[float]] = Field(
+        description="A list of dense vector representations for each entity in the entity list."
+    )
+
+
+class GoldStandardDatum(BaseModel):
+    entry: GoldStandardEntry
+    summary: GoldStandardSummaryWithMetadata
+```

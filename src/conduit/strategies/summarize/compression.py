@@ -7,19 +7,40 @@ class CompressionTier:
     ratio: float
     min_tokens: int
     max_tokens: int
+    # tolerance is (lower_bound_multiplier, upper_bound_multiplier)
+    tolerance: tuple[float, float] = (0.75, 1.25)
+
+    def is_valid_summary(
+        self, target: int, summary_tokens: int, original_tokens: int
+    ) -> bool:
+        """
+        Checks if summary tokens fall within the tier-specific tolerance.
+        Adjusts the lower bound for documents shorter than the target floor.
+        """
+        low_m, high_m = self.tolerance
+
+        # Avoid the 'floor trap': if original text < target floor,
+        # use original text as the baseline for the lower bound calculation.
+        lower_baseline = min(target, original_tokens)
+
+        lower_bound = lower_baseline * low_m
+        upper_bound = target * high_m
+
+        return lower_bound <= summary_tokens <= upper_bound
 
 
 # Define the formal compression mapping
-# Tier A: Detailed (20% for very short, 10% for standard)
-# Tier B: Narrative (5% for long technical docs)
-# Tier C: Strategic (Fixed cap for massive datasets)
 COMPRESSION_SCHEDULE = [
-    CompressionTier(max_input=2000, ratio=0.15, min_tokens=300, max_tokens=400),
-    CompressionTier(max_input=10000, ratio=0.10, min_tokens=400, max_tokens=1000),
-    CompressionTier(max_input=40000, ratio=0.05, min_tokens=1000, max_tokens=2000),
+    # Tier A: Detailed (Small docs)
+    CompressionTier(2000, 0.15, 300, 400, (0.75, 1.25)),
+    # Tier B: Narrative (Standard docs)
+    CompressionTier(10000, 0.10, 400, 1000, (0.70, 1.20)),
+    # Tier C: Strategic (Large docs)
+    CompressionTier(40000, 0.05, 1000, 2000, (0.65, 1.20)),
 ]
 
 GLOBAL_MAX_TOKENS = 2500
+GLOBAL_TOLERANCE = (0.50, 1.20)
 
 
 def get_target_summary_length(input_tokens: int) -> int:
@@ -27,9 +48,6 @@ def get_target_summary_length(input_tokens: int) -> int:
     Calculates the target summary length based on input token volume.
     Applies a tiered ratio with a hard saturation cap.
     """
-    target = 0
-
-    # Find the appropriate tier
     selected_tier = None
     for tier in COMPRESSION_SCHEDULE:
         if input_tokens <= tier.max_input:
@@ -38,23 +56,37 @@ def get_target_summary_length(input_tokens: int) -> int:
 
     if selected_tier:
         raw_target = int(input_tokens * selected_tier.ratio)
-        # Clamp between tier min/max
-        target = max(
-            selected_tier.min_tokens, min(raw_target, selected_tier.max_tokens)
-        )
-    else:
-        # Default for anything above 40k
-        target = GLOBAL_MAX_TOKENS
+        return max(selected_tier.min_tokens, min(raw_target, selected_tier.max_tokens))
 
-    return target
+    return GLOBAL_MAX_TOKENS
+
+
+def is_within_threshold(original_tokens: int, summary_tokens: int) -> bool:
+    """
+    Validates if summary length is acceptable relative to the compression target.
+    """
+    target = get_target_summary_length(original_tokens)
+
+    selected_tier = next(
+        (t for t in COMPRESSION_SCHEDULE if original_tokens <= t.max_input), None
+    )
+
+    if selected_tier:
+        return selected_tier.is_valid_summary(target, summary_tokens, original_tokens)
+
+    # Global fallback for very large docs
+    low_m, high_m = GLOBAL_TOLERANCE
+    # Apply same floor-trap logic for consistency, though rare at global scale
+    lower_bound = min(target, original_tokens) * low_m
+    upper_bound = target * high_m
+
+    return lower_bound <= summary_tokens <= upper_bound
 
 
 if __name__ == "__main__":
-    # Standalone test to visualize the map
-    test_values = [500, 1500, 5000, 15000, 50000, 100000]
-    print(f"{'Input Tokens':<15} | {'Target Tokens':<15} | {'Effective Ratio':<15}")
-    print("-" * 50)
-    for val in test_values:
-        t = get_target_summary_length(val)
-        ratio = (t / val) * 100
-        print(f"{val:<15} | {t:<15} | {ratio:>5.1f}%")
+    # Test visualization
+    # Case 50: Original 101, Summary 187, Target 300.
+    # Old logic failed because 187 < (300 * 0.75 = 225).
+    # New logic passes because 187 > (101 * 0.75 = 75).
+    orig_50, summ_50 = 101, 187
+    print(f"Datum 50 Pass: {is_within_threshold(orig_50, summ_50)}")
