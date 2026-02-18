@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field
+from __future__ import annotations
+from pydantic import BaseModel, Field, model_validator
+from conduit.strategies.summarize.compression import get_target_summary_length
 
 
 class GoldStandardEntry(BaseModel):
@@ -12,6 +14,17 @@ class GoldStandardEntry(BaseModel):
     token_count: int = Field(
         ..., description="The number of tokens in the original text"
     )
+    # Note: this field is constructed post-init, using get_target_summary_length based on token_count
+    expected_summary_length: int | None = Field(
+        default=None,
+        description="The target token length for the summary, based on the original text length",
+    )
+
+    # Construct expected summary length based on token count of the original text, post-init
+    @model_validator(mode="after")
+    def set_expected_summary_length(self) -> GoldStandardEntry:
+        self.expected_summary_length = get_target_summary_length(self.token_count)
+        return self
 
 
 class GoldStandardSummary(BaseModel):
@@ -53,17 +66,19 @@ class GoldStandardSummary(BaseModel):
         description="A list of primary entities (People, Organizations, Specific Technologies, or Laws) mentioned."
     )
 
-    # Embeddings
-    summary_embedding: list[float] | None = Field(
-        default=None,
-        description="A dense vector representation of the summary, used for semantic similarity and recall evaluation.",
+
+class GoldStandardSummaryWithMetadata(GoldStandardSummary):
+    summary_length: int = Field(
+        description="The token count of the summary, used for recall evaluation against target summary length."
     )
-    entity_list_embeddings: list[list[float]] | None = Field(
-        default=None,
-        description="A list of dense vector representations for each entity in the entity list.",
+    summary_embeddings: list[float] = Field(
+        description="A dense vector representation of the summary, used for semantic similarity and recall evaluation."
+    )
+    entity_list_embeddings: list[list[float]] = Field(
+        description="A list of dense vector representations for each entity in the entity list."
     )
 
 
 class GoldStandardDatum(BaseModel):
     entry: GoldStandardEntry
-    summary: GoldStandardSummary
+    summary: GoldStandardSummaryWithMetadata
