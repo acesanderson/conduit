@@ -15,6 +15,8 @@ CONFIG_DICT["OneShotSummarizer.prompt"] = ONE_SHOT_PROMPT
 
 # Grab our dataset
 DATASET = load_golden_dataset()
+EXAMPLE = DATASET[0]
+EXAMPLE_TEXT = EXAMPLE["entry"]["text"]
 
 
 async def run_config(config: dict[str, str | float], text: str) -> None:
@@ -36,6 +38,4 @@ async def run_config(config: dict[str, str | float], text: str) -> None:
 
 
 if __name__ == "__main__":
-    EXAMPLE = DATASET[0]
-    EXAMPLE_TEXT = EXAMPLE["entry"]["text"]
     asyncio.run(run_config(CONFIG_DICT, text=EXAMPLE_TEXT))

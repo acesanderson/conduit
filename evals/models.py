@@ -5,20 +5,6 @@ from conduit.strategies.summarize.datasets.gold_standard import (
 )
 
 
-class DomainScore(BaseModel):
-    score: float = Field(..., ge=0.0, le=1.0)
-    reasoning: str | None = None
-    metadata: dict | None = None
-
-
-class SummaryEvaluation(BaseModel):
-    source_id: str
-    semantic_recall: DomainScore  # Accuracy/Embeddings
-    faithfulness: DomainScore  # Hallucination check
-    constraint_alignment: DomainScore  # Length/Format
-    total_score: float = Field(..., ge=0.0, le=1.0)
-
-
 class EvalPoint(BaseModel):
     """
     The atomic unit of an evaluation run.
