@@ -1,6 +1,7 @@
 from conduit.core.workflow.harness import ConduitHarness
 from conduit.strategies.summarize.summarizers.recursive import RecursiveSummarizer
 from conduit.strategies.summarize.datasets.load_datasets import load_golden_dataset
+from conduit.strategies.summarize.datasets.gold_standard import GeneratedSummary
 import json
 from pathlib import Path
 import asyncio
@@ -19,7 +20,7 @@ EXAMPLE = DATASET[0]
 EXAMPLE_TEXT = EXAMPLE["entry"]["text"]
 
 
-async def run_config(config: dict[str, str | float], text: str) -> None:
+async def run_config(config: dict[str, str | float], text: str) -> GeneratedSummary:
     # Instantiate the strategy
     summarizer = RecursiveSummarizer()
 
@@ -27,15 +28,18 @@ async def run_config(config: dict[str, str | float], text: str) -> None:
     harness = ConduitHarness(config=config)
 
     # Test with a simple text input
-    test_text = "This is a test document. " * 100
     result = await harness.run(summarizer, text=text)
 
-    print(f"Summary: {result}")
-
     trace = harness.trace
-    trace_str = json.dumps(trace, indent=2)
-    print(f"Trace:\n{trace_str}")
+    generated_summary = GeneratedSummary(
+        summary=result,
+        token_count=len(result.split()),
+        config_dict=config,
+        trace=trace,
+    )
+    return generated_summary
 
 
 if __name__ == "__main__":
-    asyncio.run(run_config(CONFIG_DICT, text=EXAMPLE_TEXT))
+    summary = asyncio.run(run_config(CONFIG_DICT, text=EXAMPLE_TEXT))
+    print(summary.model_dump_json(indent=4))

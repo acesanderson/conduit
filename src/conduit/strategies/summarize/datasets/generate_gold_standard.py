@@ -221,8 +221,6 @@ if __name__ == "__main__":
         entries = [GoldStandardEntry(**d) for d in CORPUS_DATASET]
         gold_standard_data = await generate_gold_standards(entries, dry_run=DRY_RUN)
 
-        breakpoint()
-
         for datum in gold_standard_data:
             is_valid = await validate_datum(datum)
             print(f"Datum valid: {is_valid}")
