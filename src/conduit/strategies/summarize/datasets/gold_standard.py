@@ -95,14 +95,12 @@ class GeneratedSummary(BaseModel):
     # Required fields
     summary: str
     token_count: int
-
-    # Model/Engine Metadata
     config_dict: dict = Field(
-        default_factory=dict,
+        ...,
         description="The run params, may include: model, temperature, chunksize, etc. This is the config dict you passed to your harness.",
     )
-    trace: dict = Field(
-        default_factory=dict,
+    trace: list[dict] = Field(
+        ...,
         description="The full dictionary from your harness for deep debugging, may include: token usage, latency, etc.",
     )
 

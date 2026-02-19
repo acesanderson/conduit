@@ -2,6 +2,12 @@ from __future__ import annotations
 from conduit.config import settings
 from datasets import Dataset
 from typing import TYPE_CHECKING
+from conduit.strategies.summarize.datasets.gold_standard import (
+    GoldStandardDatum,
+    GoldStandardSummaryWithMetadata,
+    GoldStandardEntry,
+)
+
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -31,8 +37,28 @@ def load_golden_dataset(
     return dataset
 
 
+def load_datums() -> list[GoldStandardDatum]:
+    """
+    Loads the golden dataset and converts it to a list of GoldStandardDatum objects.
+    """
+    ds = load_golden_dataset()
+
+    datums = []
+
+    # Iterate through the columns using zip to reconstruct the objects
+    for entry_data, summary_data in zip(ds["entry"], ds["summary"]):
+        # entry_data is a dict: {'category', 'source_id', 'text', 'token_count'}
+        # summary_data is a dict: {'entity_list', 'entity_list_embeddings', ...}
+
+        datum = GoldStandardDatum(
+            entry=GoldStandardEntry(**entry_data),
+            summary=GoldStandardSummaryWithMetadata(**summary_data),
+        )
+        datums.append(datum)
+
+    return datums
+
+
 if __name__ == "__main__":
-    ds = load_corpus()
-    print(f"Loaded dataset with {len(ds)} records.")
-    ds_gold = load_golden_dataset()
-    print(f"Loaded gold standard dataset with {len(ds_gold)} records.")
+    datums = load_datums()
+    # ds = load_golden_dataset()

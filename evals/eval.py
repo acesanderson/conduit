@@ -94,14 +94,14 @@ class SemanticRecallModule:
     async def compute(
         self, generated: GeneratedSummary, datum: GoldStandardDatum
     ) -> DomainScore:
-        from headwater_client.client.headwater_client_async import HeadwaterClientAsync
+        from headwater_client.client.headwater_client_async import HeadwaterAsyncClient
         from headwater_api.classes import EmbeddingsRequest, ChromaBatch
 
-        client = HeadwaterClientAsync().embeddings
+        client = HeadwaterAsyncClient().embeddings
         batch = ChromaBatch(ids=[generated.trace_id], documents=[generated.summary])
         request = EmbeddingsRequest(model="google/embeddinggemma-300m", batch=batch)
 
-        response = await client.create_embeddings(request)
+        response = await client.generate_embeddings(request)
         if not response.embeddings:
             return DomainScore(score=0.0, reasoning="Embedding generation failed.")
 
@@ -125,9 +125,25 @@ class CognitionModule:
     async def compute(
         self, generated: GeneratedSummary, datum: GoldStandardDatum
     ) -> DomainScore:
-        from headwater_client.client.headwater_client_async import HeadwaterClientAsync
+        from conduit.async_ import (
+            ConduitAsync,
+            Prompt,
+            GenerationParams,
+            ConduitOptions,
+            Verbosity,
+        )
+        from conduit.config import settings
 
-        client = HeadwaterClientAsync().llm
+        params = GenerationParams(
+            model="gemini3",
+            response_model=JudgeRubric,
+            output_type="structured_response",
+        )
+        options = ConduitOptions(
+            project_name="SummarizationEvaluation",
+            cache=settings.default_cache("SummarizationEvaluation"),
+            verbosity=Verbosity.PROGRESS,
+        )
 
         prompt = """
         Analyze the facts in the <candidate> against the <gold_standard>.
@@ -144,19 +160,18 @@ class CognitionModule:
         Identify any hallucinations.
         """
 
-        context = {
+        conduit = ConduitAsync(prompt=Prompt(prompt))
+
+        input_variables = {
             "gold_summary": datum.summary.summary,
             "candidate_summary": generated.summary,
         }
 
-        response = await client.generate_structured_output(
-            model="gemini-1.5-pro",
-            prompt=prompt,
-            template_vars=context,
-            response_schema=JudgeRubric,
+        response = await conduit.run(
+            input_variables=input_variables, params=params, options=options
         )
 
-        rubric: JudgeRubric = response.parsed_output
+        rubric: JudgeRubric = response.last.parsed
         total = max(rubric.total_atomic_facts, 1)
         recall = rubric.supported_facts / total
 
@@ -234,8 +249,26 @@ class SummarizationEvaluator:
         )
 
 
-if __name__ == "__main__":
-    from conduit.strategies.summarize.datasets.load_datasets import load_golden_dataset
+async def eval_run(
+    config: dict, datums: list[GoldStandardDatum]
+) -> list[SummaryEvaluation]:
+    evaluator = SummarizationEvaluator(
+        constraint_engine=ConstraintModule(),
+        semantic_engine=SemanticRecallModule(),
+        judge_engine=CognitionModule(),
+    )
 
-    dataset = load_golden_dataset()
-    asyncio.run(run_config(CONFIG_DICT, text=EXAMPLE_TEXT))
+    coroutines = []
+
+    for datum in datums:
+        generated_summary = await run_config(config, text=datum.entry.text)
+        coroutines.append(evaluator.evaluate(generated_summary, datum))
+    evaluations = await asyncio.gather(*coroutines)
+    return evaluations
+
+
+if __name__ == "__main__":
+    from conduit.strategies.summarize.datasets.load_datasets import load_datums
+
+    dataset = load_datums()
+    evals = asyncio.run(eval_run(CONFIG_DICT, dataset[:5]))
