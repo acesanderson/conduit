@@ -5,7 +5,7 @@
   "deepseek": "deepseek-chat",
   "flash": "gemini-3-flash-preview",
   "gemini": "gemini-2.5-flash",
-  "gemini3": "gemini-3-pro-preview",
+  "gemini3": "gemini-3.1-pro-preview",
   "gpt": "gpt-5-mini",
   "gpt-mini": "gpt-5-mini",
   "gpt-oss": "gpt-oss:latest",
