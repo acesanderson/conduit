@@ -271,4 +271,4 @@ if __name__ == "__main__":
     from conduit.strategies.summarize.datasets.load_datasets import load_datums
 
     dataset = load_datums()
-    evals = asyncio.run(eval_run(CONFIG_DICT, dataset[:5]))
+    evals = asyncio.run(eval_run(CONFIG_DICT, dataset))
