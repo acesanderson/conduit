@@ -46,7 +46,7 @@ class RecursiveSummarizer(SummarizationStrategy):
         # --- 1. RESOLVE EXPERIMENT PARAMS FROM HARNESS ---
         # If these keys exist in the Harness config, they will override the defaults here.
         cw_ratio = get_param("effective_context_window_ratio", default=0.5)
-        model = get_param("OneShotSummarizer.model", default="gpt3")
+        model = get_param("model", default="gpt3")
 
         # --- 2. EXECUTE DECISION LOGIC ---
         context_window = self.model_store.get_context_window(model)

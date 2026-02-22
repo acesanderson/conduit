@@ -119,47 +119,44 @@ class GoogleClient(Client):
     async def tokenize(self, model: str, payload: str | Sequence[Message]) -> int:
         """
         Get the token count per official tokenizer (through Google Native API).
-        We use the google.generativeai SDK for this because Gemini tokens != tiktoken.
+        We use the google.genai SDK for this because Gemini tokens != tiktoken.
         """
-        import google.generativeai as genai
+        from google import genai
+        from google.genai import types
 
-        genai.configure(api_key=self._get_api_key())
-        model_client = genai.GenerativeModel(model_name=model)
+        client = genai.Client(api_key=self._get_api_key())
 
         # CASE 1: Raw String
         if isinstance(payload, str):
-            response = model_client.count_tokens(payload)
+            response = await client.aio.models.count_tokens(
+                model=model, contents=payload
+            )
             return response.total_tokens
 
         # CASE 2: Message History
         if isinstance(payload, list):
-            # We must convert conduit Messages (OpenAI-style) to Google Native format
-            # just for the token counter.
-            # Google Native Format: [{'role': 'user'|'model', 'parts': ['...']}]
             native_contents = []
 
             for msg in payload:
-                # Map roles: 'assistant' -> 'model', everything else -> 'user'
                 role = "model" if msg.role == "assistant" else "user"
 
-                parts = []
-                # Extract text content safely
+                text = None
                 if hasattr(msg, "text_content") and msg.text_content:
-                    parts.append(msg.text_content)
+                    text = msg.text_content
                 elif isinstance(msg.content, str):
-                    parts.append(msg.content)
+                    text = msg.content
 
-                # Note: If you want to count image tokens accurately, you would need to
-                # convert the base64 to a PIL image or Blob and append it to parts here.
-                # For now, we are counting the text weight of the conversation.
-
-                if parts:
-                    native_contents.append({"role": role, "parts": parts})
+                if text:
+                    native_contents.append(
+                        types.Content(role=role, parts=[types.Part(text=text)])
+                    )
 
             if not native_contents:
                 return 0
 
-            response = model_client.count_tokens(native_contents)
+            response = await client.aio.models.count_tokens(
+                model=model, contents=native_contents
+            )
             return response.total_tokens
 
         raise ValueError("Payload must be string or Sequence[Message]")

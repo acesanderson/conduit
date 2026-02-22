@@ -26,28 +26,33 @@ class ConduitHarness:
         Validates config against the workflow schema.
         Exits process with a formatted diff if non-compliant.
         """
-        schema = getattr(workflow, "schema", {})
+        # Defensive check: ensure schema is at least an empty dict
+        schema = getattr(workflow, "schema", {}) or {}
         config_keys = set(self.config.keys())
         missing_hard = []
 
         for logical_name, details in schema.items():
+            # 'details["keys"]' contains [scoped_key, flat_key]
+            # e.g., ["OneShotSummarizer.model", "model"]
             is_provided = any(k in config_keys for k in details["keys"])
 
             if not is_provided:
                 if not self.use_defaults:
                     missing_hard.append(logical_name)
-                elif not details["has_code_default"]:
+                elif not details.get("has_code_default", False):
                     missing_hard.append(f"{logical_name} (No default in code)")
 
+        # Determine unexpected keys (keys in config that aren't in any step's schema)
         all_valid_keys = {k for d in schema.values() for k in d["keys"]}
         all_valid_keys.update({"workflow_target", "entry_point"})
+
         unexpected = [k for k in config_keys if k not in all_valid_keys]
 
         if missing_hard or unexpected:
             self._print_diff(missing_hard, unexpected)
 
         if missing_hard:
-            # Swallow the exception by exiting cleanly with the printed messaging
+            # Hard exit on missing required parameters
             sys.exit(1)
 
     def _print_diff(self, missing: list[str], unexpected: list[str]):
