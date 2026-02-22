@@ -23,6 +23,9 @@ def resolve_param(
     overrides: dict | None = None,
     scope: str | None = None,
 ) -> Any:
+    """
+    Resolves a parameter from overrides, scoped config, or global config.
+    """
     if scope is None:
         try:
             stack = inspect.stack()
@@ -31,23 +34,38 @@ def resolve_param(
                 if frame_info.function not in ("resolve_param", "get_param"):
                     caller_frame = frame_info.frame
                     break
-            if caller_frame and "self" in caller_frame.f_locals:
-                scope = caller_frame.f_locals["self"].__class__.__name__
-            elif caller_frame:
-                scope = caller_frame.f_code.co_name
+
+            if caller_frame:
+                if "self" in caller_frame.f_locals:
+                    scope = caller_frame.f_locals["self"].__class__.__name__
+                else:
+                    scope = caller_frame.f_code.co_name
         except Exception:
             scope = "unknown"
 
+    # Priority 1: Direct @step overrides
     runtime_args = overrides or context.args.get() or {}
     if key in runtime_args:
         return runtime_args[key]
 
+    # Priority 2: Configuration dictionary
     cfg = context.config.get()
-    if scope and f"{scope}.{key}" in cfg:
-        return cfg[f"{scope}.{key}"]
+    access_log = context.access.get()
+
+    # Check Scoped: e.g., 'OneShotSummarizer.model'
+    scoped_key = f"{scope}.{key}"
+    if scope and scoped_key in cfg:
+        if access_log is not None:
+            access_log.add(scoped_key)
+        return cfg[scoped_key]
+
+    # Check Global: e.g., 'model'
     if key in cfg:
+        if access_log is not None:
+            access_log.add(key)
         return cfg[key]
 
+    # Priority 3: Code-level fallback
     if context.use_defaults.get() is True:
         return default
 
@@ -69,27 +87,38 @@ def add_metadata(key: str, value: Any) -> None:
 def _static_scan_workflow(root_func) -> dict[str, dict]:
     param_requirements = {}
     visited = set()
+
     root = getattr(root_func, "__wrapped__", root_func)
+    if not root:
+        return {}
+
     queue = deque([root])
-    visited.add(root)
 
     while queue:
         current_func = queue.popleft()
+        if current_func in visited:
+            continue
+        visited.add(current_func)
+
         try:
             src = textwrap.dedent(inspect.getsource(current_func))
             tree = ast.parse(src)
-            scope = (
-                current_func.__qualname__.split(".")[0]
-                if "." in current_func.__qualname__
-                else current_func.__name__
-            )
 
+            # Normalize Scope
+            qualname = current_func.__qualname__
+            if "." in qualname:
+                parts = qualname.split(".")
+                scope = parts[-2] if parts[-1] == "__call__" else parts[-1]
+            else:
+                scope = current_func.__name__
+
+            # Build a robust lookup scope
             func_scope = getattr(current_func, "__globals__", {}).copy()
-            if "." in current_func.__qualname__:
-                module = inspect.getmodule(current_func)
-                cls = getattr(module, scope, None)
-                if cls:
-                    func_scope.update(cls.__dict__)
+            module = inspect.getmodule(current_func)
+            if module:
+                # Add everything in the module to the scope so we find sibling classes
+                func_scope.update(vars(module))
+
         except (OSError, TypeError):
             continue
 
@@ -100,7 +129,12 @@ def _static_scan_workflow(root_func) -> dict[str, dict]:
                     call_id = node.func.id
                 elif isinstance(node.func, ast.Attribute):
                     call_id = node.func.attr
+                elif isinstance(node.func, ast.Call) and isinstance(
+                    node.func.func, ast.Name
+                ):
+                    call_id = node.func.func.id
 
+                # 1. Capture Params
                 if call_id in ("resolve_param", "get_param"):
                     if node.args and isinstance(node.args[0], ast.Constant):
                         key = node.args[0].value
@@ -113,12 +147,238 @@ def _static_scan_workflow(root_func) -> dict[str, dict]:
                             "has_code_default": has_code_default,
                         }
 
+                # 2. Trace into sub-steps
+                # Check func_scope (globals + module vars)
                 target_obj = func_scope.get(call_id)
                 if target_obj:
                     underlying = getattr(target_obj, "__wrapped__", target_obj)
+
+                    # If it's a class, we want to scan its __call__ method
+                    if inspect.isclass(underlying) and hasattr(underlying, "__call__"):
+                        underlying = getattr(
+                            underlying.__call__, "__wrapped__", underlying.__call__
+                        )
+
+                    if callable(underlying) and underlying not in visited:
+                        queue.append(underlying)
+
+    return param_requirements
+
+
+def _static_scan_workflow(root_func) -> dict[str, dict]:
+    """
+    Statically analyzes the workflow call graph to discover required parameters.
+    """
+    param_requirements: dict[str, dict] = {}
+    visited = set()
+
+    # Unwrap @step to get to the raw function
+    root = getattr(root_func, "__wrapped__", root_func)
+    if not root:
+        return {}
+
+    queue = deque([root])
+    visited.add(root)
+
+    while queue:
+        current_func = queue.popleft()
+        try:
+            # Extract source and identify the logical scope
+            src = textwrap.dedent(inspect.getsource(current_func))
+            tree = ast.parse(src)
+
+            # Normalize scope: identify class name, ignoring parent nesting
+            qualname = current_func.__qualname__
+            if "." in qualname:
+                parts = qualname.split(".")
+                # If 'Class.SubClass.__call__', parts[-2] is 'SubClass'
+                scope = parts[-2] if parts[-1] == "__call__" else parts[-1]
+            else:
+                scope = current_func.__name__
+
+            func_scope = getattr(current_func, "__globals__", {}).copy()
+            module = inspect.getmodule(current_func)
+            if "." in qualname and module:
+                parent_name = qualname.split(".")[0]
+                cls = getattr(module, parent_name, None)
+                if cls:
+                    func_scope.update(cls.__dict__)
+        except (OSError, TypeError):
+            continue
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                call_id = ""
+                if isinstance(node.func, ast.Name):
+                    call_id = node.func.id
+                elif isinstance(node.func, ast.Attribute):
+                    call_id = node.func.attr
+                elif isinstance(node.func, ast.Call) and isinstance(
+                    node.func.func, ast.Name
+                ):
+                    call_id = node.func.func.id
+
+                # 1. Register parameters
+                if call_id in ("resolve_param", "get_param"):
+                    if node.args and isinstance(node.args[0], ast.Constant):
+                        key = node.args[0].value
+                        has_code_default = len(node.args) > 1 or any(
+                            kw.arg == "default" for kw in node.keywords
+                        )
+                        logical_name = f"{scope}.{key}"
+                        param_requirements[logical_name] = {
+                            "keys": [logical_name, key],
+                            "has_code_default": has_code_default,
+                        }
+
+                # 2. Recurse into sub-steps
+                target_obj = func_scope.get(call_id)
+                if target_obj:
+                    underlying = getattr(target_obj, "__wrapped__", target_obj)
+                    if inspect.isclass(underlying) and hasattr(underlying, "__call__"):
+                        underlying = getattr(
+                            underlying.__call__, "__wrapped__", underlying.__call__
+                        )
                     if callable(underlying) and underlying not in visited:
                         visited.add(underlying)
                         queue.append(underlying)
+
+    return param_requirements
+
+
+def _static_scan_workflow(root_func) -> dict[str, dict]:
+    """
+    Statically analyzes the workflow call graph to discover required parameters.
+    Normalizes scopes to ensure global fallbacks work in strict config mode.
+    """
+    param_requirements = {}
+    visited = set()
+
+    # Unwrap @step to get to the raw function
+    root = getattr(root_func, "__wrapped__", root_func)
+    queue = deque([root])
+    visited.add(root)
+
+    while queue:
+        current_func = queue.popleft()
+        try:
+            # Extract source code
+            src = textwrap.dedent(inspect.getsource(current_func))
+            tree = ast.parse(src)
+
+            # Normalize Scope: Identify the immediate class name
+            qualname = current_func.__qualname__
+            if "." in qualname:
+                parts = qualname.split(".")
+                # If the function is __call__, the scope is the class name immediately preceding it
+                # e.g., 'RecursiveSummarizer.OneShotSummarizer.__call__' -> 'OneShotSummarizer'
+                scope = parts[-2] if parts[-1] == "__call__" else parts[-1]
+            else:
+                scope = current_func.__name__
+
+            # Prepare the namespace for finding called objects
+            func_scope = getattr(current_func, "__globals__", {}).copy()
+            module = inspect.getmodule(current_func)
+            if "." in qualname and module:
+                # Add the parent class dict so we can find other methods/classes in same module
+                parent_name = qualname.split(".")[0]
+                cls = getattr(module, parent_name, None)
+                if cls:
+                    func_scope.update(cls.__dict__)
+
+        except (OSError, TypeError):
+            continue
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                call_id = ""
+                # Pattern: get_param()
+                if isinstance(node.func, ast.Name):
+                    call_id = node.func.id
+                # Pattern: self.sub_step()
+                elif isinstance(node.func, ast.Attribute):
+                    call_id = node.func.attr
+                # Pattern: Ch
+
+
+def _static_scan_workflow(root_func) -> dict[str, dict]:
+    param_requirements = {}
+    visited = set()
+
+    root = getattr(root_func, "__wrapped__", root_func)
+    if not root:
+        return {}
+
+    queue = deque([root])
+
+    while queue:
+        current_func = queue.popleft()
+        if current_func in visited:
+            continue
+        visited.add(current_func)
+
+        try:
+            src = textwrap.dedent(inspect.getsource(current_func))
+            tree = ast.parse(src)
+
+            # Normalize Scope
+            qualname = current_func.__qualname__
+            if "." in qualname:
+                parts = qualname.split(".")
+                scope = parts[-2] if parts[-1] == "__call__" else parts[-1]
+            else:
+                scope = current_func.__name__
+
+            # Build a robust lookup scope
+            func_scope = getattr(current_func, "__globals__", {}).copy()
+            module = inspect.getmodule(current_func)
+            if module:
+                # Add everything in the module to the scope so we find sibling classes
+                func_scope.update(vars(module))
+
+        except (OSError, TypeError):
+            continue
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                call_id = ""
+                if isinstance(node.func, ast.Name):
+                    call_id = node.func.id
+                elif isinstance(node.func, ast.Attribute):
+                    call_id = node.func.attr
+                elif isinstance(node.func, ast.Call) and isinstance(
+                    node.func.func, ast.Name
+                ):
+                    call_id = node.func.func.id
+
+                # 1. Capture Params
+                if call_id in ("resolve_param", "get_param"):
+                    if node.args and isinstance(node.args[0], ast.Constant):
+                        key = node.args[0].value
+                        has_code_default = len(node.args) > 1 or any(
+                            kw.arg == "default" for kw in node.keywords
+                        )
+                        logical_name = f"{scope}.{key}"
+                        param_requirements[logical_name] = {
+                            "keys": [logical_name, key],
+                            "has_code_default": has_code_default,
+                        }
+
+                # 2. Trace into sub-steps
+                # Check func_scope (globals + module vars)
+                target_obj = func_scope.get(call_id)
+                if target_obj:
+                    underlying = getattr(target_obj, "__wrapped__", target_obj)
+
+                    # If it's a class, we want to scan its __call__ method
+                    if inspect.isclass(underlying) and hasattr(underlying, "__call__"):
+                        underlying = getattr(
+                            underlying.__call__, "__wrapped__", underlying.__call__
+                        )
+
+                    if callable(underlying) and underlying not in visited:
+                        queue.append(underlying)
+
     return param_requirements
 
 
