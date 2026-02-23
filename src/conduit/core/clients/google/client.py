@@ -326,68 +326,56 @@ class GoogleClient(Client):
 
     async def _generate_image(self, request: GenerationRequest) -> GenerationResponse:
         """
-        Generate an image using Google's Imagen and return a GenerationResponse.
+        Generate an image via the Gemini API using generate_content.
+
+        Both Imagen models (imagen-3.0-generate-001) and hybrid Gemini-Imagen models
+        (gemini-2.5-flash-with-imagen-001) are accessed through generateContent on the
+        standard Gemini API endpoint with a plain API key. The predict endpoint used by
+        generate_images() is Vertex AI only and requires OAuth credentials.
 
         Returns:
             - Response object with ImageOutput in AssistantMessage.images
         """
         start_time = time.time()
 
-        # Extract text prompt from the last message
         last_message = request.messages[-1]
         if isinstance(last_message.content, str):
             prompt = last_message.content
         else:
-            # Handle multimodal content - extract text
             prompt = " ".join(
                 [block.text for block in last_message.content if hasattr(block, "text")]
             )
 
-        # Get image parameters (use defaults if not provided)
-        image_params = GoogleImageParams()
-        if (
-            request.params.client_params
-            and "image_params" in request.params.client_params
-        ):
-            image_params = request.params.client_params["image_params"]
+        from google import genai
+        from google.genai import types
 
-        # Call the images.generate endpoint
-        response = await self.async_client.images.generate(
-            model=image_params.model.value,
-            prompt=prompt,
-            response_format=image_params.response_format.value,
-            n=image_params.n,
+        native_client = genai.Client(api_key=self._get_api_key())
+        model_name = request.params.model
+
+        response = await native_client.aio.models.generate_content(
+            model=model_name,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_modalities=["IMAGE"],
+            ),
         )
 
         duration = (time.time() - start_time) * 1000
 
-        # Convert response to ImageOutput objects
         image_outputs = []
-        for image_data in response.data:
-            image_output = ImageOutput(
-                url=image_data.url if hasattr(image_data, "url") else None,
-                b64_json=image_data.b64_json
-                if hasattr(image_data, "b64_json")
-                else None,
-                revised_prompt=image_data.revised_prompt
-                if hasattr(image_data, "revised_prompt")
-                else None,
-            )
-            image_outputs.append(image_output)
+        for part in response.candidates[0].content.parts:
+            if getattr(part, "inline_data", None):
+                b64_data = base64.b64encode(part.inline_data.data).decode("utf-8")
+                image_outputs.append(ImageOutput(b64_json=b64_data))
 
-        # Create AssistantMessage with images
         assistant_message = AssistantMessage(images=image_outputs)
-
-        # Create ResponseMetadata (Imagen doesn't provide token counts)
         metadata = ResponseMetadata(
             duration=duration,
-            model_slug=image_params.model.value,
-            input_tokens=0,  # Imagen doesn't provide token counts
+            model_slug=model_name,
+            input_tokens=0,
             output_tokens=0,
             stop_reason=StopReason.STOP,
         )
-
-        # Create and return Response
         return GenerationResponse(
             message=assistant_message,
             request=request,

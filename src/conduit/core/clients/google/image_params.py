@@ -4,27 +4,17 @@ from enum import Enum
 
 
 class GoogleImageModel(str, Enum):
-    """Available Google image generation models"""
-    IMAGEN_3_FAST = "imagen-3.0-fast-generate-001"
-    IMAGEN_3 = "imagen-3.0-generate-002"
-
-
-class GoogleImageResponseFormat(str, Enum):
-    """Response format for images"""
-    URL = "url"
-    B64_JSON = "b64_json"
+    """Available Google image generation models (Gemini API / AI Studio)"""
+    GEMINI_FLASH_IMAGE = "gemini-2.5-flash-image"
+    GEMINI_PRO_IMAGE = "gemini-3-pro-image-preview"
 
 
 class GoogleImageParams(BaseModel):
-    """Parameters for Google image generation (Imagen)"""
+    """Parameters for Google image generation"""
 
     model: GoogleImageModel = Field(
-        default=GoogleImageModel.IMAGEN_3,
-        description="Imagen model to use"
-    )
-    response_format: GoogleImageResponseFormat = Field(
-        default=GoogleImageResponseFormat.B64_JSON,
-        description="Response format"
+        default=GoogleImageModel.GEMINI_FLASH_IMAGE,
+        description="Image generation model to use"
     )
     n: int = Field(
         default=1,
