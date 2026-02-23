@@ -41,27 +41,35 @@ class OllamaClient(Client):
     """
 
     def __init__(self):
+        # 1. Load Ollama context sizes from the JSON file
+        self._ollama_context_sizes = self._load_context_sizes()
+
+        # 2. Initialize connection clients
         instructor_client, raw_client = self._initialize_client()
         self._client: Instructor = instructor_client
         self._raw_client: AsyncOpenAI = raw_client
-        self.update_ollama_models()  # This allows us to keep the model file up to date.
 
-    # Load Ollama context sizes from the JSON file
-    try:
-        settings.paths["OLLAMA_CONTEXT_SIZES_PATH"].parent.mkdir(
-            parents=True, exist_ok=True
-        )
-        with open(settings.paths["OLLAMA_CONTEXT_SIZES_PATH"]) as f:
-            _ollama_context_data = json.load(f)
+        # 3. Refresh local model list
+        self.update_ollama_models()
 
-        # Use defaultdict to set default context size to 4096 if not specified
-        _ollama_context_sizes = defaultdict(lambda: 32768)
-        _ollama_context_sizes.update(_ollama_context_data)
-    except Exception:
-        logger.warning(
-            f"Could not load Ollama context sizes from {settings.paths['OLLAMA_CONTEXT_SIZES_PATH']}. Using default of 32768."
-        )
-        _ollama_context_sizes = defaultdict(lambda: 32768)
+    def _load_context_sizes(self) -> defaultdict[str, int]:
+        """
+        Loads the context size mapping from disk.
+        Defaults to 32,768 if the model or file is missing.
+        """
+        default_val = 32768
+        path = settings.paths.get("OLLAMA_CONTEXT_SIZES_PATH")
+
+        if path and path.exists():
+            try:
+                with open(path) as f:
+                    data = json.load(f)
+                    logger.debug(f"Loaded Ollama context sizes from {path}")
+                    return defaultdict(lambda: default_val, data)
+            except Exception as e:
+                logger.warning(f"Failed to parse context sizes file: {e}")
+
+        return defaultdict(lambda: default_val)
 
     @override
     def _initialize_client(self) -> tuple[Instructor, AsyncOpenAI]:
@@ -71,7 +79,7 @@ class OllamaClient(Client):
         """
         raw_client = AsyncOpenAI(
             base_url="http://localhost:11434/v1",
-            api_key="ollama",  # required but unused
+            api_key="ollama",  # required by SDK but unused by Ollama
         )
         instructor_client = instructor.from_openai(
             raw_client,
@@ -81,111 +89,79 @@ class OllamaClient(Client):
 
     @override
     def _get_api_key(self) -> str:
-        """
-        Best thing about Ollama; no API key needed.
-        """
         return ""
 
     @override
     def _convert_message(self, message: Message) -> dict[str, Any]:
-        """
-        Converts a single internal Message DTO into Ollama's specific dictionary format.
-        Since Ollama uses OpenAI spec, we delegate to the OpenAI adapter.
-        """
         return convert_message_to_ollama(message)
 
     @override
     def _convert_request(self, request: GenerationRequest) -> Payload:
         """
-        Translates the internal generic Request DTO into the specific
-        dictionary parameters required by Ollama's SDK (via OpenAI spec).
-        Ollama supports extra_body for additional configuration options.
+        Translates Generic Request to Ollama-specific Payload.
+        Injects num_ctx from local config to override Ollama/Library defaults.
         """
-        # load client_params
+        model_name = request.params.model
         client_params = request.params.client_params or {}
-        allowed_params = {"num_ctx"}
-        for param in client_params:
-            if param not in allowed_params:
-                raise ValueError(f"Ollama does not support client param: {param}")
-        # convert messages
-        converted_messages = self._convert_messages(request.messages)
 
-        # Convert tools and enable parallel tool calls if tools are present
-        tools = None
-        parallel_tool_calls = None
-        if request.options.tool_registry:
-            tools = [
-                convert_tool_to_ollama(tool)
-                for tool in request.options.tool_registry.tools
-            ]
-            parallel_tool_calls = request.options.parallel_tool_calls
+        # --- CONTEXT WINDOW CUSTOMIZATION ---
+        # Ensure we use our high-end hardware settings if not specified in the call
+        if "num_ctx" not in client_params:
+            client_params["num_ctx"] = self._ollama_context_sizes[model_name]
+            logger.debug(
+                f"Injected num_ctx={client_params['num_ctx']} for model {model_name}"
+            )
 
-        # build payload
-        ollama_payload = OllamaPayload(
-            model=request.params.model,
-            messages=converted_messages,
+        # Filter for supported Ollama options in extra_body
+        allowed_params = {"num_ctx", "repeat_penalty", "seed", "top_k", "num_predict"}
+        filtered_extra = {k: v for k, v in client_params.items() if k in allowed_params}
+
+        return OllamaPayload(
+            model=model_name,
+            messages=self._convert_messages(request.messages),
             temperature=request.params.temperature,
             top_p=request.params.top_p,
             max_tokens=request.params.max_tokens,
             stream=request.params.stream,
-            tools=tools,
-            parallel_tool_calls=parallel_tool_calls,
-            # ollama specific params (nested under extra_body)
-            extra_body={**client_params} if client_params else None,
+            extra_body=filtered_extra if filtered_extra else None,
         )
-        return ollama_payload
 
     def update_ollama_models(self):
         """
-        Updates the list of Ollama models.
-        We run is every time ollama is initialized.
+        Syncs the local models.json with currently pulled Ollama models.
         """
         import ollama
 
-        # Ensure the directory exists
-        settings.paths["OLLAMA_MODELS_PATH"].parent.mkdir(parents=True, exist_ok=True)
-        # Lazy load ollama module
-        ollama_models = [m["model"] for m in ollama.list()["models"]]
-        ollama_model_dict = {"ollama": ollama_models}
-        with open(settings.paths["OLLAMA_MODELS_PATH"], "w") as f:
-            json.dump(ollama_model_dict, f)
+        try:
+            settings.paths["OLLAMA_MODELS_PATH"].parent.mkdir(
+                parents=True, exist_ok=True
+            )
+            ollama_models = [m["model"] for m in ollama.list()["models"]]
+            ollama_model_dict = {"ollama": ollama_models}
+            with open(settings.paths["OLLAMA_MODELS_PATH"], "w") as f:
+                json.dump(ollama_model_dict, f)
+        except Exception as e:
+            logger.error(f"Failed to update Ollama model list: {e}")
 
     @override
     async def tokenize(self, model: str, payload: str | Sequence[Message]) -> int:
-        """
-        Count tokens using Ollama's API via the official library.
-        We set "num_predict" to 0 so we only process the prompt/history and get the eval count.
-        """
         import ollama
 
-        # CASE 1: Raw String
         if isinstance(payload, str):
             response = ollama.generate(
-                model=model,
-                prompt=payload,
-                options={"num_predict": 0},  # Minimal generation
+                model=model, prompt=payload, options={"num_predict": 0}
             )
             return int(response.get("prompt_eval_count", 0))
-
-        # CASE 2: Message History
         if isinstance(payload, list):
-            # Convert internal Messages to OpenAI/Ollama compatible dicts
-            messages_payload = [m.to_ollama() for m in payload]
-
+            messages_payload = [self._convert_message(m) for m in payload]
             response = ollama.chat(
-                model=model,
-                messages=messages_payload,
-                options={"num_predict": 0},
+                model=model, messages=messages_payload, options={"num_predict": 0}
             )
             return int(response.get("prompt_eval_count", 0))
-
         raise ValueError("Payload must be string or Sequence[Message]")
 
     @override
-    async def query(
-        self,
-        request: GenerationRequest,
-    ) -> GenerationResult:
+    async def query(self, request: GenerationRequest) -> GenerationResult:
         match request.params.output_type:
             case "text":
                 return await self._generate_text(request)
@@ -197,111 +173,76 @@ class OllamaClient(Client):
                 )
 
     async def _generate_text(self, request: GenerationRequest) -> GenerationResult:
-        """
-        Generate text using Ollama and return a GenerationResponse.
-
-        Returns:
-            - GenerationResponse object for successful non-streaming requests
-            - AsyncStream object for streaming requests
-        """
         payload = self._convert_request(request)
         payload_dict = payload.model_dump(exclude_none=True)
 
-        # Track timing
         start_time = time.time()
-
-        # Use the raw client for standard completions
         result = await self._raw_client.chat.completions.create(**payload_dict)
 
-        # Handle streaming response
         if isinstance(result, AsyncStream):
-            # For streaming, return the AsyncStream object directly
             return result
 
-        # Assemble response metadata
-        duration = (time.time() - start_time) * 1000  # Convert to milliseconds
-        model_stem = result.model
-        input_tokens = result.usage.prompt_tokens
-        output_tokens = result.usage.completion_tokens
+        # --- RESTORED EMPTY RESPONSE CHECK ---
+        content = result.choices[0].message.content
+        has_tool_calls = bool(getattr(result.choices[0].message, "tool_calls", None))
 
-        # Determine stop reason
+        if not content and not has_tool_calls:
+            allocated_ctx = payload_dict.get("extra_body", {}).get("num_ctx", "unknown")
+            error_msg = (
+                f"Ollama model {result.model} returned an EMPTY response. "
+                f"Likely cause: Input exceeded the allocated num_ctx ({allocated_ctx}) "
+                f"causing silent truncation, or a local inference glitch."
+            )
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        duration = (time.time() - start_time) * 1000
         stop_reason = StopReason.STOP
         if hasattr(result.choices[0], "finish_reason"):
             finish_reason = result.choices[0].finish_reason
             if finish_reason == "length":
                 stop_reason = StopReason.LENGTH
-            if finish_reason == "tool_calls":
+            elif finish_reason == "tool_calls":
                 stop_reason = StopReason.TOOL_CALLS
-            elif finish_reason == "content_filter":
-                stop_reason = StopReason.CONTENT_FILTER
 
-        # Process tool calls if present
+        tool_calls = []
         if stop_reason == StopReason.TOOL_CALLS:
-            # Handle tool calls - iterate through all parallel calls
-            tool_calls = []
-            for tool_call_data in result.choices[0].message.tool_calls:
-                arguments_dict = json.loads(tool_call_data.function.arguments)
-
-                tool_call = ToolCall(
-                    id=tool_call_data.id,  # Use provider-supplied ID
-                    type="function",
-                    function_name=tool_call_data.function.name,
-                    arguments=arguments_dict,
-                    provider="ollama",  # Fixed: was incorrectly set to "google"
-                    raw=tool_call_data.dict(),
+            for tc in result.choices[0].message.tool_calls:
+                tool_calls.append(
+                    ToolCall(
+                        id=tc.id,
+                        type="function",
+                        function_name=tc.function.name,
+                        arguments=json.loads(tc.function.arguments),
+                        provider="ollama",
+                        raw=tc.dict(),
+                    )
                 )
-                tool_calls.append(tool_call)
 
-            # Create AssistantMessage with all tool calls
-            assistant_message = AssistantMessage(
-                content=result.choices[0].message.content
-                if hasattr(result.choices[0].message, "content")
-                else "",
-                tool_calls=tool_calls,
-            )
-        else:
-            # Extract the text content
-            content = result.choices[0].message.content
+        assistant_message = AssistantMessage(
+            content=content or "",
+            tool_calls=tool_calls if tool_calls else None,
+        )
 
-            if not content and not getattr(
-                result.choices[0].message, "tool_calls", None
-            ):
-                logger.error(f"Ollama model {model_stem} returned an empty response.")
-                content = "Error: The model returned an empty response (likely due to context limits or a local inference glitch)."
-            assistant_message = AssistantMessage(content=content)
-
-        # Create ResponseMetadata
         metadata = ResponseMetadata(
             duration=duration,
-            model_slug=model_stem,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
+            model_slug=result.model,
+            input_tokens=result.usage.prompt_tokens,
+            output_tokens=result.usage.completion_tokens,
             stop_reason=stop_reason,
         )
 
-        # Create and return Response
         return GenerationResponse(
-            message=assistant_message,
-            request=request,
-            metadata=metadata,
+            message=assistant_message, request=request, metadata=metadata
         )
 
     async def _generate_structured_response(
         self, request: GenerationRequest
     ) -> GenerationResponse:
-        """
-        Generate a structured response using Ollama's function calling and return a GenerationResponse.
-
-        Returns:
-            - GenerationResponse object with parsed structured data in AssistantMessage.parsed
-        """
         payload = self._convert_request(request)
         payload_dict = payload.model_dump(exclude_none=True)
 
-        # Track timing
         start_time = time.time()
-
-        # Make the API call with function calling using instructor client
         (
             user_obj,
             completion,
@@ -309,37 +250,26 @@ class OllamaClient(Client):
             response_model=request.params.response_model, **payload_dict
         )
 
-        # Assemble response metadata
-        duration = (time.time() - start_time) * 1000  # Convert to milliseconds
-        model_stem = completion.model
-        input_tokens = completion.usage.prompt_tokens
-        output_tokens = completion.usage.completion_tokens
+        # Fail-safe check for structured response
+        if not user_obj and not completion.choices[0].message.content:
+            allocated_ctx = payload_dict.get("extra_body", {}).get("num_ctx", "unknown")
+            raise ValueError(
+                f"Ollama structured response failed. num_ctx: {allocated_ctx}"
+            )
 
-        # Determine stop reason
-        stop_reason = StopReason.STOP
-        if hasattr(completion.choices[0], "finish_reason"):
-            finish_reason = completion.choices[0].finish_reason
-            if finish_reason == "length":
-                stop_reason = StopReason.LENGTH
+        metadata = ResponseMetadata(
+            duration=(time.time() - start_time) * 1000,
+            model_slug=completion.model,
+            input_tokens=completion.usage.prompt_tokens,
+            output_tokens=completion.usage.completion_tokens,
+            stop_reason=StopReason.STOP,
+        )
 
-        # Create AssistantMessage with parsed structured data
         assistant_message = AssistantMessage(
             content=completion.choices[0].message.content,
             parsed=user_obj,
         )
 
-        # Create ResponseMetadata
-        metadata = ResponseMetadata(
-            duration=duration,
-            model_slug=model_stem,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            stop_reason=stop_reason,
-        )
-
-        # Create and return Response
         return GenerationResponse(
-            message=assistant_message,
-            request=request,
-            metadata=metadata,
+            message=assistant_message, request=request, metadata=metadata
         )

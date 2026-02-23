@@ -43,41 +43,52 @@ class RecursiveSummarizer(SummarizationStrategy):
     @step
     @override
     async def __call__(self, text: str, *args, **kwargs) -> str:
-        # --- 1. RESOLVE EXPERIMENT PARAMS FROM HARNESS ---
-        # If these keys exist in the Harness config, they will override the defaults here.
-        cw_ratio = get_param("effective_context_window_ratio", default=0.5)
-        model = get_param("model", default="gpt3")
+        # 1. Resolve Params from Harness
+        cw_ratio = get_param("effective_context_window_ratio", default=0.8)
+        model_slug = get_param("model", default="gpt-oss:latest")
 
-        # --- 2. EXECUTE DECISION LOGIC ---
-        context_window = self.model_store.get_context_window(model)
-        effective_threshold = int(context_window * cw_ratio)
+        # 2. Get the ACTUAL allocated context window (Truth is Local)
+        # This calls your ModelStore.get_num_ctx which now reads ollama_context_sizes.json
+        allocated_window = ModelStore.get_num_ctx(model_slug)
 
-        # Local token count to prevent Ollama's silent truncation
+        # 3. Calculate your chunking threshold
+        # Example: 65,536 * 0.8 = 52,428 tokens
+        effective_threshold = int(allocated_window * cw_ratio)
+
+        # 4. Tokenize local input to decide: Summarize or Chunk?
         text_token_size = len(self._tokenizer.encode(text))
 
-        add_metadata("input_tokens_local_est", text_token_size)
-        add_metadata("effective_threshold", effective_threshold)
+        add_metadata("num_ctx_allocated", allocated_window)
+        add_metadata("effective_chunk_size", effective_threshold)
+        add_metadata("current_input_tokens", text_token_size)
 
         logger.info(
-            f"Recursive check: {text_token_size} tokens vs {effective_threshold} threshold (Model: {model})"
+            f"Recursive Summarizer Check: {text_token_size} tokens vs {effective_threshold} threshold."
         )
 
+        # --- THE DECISION ENGINE ---
+
         if text_token_size <= effective_threshold:
-            # TRIGGER: One-Shot (The "Finishing" Pass)
-            # OneShotSummarizer will pull "OneShotSummarizer.prompt" and "model" from Harness
-            logger.info("Executing One-Shot summarization pass.")
+            # BASE CASE: Text fits. Perform final high-fidelity summary.
+            logger.info(
+                f"Input ({text_token_size}) fits in threshold ({effective_threshold}). Running One-Shot."
+            )
             return await OneShotSummarizer()(text=text)
 
         else:
-            # TRIGGER: Map-Reduce (The "Chunking" Pass)
-            # MapReduceSummarizer pulls "chunk_size", "overlap", and "MapReduceSummarizer.prompt"
-            logger.info("Executing Map-Reduce chunking pass.")
-            intermediate_summary = await MapReduceSummarizer()(text=text)
+            # RECURSIVE STEP: Text is too big.
+            # 1. Map-Reduce it into a smaller intermediate summary.
+            logger.info(
+                f"Input ({text_token_size}) exceeds threshold. Running Map-Reduce."
+            )
+            intermediate_summary = await MapReduceSummarizer()(
+                text=text,
+                chunk_size=effective_threshold,  # Ensure chunker respects our 5090 settings
+            )
 
-            # --- 3. RECURSE ---
-            # By calling self(), we re-enter the @step logic.
-            # The Harness trace will show this as a nested step.
-            logger.info("Map-Reduce complete. Recursing on intermediate result.")
+            # 2. RECURSE: Feed the intermediate summary back into THIS function.
+            # This will repeat until the summary is small enough for One-Shot.
+            logger.info("Intermediate summary complete. Recursing to check size.")
             return await self(text=intermediate_summary)
 
 

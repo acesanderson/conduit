@@ -34,7 +34,8 @@ class OneShotSummarizer(SummarizationStrategy):
             top_p=get_param("top_p", default=None),
         )
         options = ConduitOptions(
-            project_name=get_param("project_name", default="conduit")
+            project_name=get_param("project_name", default="conduit"),
+            debug_payload=True,
         )
         model = ModelAsync(model=model)
         rendered = Prompt(prompt).render(

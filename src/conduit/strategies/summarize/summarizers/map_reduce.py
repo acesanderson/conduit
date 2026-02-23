@@ -57,6 +57,7 @@ class MapReduceSummarizer(SummarizationStrategy):
         options = ConduitOptions(
             project_name=get_param("project_name", default="conduit"),
             verbosity=Verbosity.SILENT,
+            debug_payload=True,
         )
         model_instance = ModelAsync(model=model)
 
