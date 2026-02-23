@@ -262,6 +262,12 @@ class OllamaClient(Client):
         else:
             # Extract the text content
             content = result.choices[0].message.content
+
+            if not content and not getattr(
+                result.choices[0].message, "tool_calls", None
+            ):
+                logger.error(f"Ollama model {model_stem} returned an empty response.")
+                content = "Error: The model returned an empty response (likely due to context limits or a local inference glitch)."
             assistant_message = AssistantMessage(content=content)
 
         # Create ResponseMetadata
