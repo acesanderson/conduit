@@ -1,7 +1,7 @@
 {
   "google-imagen": "gemini-2.5-flash-image",
   "banana": "gemini-2.5-flash-image",
-  "claude": "claude-sonnet-4-5-20250929",
+  "claude": "claude-sonnet-4-6",
   "deepseek": "deepseek-chat",
   "flash": "gemini-3-flash-preview",
   "gemini": "gemini-2.5-flash",
