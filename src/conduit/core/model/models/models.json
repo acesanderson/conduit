@@ -51,5 +51,12 @@
     "sonar-pro",
     "sonar"
   ],
+  "mistral": [
+    "mistral-large-latest",
+    "mistral-small-latest",
+    "codestral-latest",
+    "mistral-medium-2508",
+    "pixtral-large-latest"
+  ],
   "ollama": []
 }

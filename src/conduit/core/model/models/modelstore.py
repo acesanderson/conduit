@@ -382,6 +382,10 @@ class ModelStore:
             from conduit.core.clients.perplexity.client import PerplexityClient
 
             return PerplexityClient()
+        elif model_name in model_list["mistral"]:
+            from conduit.core.clients.mistral.client import MistralClient
+
+            return MistralClient()
         else:
             raise ValueError(f"Model {model_name} not found in ModelStore")
 
