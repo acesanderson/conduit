@@ -1,6 +1,6 @@
 {
-  "google-imagen": "imagen-4.0-generate-001",
-  "banana": "gemini-2.5-flash-image-preview",
+  "google-imagen": "gemini-2.5-flash-image",
+  "banana": "gemini-2.5-flash-image",
   "claude": "claude-sonnet-4-5-20250929",
   "deepseek": "deepseek-chat",
   "flash": "gemini-3-flash-preview",
@@ -13,6 +13,7 @@
   "gpt5": "gpt-5.1-2025-11-13",
   "groq": "mixtral-8x7b-32768",
   "haiku": "claude-haiku-4-5-20251001",
+  "imagegen": "dall-e-3",
   "llama": "llama3.1:latest",
   "nano": "gpt-5-mini",
   "mistral": "mistral-large-latest",
