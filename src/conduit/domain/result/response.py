@@ -11,6 +11,7 @@ from conduit.domain.request.request import GenerationRequest
 from conduit.domain.result.response_metadata import ResponseMetadata
 from pydantic import BaseModel
 from typing import TYPE_CHECKING, override
+import io
 import logging
 
 if TYPE_CHECKING:
