@@ -55,7 +55,12 @@ def populate_providers_file():
         temperature_range=[0.0, 1.0]
     )
 
-    providers = [openai, anthropic, google, groq, perplexity, ollama]
+    mistral = ProviderSpec(
+        provider="mistral",
+        temperature_range=[0.0, 1.0]
+    )
+
+    providers = [openai, anthropic, google, groq, perplexity, ollama, mistral]
 
     providers_file.write_text(
         "\n".join(provider.model_dump_json() for provider in providers)
