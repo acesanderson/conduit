@@ -18,13 +18,13 @@ INDEX_FILE = IMAGEGEN_DIR / "index.json"
 MAX_HISTORY = 10
 
 IMAGEGEN_MODELS = [
-    ("imagegen",                  "dall-e-3 (alias)"),
-    ("dall-e-3",                  "OpenAI DALL-E 3"),
-    ("banana",                    "gemini-2.5-flash-image (alias)"),
-    ("google-imagen",             "gemini-2.5-flash-image (alias)"),
-    ("gemini-2.5-flash-image",    "Google Gemini — default"),
-    ("gemini-3-pro-image-preview","Google Gemini — higher quality"),
-    ("imagen-4.0-generate-001",   "Google Imagen 4 — Vertex AI credentials required"),
+    ("imagegen", "dall-e-3 (alias)"),
+    ("dall-e-3", "OpenAI DALL-E 3"),
+    ("banana", "gemini-2.5-flash-image (alias)"),
+    ("google-imagen", "gemini-2.5-flash-image (alias)"),
+    ("gemini-2.5-flash-image", "Google Gemini — default"),
+    ("gemini-3-pro-image-preview", "Google Gemini — higher quality"),
+    ("imagen-4.0-generate-001", "Google Imagen 4 — Vertex AI credentials required"),
 ]
 
 
@@ -40,20 +40,28 @@ def _save_to_history(prompt: str, model: str, b64_json: str) -> Path:
     img_path = IMAGEGEN_DIR / f"{ts}.png"
 
     from PIL import Image
+
     image = Image.open(io.BytesIO(base64.b64decode(b64_json)))
     image.save(img_path)
 
     entries = _load_index()
-    entries.append({"timestamp": ts, "prompt": prompt, "model": model, "filename": img_path.name})
+    entries.append(
+        {"timestamp": ts, "prompt": prompt, "model": model, "filename": img_path.name}
+    )
     INDEX_FILE.write_text(json.dumps(entries[-MAX_HISTORY:], indent=2))
 
     return img_path
 
 
-def _display_path(path: Path, label: str | None = None):
+def _display_path(path: Path, label: str | None = None, display_image=True):
     if label:
+        # Remove newlines and truncate if too long.
+        label = label.replace("\n", " ")
+        if len(label) > 80:
+            label = label[:77] + "..."
         print(label)
-    subprocess.run(["viu", str(path)])
+    if display_image:
+        subprocess.run(["viu", str(path)])
 
 
 def _cmd_list_models():
@@ -79,14 +87,46 @@ def _cmd_last(save: str | None):
 
 
 def _cmd_history():
+    from rich.console import Console
+    from rich.text import Text
+
     entries = _load_index()
     if not entries:
         print("No images in history.")
         return
-    for entry in entries:
+    entries = reversed(entries)
+
+    console = Console()
+    numbered = list(enumerate(entries, 1))
+    for i, entry in numbered:
         img_path = IMAGEGEN_DIR / entry["filename"]
-        if img_path.exists():
-            _display_path(img_path, label=f"{entry['prompt'][:60]}  [{entry['model']}]")
+        if not img_path.exists():
+            continue
+        prompt = entry["prompt"].replace("\n", " ")[:62]
+        line = Text()
+        line.append(f"{i:>2}. ", style="bold cyan")
+        line.append(f"{prompt:<62}", style="white")
+        line.append(f"  {entry['model']}", style="dim green")
+        console.print(line)
+
+
+def _cmd_get(n: int, save: str | None):
+    entries = _load_index()
+    if not entries:
+        print("No images in history.")
+        return
+    if n < 1 or n > len(entries):
+        print(f"Invalid index {n}. History has {len(entries)} entries.")
+        return
+    entry = entries[n - 1]
+    img_path = IMAGEGEN_DIR / entry["filename"]
+    if save == "-":
+        sys.stdout.buffer.write(img_path.read_bytes())
+    elif save:
+        shutil.copy(img_path, save)
+        print(f"Saved to {save}")
+    else:
+        _display_path(img_path, label=f"{entry['prompt'][:60]}  [{entry['model']}]")
 
 
 def _read_stdin() -> str | None:
@@ -103,17 +143,34 @@ def main():
     parser.add_argument("--help", action="help", default=argparse.SUPPRESS)
     parser.add_argument("prompt", nargs="?", default=None)
     parser.add_argument(
-        "--model", "-m",
+        "--model",
+        "-m",
         nargs="?",
         const="__list__",
         default=DEFAULT_MODEL,
         metavar="MODEL",
         help="Model to use. Bare flag lists available models.",
     )
-    parser.add_argument("--last", "-l", action="store_true", help="Display the last generated image.")
-    parser.add_argument("--history", "-h", action="store_true", help="Display the last 10 generated images.")
     parser.add_argument(
-        "--save", "-s",
+        "--last", "-l", action="store_true", help="Display the last generated image."
+    )
+    parser.add_argument(
+        "--history",
+        "-h",
+        action="store_true",
+        help="Display the last 10 generated images.",
+    )
+    parser.add_argument(
+        "--get",
+        "-g",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Display image number N from history.",
+    )
+    parser.add_argument(
+        "--save",
+        "-s",
         nargs="?",
         const="output.png",
         default=None,
@@ -132,6 +189,10 @@ def main():
 
     if args.history:
         _cmd_history()
+        return
+
+    if args.get is not None:
+        _cmd_get(args.get, save=args.save)
         return
 
     # Resolve prompt: stdin takes priority, positional arg is fallback.

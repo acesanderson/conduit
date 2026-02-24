@@ -349,16 +349,24 @@ class OpenAIClient(Client, ABC):
         ):
             image_params = request.params.client_params["image_params"]
 
+        from openai import BadRequestError
+
         # Call the images.generate endpoint
-        response = await self.async_client.images.generate(
-            model=image_params.model.value,
-            prompt=prompt,
-            size=image_params.size.value,
-            quality=image_params.quality.value,
-            style=image_params.style.value,
-            response_format=image_params.response_format.value,
-            n=image_params.n,
-        )
+        try:
+            response = await self.async_client.images.generate(
+                model=image_params.model.value,
+                prompt=prompt,
+                size=image_params.size.value,
+                quality=image_params.quality.value,
+                style=image_params.style.value,
+                response_format=image_params.response_format.value,
+                n=image_params.n,
+            )
+        except BadRequestError as e:
+            if "content_policy_violation" in str(e):
+                # Handle content policy violation gracefully
+                raise ValueError(f"OpenAI DALL-E content policy violation: {e}")
+            raise e
 
         duration = (time.time() - start_time) * 1000
 
