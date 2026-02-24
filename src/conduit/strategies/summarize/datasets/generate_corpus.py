@@ -1,7 +1,8 @@
 import asyncio
-from datasets import Dataset, load_dataset, concatenate_datasets, Features, Value
+import pandas as pd
 from sqlalchemy import func
 from conduit.async_ import ModelAsync
+from conduit.core.eval.models import Document
 from siphon_server.database.postgres.connection import SessionLocal
 from siphon_server.database.postgres.models import ProcessedContentORM
 from uuid import uuid4
@@ -27,21 +28,11 @@ async def get_token_count(text: str) -> int:
         return 0
 
 
-async def fetch_siphon_stratified():
+async def fetch_siphon_stratified() -> list[Document]:
     """
     Pulls stratified samples from Siphon DB (Async Tokenization).
     """
     db = SessionLocal()
-
-    # Explicit Schema to prevent crashes on empty selections
-    features = Features(
-        {
-            "source_id": Value("string"),
-            "text": Value("string"),
-            "category": Value("string"),
-            "token_count": Value("int64"),
-        }
-    )
 
     tiers = [
         {
@@ -73,7 +64,7 @@ async def fetch_siphon_stratified():
         },
     ]
 
-    selected_docs = []
+    selected_docs: list[Document] = []
     print(f"Connecting to Siphon DB...")
 
     try:
@@ -101,17 +92,18 @@ async def fetch_siphon_stratified():
                 if found_in_tier >= tier["target"]:
                     break
 
-                # AWAIT the tokenization here
                 count = await get_token_count(orm.content_text)
 
                 if tier["min_tokens"] <= count <= tier["max_tokens"]:
                     selected_docs.append(
-                        {
-                            "source_id": orm.uri,
-                            "text": orm.content_text,
-                            "category": tier["label"],
-                            "token_count": count,
-                        }
+                        Document(
+                            content=orm.content_text,
+                            metadata={
+                                "source_id": orm.uri,
+                                "category": tier["label"],
+                                "token_count": count,
+                            },
+                        )
                     )
                     found_in_tier += 1
 
@@ -120,49 +112,45 @@ async def fetch_siphon_stratified():
     finally:
         db.close()
 
-    # Return safe empty dataset if nothing found
-    if not selected_docs:
-        return Dataset.from_dict(
-            {"source_id": [], "text": [], "category": [], "token_count": []},
-            features=features,
-        )
-
-    return Dataset.from_list(selected_docs, features=features)
+    return selected_docs
 
 
-async def build_public_dataset(name, split, category, source_id_fn, text_fn):
+async def build_public_dataset(name, split, category, source_id_fn, text_fn) -> list[Document]:
     """
-    Helper to load and tokenize public datasets asynchronously without using .map()
+    Helper to load and tokenize public datasets asynchronously.
     """
+    from datasets import load_dataset
+
     print(f"   Loading {name}...")
     ds = load_dataset(name, split=split).shuffle(seed=42).select(range(10))
 
-    processed = []
+    docs: list[Document] = []
     for i, item in enumerate(ds):
         text = text_fn(item)
         count = await get_token_count(text)
-
-        processed.append(
-            {
-                "category": category,
-                "source_id": source_id_fn(item, i),
-                "text": text,
-                "token_count": count,
-            }
+        docs.append(
+            Document(
+                content=text,
+                metadata={
+                    "category": category,
+                    "source_id": source_id_fn(item, i),
+                    "token_count": count,
+                },
+            )
         )
-    return Dataset.from_list(processed)
+    return docs
 
 
-async def build_composite_dataset():
+async def build_composite_dataset() -> list[Document]:
     print("\nBuilding Composite Dataset (Async)...")
 
     # 1. Siphon Data (Async)
-    siphon_ds = await fetch_siphon_stratified()
+    siphon_docs = await fetch_siphon_stratified()
 
     # 2. Public Datasets (Async Iteration)
 
     # GovReport
-    gov_ds = await build_public_dataset(
+    gov_docs = await build_public_dataset(
         name="ccdv/govreport-summarization",
         split="test",
         category="GovReport",
@@ -171,7 +159,7 @@ async def build_composite_dataset():
     )
 
     # BillSum
-    bill_ds = await build_public_dataset(
+    bill_docs = await build_public_dataset(
         name="billsum",
         split="test",
         category="BillSum",
@@ -180,7 +168,7 @@ async def build_composite_dataset():
     )
 
     # WikiHow (gursi26)
-    wiki_ds = await build_public_dataset(
+    wiki_docs = await build_public_dataset(
         name="gursi26/wikihow-cleaned",
         split="train",
         category="WikiHow",
@@ -188,40 +176,29 @@ async def build_composite_dataset():
         text_fn=lambda x: x.get("text") or x.get("article") or x.get("input", ""),
     )
 
-    # 3. Merge
-    columns = ["source_id", "text", "category", "token_count"]
-
-    combined = concatenate_datasets(
-        [
-            siphon_ds.select_columns(columns),
-            gov_ds.select_columns(columns),
-            bill_ds.select_columns(columns),
-            wiki_ds.select_columns(columns),
-        ]
-    )
-
-    return combined
+    return siphon_docs + gov_docs + bill_docs + wiki_docs
 
 
-def save_dataset(ds: Dataset, name: str = "summarization_corpus.parquet") -> None:
+def save_dataset(docs: list[Document], name: str = "summarization_corpus.parquet") -> None:
     path = f"{DATASETS_DIR}/{name}"
-    ds.to_parquet(path_or_buf=path)
+    records = [{"content": d.content, **d.metadata} for d in docs]
+    pd.DataFrame(records).to_parquet(path, index=False)
     print(f"Dataset saved to: {path}")
 
 
 if __name__ == "__main__":
     # The Entry Point
-    ds = asyncio.run(build_composite_dataset())
+    docs = asyncio.run(build_composite_dataset())
 
-    print(f"\nFinal Count: {len(ds)} documents")
-    if len(ds) > 0:
+    print(f"\nFinal Count: {len(docs)} documents")
+    if len(docs) > 0:
         from collections import Counter
 
-        cats = Counter(ds["category"])
+        cats = Counter(d.metadata["category"] for d in docs)
         print(f"   Breakdown: {dict(cats)}")
 
-        avg_tokens = sum(ds["token_count"]) / len(ds)
+        avg_tokens = sum(d.metadata["token_count"] for d in docs) / len(docs)
         print(f"   Avg Tokens: {int(avg_tokens)}")
-        print(f"   Sample ID: {ds[0]['source_id']}")
+        print(f"   Sample ID: {docs[0].metadata['source_id']}")
 
-    save_dataset(ds)
+    save_dataset(docs)
