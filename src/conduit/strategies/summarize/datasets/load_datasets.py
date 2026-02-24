@@ -1,12 +1,13 @@
 from __future__ import annotations
 from conduit.config import settings
-from datasets import Dataset
+from conduit.core.eval.models import Document, GoldDatum, GoldSummary
 from typing import TYPE_CHECKING
 from conduit.strategies.summarize.datasets.gold_standard import (
     GoldStandardDatum,
     GoldStandardSummaryWithMetadata,
     GoldStandardEntry,
 )
+import pandas as pd
 
 
 if TYPE_CHECKING:
@@ -19,46 +20,42 @@ GOLD_STANDARD_DATASET_PATH = (
 )
 
 
-def load_corpus(path: Path = SUMMARIZATION_DATASET_PATH) -> Dataset:
+def load_corpus(path: Path = SUMMARIZATION_DATASET_PATH) -> list[Document]:
     """
-    Loads the corpus from disk.
+    Loads the corpus from disk as a list of Document objects.
     """
-    dataset = Dataset.from_parquet(str(path))
-    return dataset
+    df = pd.read_parquet(str(path))
+    records = df.to_dict(orient="records")
+    return [Document.model_validate(r) for r in records]
+    # return [
+    #     Document(
+    #         content=row["content"],
+    #         metadata={
+    #             "source_id": row["source_id"],
+    #             "category": row["category"],
+    #             "token_count": row["token_count"],
+    #         },
+    #     )
+    #     for _, row in df.iterrows()
+    # ]
+    #
 
 
 def load_golden_dataset(
     path: Path = GOLD_STANDARD_DATASET_PATH,
-) -> Dataset:
+) -> list[GoldDatum]:
     """
-    Loads the golden dataset from disk.
+    Loads the golden dataset from disk as a list of GoldDatum objects.
+    Parquet data is stored in a columnar format, so we need to read the entire DataFrame and then convert each row to a GoldDatum.
     """
-    dataset = Dataset.from_parquet(str(path))
-    return dataset
-
-
-def load_datums() -> list[GoldStandardDatum]:
-    """
-    Loads the golden dataset and converts it to a list of GoldStandardDatum objects.
-    """
-    ds = load_golden_dataset()
-
-    datums = []
-
-    # Iterate through the columns using zip to reconstruct the objects
-    for entry_data, summary_data in zip(ds["entry"], ds["summary"]):
-        # entry_data is a dict: {'category', 'source_id', 'text', 'token_count'}
-        # summary_data is a dict: {'entity_list', 'entity_list_embeddings', ...}
-
-        datum = GoldStandardDatum(
-            entry=GoldStandardEntry(**entry_data),
-            summary=GoldStandardSummaryWithMetadata(**summary_data),
-        )
-        datums.append(datum)
-
-    return datums
+    df = pd.read_parquet(str(path))
+    records = df.to_dict(orient="records")
+    return [GoldDatum.model_validate(r) for r in records]
 
 
 if __name__ == "__main__":
-    datums = load_datums()
-    # ds = load_golden_dataset()
+    docs = load_corpus()
+    print(f"Loaded {len(docs)} documents")
+    if docs:
+        print(f"Sample: {docs[0].metadata}")
+    # gold = load_golden_dataset(k)
