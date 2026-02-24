@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /home/fishhouses/Brian_Code/conduit-project/src/conduit/apps/tap -type f -name \"*.py\" 2>/dev/null | head -20)",
+      "Bash(tree -L 2 /home/fishhouses/Brian_Code/conduit-project/tests/ 2>/dev/null || find /home/fishhouses/Brian_Code/conduit-project/tests -type f -name \"*.py\" | sort)",
+      "Bash(cd /home/fishhouses/Brian_Code/conduit-project && .venv/bin/pytest tests/storage/test_db_manager.py -v --no-header --tb=short 2>&1)",
+      "Bash(find /home/fishhouses/Brian_Code/conduit-project/.venv/lib/ -type d -name \"dbclients\" 2>/dev/null; /home/fishhouses/Brian_Code/conduit-project/.venv/bin/python -c \"import dbclients; print\\(dbclients.__file__\\)\" 2>&1)",
+      "Bash(/home/fishhouses/Brian_Code/conduit-project/.venv/bin/pip list 2>/dev/null | grep -i \"db\\\\|client\\\\|postgres\")",
+      "Bash(/home/fishhouses/Brian_Code/conduit-project/.venv/bin/pip list 2>/dev/null | head -60)",
+      "Bash(/home/fishhouses/Brian_Code/conduit-project/.venv/bin/python -m pip list 2>&1 | head -60)",
+      "Bash(/home/fishhouses/Brian_Code/conduit-project/.venv/bin/ask \"name ten mammals\" 2>&1)"
+    ]
+  }
+}

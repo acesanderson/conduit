@@ -158,8 +158,12 @@ class Conversation(BaseModel):
         )
 
     def prune(self, keep: int = 10) -> None:
-        if len(self.messages) > keep:
-            self.messages = self.messages[-keep:]
+        system = self.system
+        non_system = [m for m in self.messages if m.role != Role.SYSTEM]
+        if len(non_system) > keep:
+            self.messages = non_system[-keep:]
+            if system:
+                self.messages.insert(0, system)
 
     def tokens(self, model_name: str) -> int:
         raise NotImplementedError(

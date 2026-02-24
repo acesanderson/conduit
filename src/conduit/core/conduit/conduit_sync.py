@@ -254,7 +254,8 @@ class ConduitSync:
     def _run_sync(self, coroutine: Any) -> Any:
         _warn_if_loop_exists()
         try:
-            return asyncio.run(coroutine)
+            loop = asyncio.get_event_loop()
+            return loop.run_until_complete(coroutine)
         except KeyboardInterrupt:
             logger.warning("Operation cancelled by user.")
             raise

@@ -1,9 +1,9 @@
 from __future__ import annotations
 import logging
-import asyncio
 from datetime import datetime, date
 from typing import TYPE_CHECKING
 from conduit.storage.odometer.token_event import TokenEvent
+from conduit.storage.db_manager import db_manager
 
 logger = logging.getLogger(__name__)
 
@@ -14,41 +14,21 @@ if TYPE_CHECKING:
 class AsyncPostgresOdometer:
     """
     Async Postgres backend for Odometer.
-    Manages its own lazy connection pool to support restarts/different loops.
+    Uses the shared DatabaseManager pool.
     """
 
     def __init__(self, db_name: str = "conduit"):
         self.db_name = db_name
-        self._pool: Pool | None = None
-        self._pool_loop: asyncio.AbstractEventLoop | None = None
+        self._schema_initialized = False
 
-    async def _get_pool(self) -> Pool:
-        current_loop = asyncio.get_running_loop()
+    async def _ensure_ready(self) -> Pool:
+        pool = await db_manager.get_pool(self.db_name)
+        if not self._schema_initialized:
+            await self._ensure_schema(pool)
+            self._schema_initialized = True
+        return pool
 
-        if (
-            self._pool
-            and self._pool_loop is current_loop
-            and not current_loop.is_closed()
-        ):
-            return self._pool
-
-        logger.debug("Initializing asyncpg pool for Odometer")
-        from dbclients.clients.postgres import get_postgres_client
-
-        # get_postgres_client("async") returns the pool
-        pool_factory = await get_postgres_client(
-            client_type="async", dbname=self.db_name
-        )
-        self._pool = pool_factory
-        self._pool_loop = current_loop
-
-        # Ensure schema exists (lightweight check)
-        await self._ensure_schema()
-        return self._pool
-
-    async def _ensure_schema(self):
-        if not self._pool:
-            return
+    async def _ensure_schema(self, pool: Pool) -> None:
         create_sql = """
         CREATE TABLE IF NOT EXISTS token_events (
             id SERIAL PRIMARY KEY,
@@ -61,14 +41,14 @@ class AsyncPostgresOdometer:
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         """
-        async with self._pool.acquire() as conn:
+        async with pool.acquire() as conn:
             await conn.execute(create_sql)
 
     async def store_events(self, events: list[TokenEvent]) -> None:
         if not events:
             return
 
-        pool = await self._get_pool()
+        pool = await self._ensure_ready()
         insert_sql = """
         INSERT INTO token_events (provider, model, input_tokens, output_tokens, timestamp, host)
         VALUES ($1, $2, $3, $4, $5, $6)
@@ -85,9 +65,9 @@ class AsyncPostgresOdometer:
 
     async def get_overall_stats(self) -> dict:
         """Get overall statistics."""
-        pool = await self._get_pool()
+        pool = await self._ensure_ready()
         query = """
-        SELECT 
+        SELECT
             COUNT(*) as requests,
             SUM(input_tokens) as total_input,
             SUM(output_tokens) as total_output,
@@ -100,7 +80,6 @@ class AsyncPostgresOdometer:
             if not row:
                 return {}
 
-            # Handle potential None returns from SUM on empty table
             t_input = row["total_input"] or 0
             t_output = row["total_output"] or 0
 
@@ -120,7 +99,7 @@ class AsyncPostgresOdometer:
         end_date: date | None = None,
     ) -> dict[str, dict[str, int]]:
         """Get aggregated statistics."""
-        pool = await self._get_pool()
+        pool = await self._ensure_ready()
 
         valid_groups = ["provider", "model", "host", "date"]
         if group_by not in valid_groups:
@@ -145,7 +124,6 @@ class AsyncPostgresOdometer:
             param_idx += 1
 
         if group_by == "date":
-            # Postgres specific: convert epoch to date
             group_clause = "DATE(to_timestamp(timestamp))"
             select_clause = f"{group_clause} as group_key"
         else:
@@ -153,7 +131,7 @@ class AsyncPostgresOdometer:
             select_clause = f"{group_by} as group_key"
 
         base_query = f"""
-        SELECT 
+        SELECT
             {select_clause},
             SUM(input_tokens) as total_input,
             SUM(output_tokens) as total_output,

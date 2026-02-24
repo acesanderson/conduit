@@ -1,15 +1,14 @@
 from __future__ import annotations
 import json
 import logging
-import asyncio
 from typing import Any
 from pydantic import TypeAdapter
 
 from conduit.domain.conversation.session import Session
 from conduit.domain.conversation.conversation import Conversation
 from conduit.domain.message.message import MessageUnion, Message
+from conduit.storage.db_manager import db_manager
 
-# Type checking import
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -21,55 +20,25 @@ logger = logging.getLogger(__name__)
 class AsyncPostgresSessionRepository:
     """
     Async Project-Scoped Session Repository (DAG Architecture).
-    Manages its own lazy connection pool to support restarts/different loops.
+    Uses the shared DatabaseManager pool.
     """
 
     def __init__(self, project_name: str, db_name: str = "conduit"):
         self.project_name = project_name
         self.db_name = db_name
         self._message_adapter = TypeAdapter(MessageUnion)
+        self._schema_initialized = False
 
-        # Lazy pool management
-        self._pool: Pool | None = None
-        self._pool_loop: asyncio.AbstractEventLoop | None = None
-
-    async def _get_pool(self) -> Pool:
-        """
-        Get or create a connection pool attached to the current event loop.
-        """
-        current_loop = asyncio.get_running_loop()
-
-        # If we have a pool and the loop hasn't changed, reuse it
-        if (
-            self._pool
-            and self._pool_loop is current_loop
-            and not current_loop.is_closed()
-        ):
-            return self._pool
-
-        # Otherwise (re)initialize
-        logger.debug(f"Initializing asyncpg pool for repository '{self.project_name}'")
-        from dbclients.clients.postgres import get_postgres_client
-
-        # get_postgres_client("async", ...) returns a coroutine factory for the pool
-        pool_factory = await get_postgres_client(
-            client_type="async", dbname=self.db_name
-        )
-
-        self._pool = pool_factory
-        self._pool_loop = current_loop
-
-        # Ensure schema exists on new connection
-        await self.initialize()
-        return self._pool
+    async def _ensure_ready(self) -> Pool:
+        if not self._schema_initialized:
+            await self.initialize()
+            self._schema_initialized = True
+        return await db_manager.get_pool(self.db_name)
 
     async def initialize(self) -> None:
         """Idempotent schema creation."""
-        # Use the pool directly if it exists, or just return (it's called by _get_pool anyway)
-        if not self._pool:
-            return
-
-        async with self._pool.acquire() as conn:
+        pool = await db_manager.get_pool(self.db_name)
+        async with pool.acquire() as conn:
             await conn.execute("""
                 -- 1. Scoped Sessions
                 CREATE TABLE IF NOT EXISTS conduit_sessions (
@@ -92,7 +61,7 @@ class AsyncPostgresSessionRepository:
                     role TEXT NOT NULL,
                     content JSONB,
                     created_at BIGINT,
-                    
+
                     -- Specialized columns for query ease/indexing
                     metadata JSONB DEFAULT '{}',
                     tool_calls JSONB,
@@ -109,12 +78,12 @@ class AsyncPostgresSessionRepository:
         """
         Fetches the most recently updated session.
         """
-        pool = await self._get_pool()
+        pool = await self._ensure_ready()
         query = """
-            SELECT session_id 
-            FROM conduit_sessions 
-            WHERE project_name = $1 
-            ORDER BY last_updated DESC 
+            SELECT session_id
+            FROM conduit_sessions
+            WHERE project_name = $1
+            ORDER BY last_updated DESC
             LIMIT 1
         """
         async with pool.acquire() as conn:
@@ -129,10 +98,10 @@ class AsyncPostgresSessionRepository:
     # --- Read Operations ---
 
     async def get_session(self, session_id: str) -> Session | None:
-        pool = await self._get_pool()
+        pool = await self._ensure_ready()
         q_session = """
             SELECT session_id, leaf_message_id, title, metadata, created_at
-            FROM conduit_sessions 
+            FROM conduit_sessions
             WHERE session_id = $1 AND project_name = $2
         """
         q_messages = """
@@ -163,16 +132,16 @@ class AsyncPostgresSessionRepository:
         return session
 
     async def get_conversation(self, leaf_message_id: str) -> Conversation | None:
-        pool = await self._get_pool()
+        pool = await self._ensure_ready()
         query = """
         WITH RECURSIVE conversation_tree AS (
             SELECT m.*, 1 as depth
             FROM conduit_messages m
             JOIN conduit_sessions s ON m.session_id = s.session_id
             WHERE m.message_id = $1 AND s.project_name = $2
-            
+
             UNION ALL
-            
+
             SELECT p.*, ct.depth + 1
             FROM conduit_messages p
             INNER JOIN conversation_tree ct ON p.message_id = ct.predecessor_id
@@ -190,7 +159,7 @@ class AsyncPostgresSessionRepository:
         return Conversation(messages=messages)
 
     async def get_message(self, message_id: str) -> Message | None:
-        pool = await self._get_pool()
+        pool = await self._ensure_ready()
         query = """
             SELECT m.*
             FROM conduit_messages m
@@ -206,7 +175,7 @@ class AsyncPostgresSessionRepository:
         return self._row_to_message(row)
 
     async def list_sessions(self, limit: int = 20) -> list[dict[str, Any]]:
-        pool = await self._get_pool()
+        pool = await self._ensure_ready()
         query = """
             SELECT session_id, title, created_at, leaf_message_id, last_updated
             FROM conduit_sessions
@@ -231,7 +200,7 @@ class AsyncPostgresSessionRepository:
     # --- Write Operations ---
 
     async def save_session(self, session: Session, name: str | None = None) -> None:
-        pool = await self._get_pool()
+        pool = await self._ensure_ready()
 
         # 1. Topological Sort
         sorted_msgs = self._topological_sort(session.message_dict)
@@ -268,7 +237,7 @@ class AsyncPostgresSessionRepository:
 
         upsert_message_sql = """
             INSERT INTO conduit_messages (
-                message_id, session_id, predecessor_id, role, content, 
+                message_id, session_id, predecessor_id, role, content,
                 created_at, metadata, tool_calls, images, audio, parsed
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
@@ -292,7 +261,7 @@ class AsyncPostgresSessionRepository:
     # --- Maintenance Operations ---
 
     async def delete_session(self, session_id: str) -> None:
-        pool = await self._get_pool()
+        pool = await self._ensure_ready()
         async with pool.acquire() as conn:
             await conn.execute(
                 "DELETE FROM conduit_sessions WHERE session_id = $1 AND project_name = $2",
@@ -301,7 +270,7 @@ class AsyncPostgresSessionRepository:
             )
 
     async def wipe(self) -> None:
-        pool = await self._get_pool()
+        pool = await self._ensure_ready()
         async with pool.acquire() as conn:
             await conn.execute(
                 "DELETE FROM conduit_sessions WHERE project_name = $1",
@@ -323,7 +292,6 @@ class AsyncPostgresSessionRepository:
         return self._message_adapter.validate_python(msg_data)
 
     def _topological_sort(self, message_dict: dict[str, Message]) -> list[Message]:
-        # (Same as before)
         present_ids = set(message_dict.keys())
         children_map = {mid: [] for mid in present_ids}
         roots = []
@@ -352,27 +320,6 @@ class AsyncPostgresSessionRepository:
 
         return sorted_list
 
-    # --- Async Context Management ---
-    async def aclose(self) -> None:
-        """Close the connection pool."""
-        if self._pool:
-            try:
-                await self._pool.close()
-                logger.info(f"Closed pool for repository '{self.project_name}'")
-            except Exception as e:
-                logger.warning(f"Error closing repository pool: {e}")
-            finally:
-                self._pool = None
-
-    async def __aenter__(self) -> AsyncPostgresSessionRepository:
-        """Initialize the pool and schema on entry."""
-        await self.initialize()
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Ensure the pool is closed on exit."""
-        await self.aclose()
-
 
 # Factory function becomes synchronous (just instantiates the lazy object)
 def get_async_repository(project_name: str) -> AsyncPostgresSessionRepository:
@@ -380,5 +327,4 @@ def get_async_repository(project_name: str) -> AsyncPostgresSessionRepository:
     Factory function to get an initialized AsyncPostgresSessionRepository.
     Requires 'asyncpg' installed and configured in dbclients.
     """
-    # Simply return the object. It will connect on first use.
     return AsyncPostgresSessionRepository(project_name=project_name)
