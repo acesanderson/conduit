@@ -73,6 +73,8 @@ class ConduitBase:
                 if options.persistence_mode == PersistenceMode.OVERWRITE:
                     logger.info("Overwriting conversation as per persistence_mode.")
                     conversation.messages = []
+                else:
+                    conversation.prune(keep=options.max_history)
 
                 # Ensure system prompt is consistent if we loaded a conversation
                 if params.system:

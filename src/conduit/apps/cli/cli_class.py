@@ -135,27 +135,20 @@ class ConduitCLI:
     def run(self) -> None:
         """
         Execute the CLI.
-        Manages the lifecycle of the Async Repository connection pool using the synchronous event loop.
+        Pool is lazily initialized on first use and shut down in the finally block.
         """
-        # 1. Initialize Repository Connection
-        # We manually trigger the context manager's entry point
-        self.loop.run_until_complete(self.repository.__aenter__())
+        from conduit.storage.db_manager import db_manager
 
         try:
             self.cli()
         except Exception as e:
-            # Catch-all to ensure we don't crash without closing,
-            # though Click usually handles its own exceptions.
             logger.error(f"CLI Error: {e}")
             raise
         finally:
-            # 2. Cleanup Repository Connection
-            # This runs even if sys.exit() is called by a Click command
             if not self.loop.is_closed():
-                # Manually trigger the context manager's exit point
-                self.loop.run_until_complete(
-                    self.repository.__aexit__(None, None, None)
-                )
+                from conduit.config import settings
+                self.loop.run_until_complete(settings.odometer_registry().flush())
+                self.loop.run_until_complete(db_manager.shutdown())
                 self.loop.close()
 
     def _get_stdin(self) -> str:

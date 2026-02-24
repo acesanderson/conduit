@@ -61,6 +61,10 @@ class ConduitBatchAsync:
 
         logger.info("Running batch asynchronously.")
 
+        # Warm up shared pool before spawning concurrent tasks
+        from conduit.storage.db_manager import db_manager
+        await db_manager.get_pool()
+
         # 2. Setup Concurrency
         semaphore = asyncio.Semaphore(max_concurrent) if max_concurrent else None
 
@@ -100,6 +104,11 @@ class ConduitBatchAsync:
 
         # 4. Execute
         conversations = await asyncio.gather(*tasks, return_exceptions=False)
+
+        # Flush telemetry once for the whole batch
+        from conduit.config import settings
+        await settings.odometer_registry().flush()
+
         return list(conversations)
 
     async def _maybe_with_semaphore(

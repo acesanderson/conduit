@@ -148,10 +148,6 @@ async def middleware_context_manager(request: GenerationRequest):
             )
             telemetry.emit_token_event(event)
 
-            # Trigger Async Flush
-            await telemetry.flush()
-            await telemetry.recover()
-
         # C. Workflow Trace Injection (The "Telemetric Middleware")
         # If we are currently running inside a @step, auto-log the token usage.
         if context.is_active:
