@@ -327,14 +327,6 @@ class GoogleClient(Client):
     async def _generate_image(self, request: GenerationRequest) -> GenerationResponse:
         """
         Generate an image via the Gemini API using generate_content.
-
-        Both Imagen models (imagen-3.0-generate-001) and hybrid Gemini-Imagen models
-        (gemini-2.5-flash-with-imagen-001) are accessed through generateContent on the
-        standard Gemini API endpoint with a plain API key. The predict endpoint used by
-        generate_images() is Vertex AI only and requires OAuth credentials.
-
-        Returns:
-            - Response object with ImageOutput in AssistantMessage.images
         """
         start_time = time.time()
 
@@ -352,15 +344,47 @@ class GoogleClient(Client):
         native_client = genai.Client(api_key=self._get_api_key())
         model_name = request.params.model
 
+        # Define the most permissive safety settings available
+        safety_settings = [
+            types.SafetySetting(
+                category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"
+            ),
+            types.SafetySetting(
+                category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"
+            ),
+            types.SafetySetting(
+                category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"
+            ),
+            types.SafetySetting(
+                category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"
+            ),
+            types.SafetySetting(
+                category="HARM_CATEGORY_CIVIC_INTEGRITY", threshold="BLOCK_NONE"
+            ),
+        ]
+
         response = await native_client.aio.models.generate_content(
             model=model_name,
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_modalities=["IMAGE"],
+                safety_settings=safety_settings,
             ),
         )
 
         duration = (time.time() - start_time) * 1000
+
+        # --- FIX: Guard against Safety Refusals or Empty Content ---
+        if not response.candidates or not response.candidates[0].content:
+            finish_reason = "UNKNOWN"
+            if response.candidates:
+                finish_reason = response.candidates[0].finish_reason
+
+            raise ValueError(
+                f"Google Gemini refused to generate content. Finish Reason: {finish_reason}. "
+                "This usually happens due to safety redlines that cannot be disabled."
+            )
+        # -----------------------------------------------------------
 
         image_outputs = []
         for part in response.candidates[0].content.parts:
