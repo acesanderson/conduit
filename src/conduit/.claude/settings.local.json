@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(echo === FILE: $f ===:*)",
+      "Bash(echo === FILE: $\\(basename $\\(dirname $f\\)\\) ===:*)",
+      "Bash(python3:*)"
+    ]
+  }
+}
