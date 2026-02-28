@@ -199,7 +199,7 @@ class BaseCommands(CommandCollection):
         @click.argument("index", type=int)
         def get(ctx: click.Context, index: int):
             """Get a specific message from history."""
-            conversation: Conversation = ctx.obj["conversation"]
+            conversation: Conversation = ctx.obj["conversation"]()
             printer: Printer = ctx.obj["printer"]
 
             handlers.handle_get(index, conversation, printer)
