@@ -112,6 +112,7 @@ class ConduitCLI:
             ctx.obj["query_function"] = self.query_function
             ctx.obj["preferred_model"] = self.preferred_model
             ctx.obj["system_message"] = self.system_message
+            ctx.obj["chat"] = False
             ctx.obj["verbosity"] = settings.default_verbosity
 
             if raw:

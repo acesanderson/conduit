@@ -17,31 +17,9 @@ from rich.console import Console
 from rich.syntax import Syntax
 from rich.table import Table
 
-# Import only for connection pool access
-from conduit.storage.cache.postgres_cache_async import AsyncPostgresCache
+from conduit.storage.db_manager import db_manager
 
 console = Console()
-
-
-async def get_pool_with_timeout(cache: AsyncPostgresCache, timeout: float = 5.0):
-    """
-    Acquire a connection pool with timeout to prevent hangs.
-
-    Args:
-        cache: AsyncPostgresCache instance
-        timeout: Timeout in seconds
-
-    Returns:
-        Connection pool
-
-    Raises:
-        asyncio.TimeoutError: If pool acquisition times out
-    """
-    try:
-        return await asyncio.wait_for(cache._get_pool(), timeout=timeout)
-    except asyncio.TimeoutError:
-        console.print("[red]Error: Timeout acquiring database connection pool[/red]")
-        raise
 
 
 async def list_all_projects(pool) -> None:
@@ -282,14 +260,10 @@ Examples:
         console.print("[red]Error: Cannot use -w/--wipe and -l/--last together[/red]")
         return 1
 
-    # Create a cache instance solely for pool access
-    # Use a dummy project name since we're bypassing the class methods
-    cache = AsyncPostgresCache(project_name="_cli_dummy", db_name=args.database)
     pool = None
 
     try:
-        # Acquire pool with timeout
-        pool = await get_pool_with_timeout(cache, timeout=5.0)
+        pool = await asyncio.wait_for(db_manager.get_pool(args.database), timeout=5.0)
 
         # Execute the requested command
         if args.project:
@@ -316,10 +290,9 @@ Examples:
             console.print(traceback.format_exc())
         return 1
     finally:
-        # Always close the pool
         if pool is not None:
             try:
-                await cache.aclose()
+                await pool.close()
             except Exception as e:
                 console.print(f"[yellow]Warning: Error closing pool: {e}[/yellow]")
 

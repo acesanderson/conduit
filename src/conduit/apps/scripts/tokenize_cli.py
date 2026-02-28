@@ -8,7 +8,7 @@ def main():
         "--model",
         "-m",
         type=str,
-        default="gpt",
+        default="gemini",
         help="The model to use for tokenization.",
     )
     args = parser.parse_args()

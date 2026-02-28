@@ -68,6 +68,7 @@ def main():
                 f"Invalid model type: {args.type}. Must be one of: {' | '.join(modeltypes)}."
             )
     if args.provider:
+        args.provider = args.provider.lower()
         if args.provider not in providers:
             raise ValueError(
                 f"Invalid provider: {args.provider}. Must be one of: {' | '.join(providers)}."

@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run:*)",
+      "Bash(python3:*)",
+      "Bash(/tmp/clean_test.md:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(obsidian:*)",
+      "Bash(npm root:*)",
+      "Bash(models:*)",
+      "Bash(conduit config:*)",
+      "Bash(tokenize Hello, this is a test sentence for tokenization.:*)",
+      "Bash(tokenize:*)",
+      "Bash(tokens:*)",
+      "Bash(conduit_cache:*)",
+      "Bash(ask:*)",
+      "Bash(conduit history:*)",
+      "Bash(imagegen history:*)",
+      "Bash(conduit last:*)",
+      "Bash(conduit get:*)",
+      "Bash(imagegen last:*)",
+      "Bash(/tmp/reflow_test.md:*)",
+      "Bash(.venv/bin/python:*)",
+      "Bash(imagegen:*)"
+    ]
+  }
+}

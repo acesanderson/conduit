@@ -362,11 +362,7 @@ class ModelStore:
             return RemoteClient(model_name)
 
         # Now all sync / async modes
-        if model_name in model_list["openai"]:
-            from conduit.core.clients.openai.client import OpenAIClient
-
-            return OpenAIClient()
-        elif model_name in model_list["anthropic"]:
+        if model_name in model_list["anthropic"]:
             from conduit.core.clients.anthropic.client import AnthropicClient
 
             return AnthropicClient()
