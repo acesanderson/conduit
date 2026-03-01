@@ -28,3 +28,6 @@ class ResponseMetadata(BaseModel):
     cache_hit: bool = Field(
         default=False, description="Whether the response was served from cache"
     )
+    logprobs: list[dict] | None = Field(
+        default=None, description="Per-token logprobs from the model, if requested"
+    )

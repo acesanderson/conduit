@@ -124,6 +124,7 @@ class OllamaClient(Client):
             max_tokens=request.params.max_tokens,
             stream=request.params.stream,
             extra_body=filtered_extra if filtered_extra else None,
+            logprobs=client_params.get("logprobs"),
         )
 
     def update_ollama_models(self):
@@ -224,12 +225,21 @@ class OllamaClient(Client):
             tool_calls=tool_calls if tool_calls else None,
         )
 
+        raw_logprobs: list[dict] | None = None
+        choice_logprobs = getattr(result.choices[0], "logprobs", None)
+        if choice_logprobs and getattr(choice_logprobs, "content", None):
+            raw_logprobs = [
+                {"token": t.token, "logprob": t.logprob}
+                for t in choice_logprobs.content
+            ]
+
         metadata = ResponseMetadata(
             duration=duration,
             model_slug=result.model,
             input_tokens=result.usage.prompt_tokens,
             output_tokens=result.usage.completion_tokens,
             stop_reason=stop_reason,
+            logprobs=raw_logprobs,
         )
 
         return GenerationResponse(
