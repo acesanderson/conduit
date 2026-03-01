@@ -24,6 +24,7 @@ class OpenAIPayload(BaseModel):
     frequency_penalty: float | None = Field(default=None, ge=-2.0, le=2.0)
     presence_penalty: float | None = Field(default=None, ge=-2.0, le=2.0)
     logit_bias: dict[str, float] | None = None
+    logprobs: bool | None = None
     stop: str | list[str] | None = None
     seed: int | None = None
 
