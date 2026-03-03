@@ -61,7 +61,7 @@ class ConduitHarness:
         from rich.table import Table
         from rich.text import Text
 
-        console = Console()
+        console = Console(stderr=True)
 
         # We use a table for structural layout inside the panel
         layout_table = Table.grid(padding=(0, 1))

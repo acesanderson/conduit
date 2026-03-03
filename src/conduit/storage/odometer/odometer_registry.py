@@ -92,9 +92,9 @@ class OdometerRegistry:
             RESCUE_FILE.parent.mkdir(parents=True, exist_ok=True)
             RESCUE_FILE.write_text(json.dumps(data))
             # Use print because logging might be dead
-            print(f"[Odometer] Rescued {len(batch)} unsaved events to {RESCUE_FILE}")
+            print(f"[Odometer] Rescued {len(batch)} unsaved events to {RESCUE_FILE}", file=__import__("sys").stderr)
         except Exception as e:
-            print(f"[Odometer] CRITICAL: Failed to rescue events: {e}")
+            print(f"[Odometer] CRITICAL: Failed to rescue events: {e}", file=__import__("sys").stderr)
 
     async def recover(self) -> None:
         """
