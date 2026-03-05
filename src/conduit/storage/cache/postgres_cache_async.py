@@ -150,5 +150,98 @@ class AsyncPostgresCache:
             "latest_record": bounds["latest"] if bounds else None,
         }
 
+    async def ls_all(self) -> list[dict[str, object]]:
+        """
+        Return aggregate stats for every cache_name in the table.
+        Each dict has exactly these keys:
+            cache_name: str
+            total_entries: int
+            total_size_bytes: int
+            oldest_record: str | None   # 'YYYY-MM-DD', None if no entries
+            latest_record: str | None   # 'YYYY-MM-DD', None if no entries
+        Ordered by cache_name ascending.
+        Calls _ensure_ready() at entry.
+        """
+        pool = await self._ensure_ready()
+        query = """
+            SELECT
+                cache_name,
+                COUNT(*) AS total_entries,
+                COALESCE(SUM(pg_column_size(payload)), 0) AS total_size_bytes,
+                to_char(MIN(created_at), 'YYYY-MM-DD') AS oldest_record,
+                to_char(MAX(updated_at), 'YYYY-MM-DD') AS latest_record
+            FROM conduit_cache_entries
+            GROUP BY cache_name
+            ORDER BY cache_name ASC
+        """
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(query)
+        return [
+            {
+                "cache_name": row["cache_name"],
+                "total_entries": row["total_entries"],
+                "total_size_bytes": row["total_size_bytes"],
+                "oldest_record": row["oldest_record"],
+                "latest_record": row["latest_record"],
+            }
+            for row in rows
+        ]
+
+    async def delete_older_than(self, pg_interval: str) -> int:
+        """
+        Delete entries for this cache_name where created_at < now() - interval.
+        `pg_interval` is a validated Postgres interval string (e.g. '7 days', '48 hours').
+        Returns the number of rows deleted.
+        Does NOT reset _hits, _misses, or _start_time.
+        Calls _ensure_ready() at entry.
+        """
+        pool = await self._ensure_ready()
+        query = """
+            DELETE FROM conduit_cache_entries
+            WHERE cache_name = $1
+              AND created_at < now() - $2::interval
+        """
+        async with pool.acquire() as conn:
+            result = await conn.execute(query, self.project_name, pg_interval)
+        # asyncpg returns a status string like "DELETE 3"
+        deleted = int(result.split()[-1])
+        return deleted
+
+    async def wipe_all(self) -> int:
+        """
+        Delete all rows in conduit_cache_entries with no cache_name filter.
+        Returns the number of rows deleted.
+        Calls _ensure_ready() at entry.
+        """
+        pool = await self._ensure_ready()
+        query = "DELETE FROM conduit_cache_entries WHERE TRUE"
+        async with pool.acquire() as conn:
+            result = await conn.execute(query)
+        deleted = int(result.split()[-1])
+        return deleted
+
+    async def inspect_latest(self) -> dict[str, object] | None:
+        """
+        Return the most recent entry for this cache_name, or None if empty.
+        """
+        pool = await self._ensure_ready()
+        query = """
+            SELECT cache_name, cache_key, payload, updated_at
+            FROM conduit_cache_entries
+            WHERE cache_name = $1
+            ORDER BY updated_at DESC
+            LIMIT 1
+        """
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(query, self.project_name)
+        if row is None:
+            return None
+        return {
+            "cache_name": row["cache_name"],
+            "cache_key": row["cache_key"],
+            "payload": row["payload"],
+            "updated_at": row["updated_at"],
+        }
+
     def _request_to_key(self, request: GenerationRequest) -> str:
         return request.generate_cache_key()

@@ -114,6 +114,7 @@ class ConduitCLI:
             ctx.obj["system_message"] = self.system_message
             ctx.obj["chat"] = False
             ctx.obj["verbosity"] = settings.default_verbosity
+            ctx.obj["db_name"] = "conduit"
 
             if raw:
                 printer.set_raw(True)
