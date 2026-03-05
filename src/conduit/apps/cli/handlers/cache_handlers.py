@@ -15,8 +15,7 @@ logger = logging.getLogger(__name__)
 class CacheHandlers:
     @staticmethod
     def handle_cache_ls(
-        project_name: str,
-        all_projects: bool,
+        project_name: str | None,
         printer: Printer,
         loop: asyncio.AbstractEventLoop,
         db_name: str,
@@ -24,10 +23,12 @@ class CacheHandlers:
         from conduit.storage.cache.postgres_cache_async import AsyncPostgresCache
         from rich.table import Table
 
-        cache = AsyncPostgresCache(project_name=project_name, db_name=db_name)
+        # Use an empty string as the project_name placeholder for ls_all;
+        # ls_all queries across all cache_names so the instance value is unused.
+        cache = AsyncPostgresCache(project_name=project_name or "", db_name=db_name)
 
         try:
-            if all_projects:
+            if project_name is None:
                 rows = loop.run_until_complete(cache.ls_all())
                 if not rows:
                     printer.print_pretty("No cached entries found.")
@@ -86,7 +87,7 @@ class CacheHandlers:
 
     @staticmethod
     def handle_cache_clear(
-        project_name: str,
+        project_name: str | None,
         all_projects: bool,
         older_than: str | None,
         force: bool,
@@ -96,7 +97,7 @@ class CacheHandlers:
     ) -> None:
         from conduit.storage.cache.postgres_cache_async import AsyncPostgresCache
 
-        cache = AsyncPostgresCache(project_name=project_name, db_name=db_name)
+        cache = AsyncPostgresCache(project_name=project_name or "", db_name=db_name)
 
         if not force:
             from rich.prompt import Confirm

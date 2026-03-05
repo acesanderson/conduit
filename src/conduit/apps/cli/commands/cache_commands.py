@@ -22,18 +22,16 @@ def cache(ctx: click.Context) -> None:
 
 
 @cache.command()
-@click.option("--all", "all_projects", is_flag=True, help="Show all cache namespaces.")
+@click.argument("project_name", required=False, default=None)
 @click.pass_context
-def ls(ctx: click.Context, all_projects: bool) -> None:
-    """List cache entries for the current project (or all projects with --all)."""
+def ls(ctx: click.Context, project_name: str | None) -> None:
+    """List cache entries. Without PROJECT_NAME, lists all projects."""
     printer: Printer = ctx.obj["printer"]
     loop: asyncio.AbstractEventLoop = ctx.obj["loop"]
-    project_name: str = ctx.obj["project_name"]
     db_name: str = ctx.obj["db_name"]
 
     handlers.handle_cache_ls(
         project_name=project_name,
-        all_projects=all_projects,
         printer=printer,
         loop=loop,
         db_name=db_name,
@@ -41,6 +39,7 @@ def ls(ctx: click.Context, all_projects: bool) -> None:
 
 
 @cache.command()
+@click.argument("project_name", required=False, default=None)
 @click.option("--all", "all_projects", is_flag=True, help="Clear all cache namespaces.")
 @click.option(
     "--older-than",
@@ -53,11 +52,16 @@ def ls(ctx: click.Context, all_projects: bool) -> None:
 @click.pass_context
 def clear(
     ctx: click.Context,
+    project_name: str | None,
     all_projects: bool,
     older_than_raw: str | None,
     force: bool,
 ) -> None:
-    """Clear cache entries for the current project."""
+    """Clear cache entries for PROJECT_NAME, or all projects with --all."""
+    if not project_name and not all_projects:
+        raise click.UsageError("Provide a PROJECT_NAME or use --all.")
+    if project_name and all_projects:
+        raise click.UsageError("PROJECT_NAME and --all are mutually exclusive.")
     if all_projects and older_than_raw is not None:
         raise click.UsageError("--all and --older-than are mutually exclusive.")
 
@@ -67,7 +71,6 @@ def clear(
 
     printer: Printer = ctx.obj["printer"]
     loop: asyncio.AbstractEventLoop = ctx.obj["loop"]
-    project_name: str = ctx.obj["project_name"]
     db_name: str = ctx.obj["db_name"]
 
     handlers.handle_cache_clear(
@@ -82,12 +85,12 @@ def clear(
 
 
 @cache.command()
+@click.argument("project_name")
 @click.pass_context
-def inspect(ctx: click.Context) -> None:
-    """Inspect the most recent cache entry for the current project."""
+def inspect(ctx: click.Context, project_name: str) -> None:
+    """Inspect the most recent cache entry for PROJECT_NAME."""
     printer: Printer = ctx.obj["printer"]
     loop: asyncio.AbstractEventLoop = ctx.obj["loop"]
-    project_name: str = ctx.obj["project_name"]
     db_name: str = ctx.obj["db_name"]
 
     handlers.handle_cache_inspect(
