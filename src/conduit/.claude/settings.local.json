@@ -3,7 +3,13 @@
     "allow": [
       "Bash(echo === FILE: $f ===:*)",
       "Bash(echo === FILE: $\\(basename $\\(dirname $f\\)\\) ===:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(git:*)",
+      "Read(//Users/bianders/Brian_Code/conduit-project/**)",
+      "Bash(python -c \"from conduit.apps.cli.commands.cache_commands import cache; print\\(''cache_commands: ok''\\)\")",
+      "Bash(python -c \"from conduit.apps.cli.handlers.cache_handlers import CacheHandlers; print\\(''cache_handlers: ok''\\)\")",
+      "Bash(python -c \"from conduit.apps.cli.utils.duration import parse_duration; print\\(''7d ->'', parse_duration\\(''7d''\\)\\); print\\(''2w ->'', parse_duration\\(''2w''\\)\\); print\\(''48h ->'', parse_duration\\(''48h''\\)\\)\")",
+      "Bash(python:*)"
     ]
   }
 }
