@@ -1,4 +1,5 @@
 from conduit.apps.cli.commands.base_commands import BaseCommands
+from conduit.apps.cli.commands.cache_commands import cache
 from conduit.apps.cli.cli_class import ConduitCLI
 import sys
 
@@ -23,6 +24,7 @@ def main():
     conduit_cli = ConduitCLI()
     commands = BaseCommands()
     conduit_cli.attach(commands)
+    conduit_cli.cli.add_command(cache)
     conduit_cli.run()
 
 
