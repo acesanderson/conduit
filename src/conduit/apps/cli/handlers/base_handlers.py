@@ -245,6 +245,7 @@ class BaseHandlers:
         stdin: str | None,
         system_message: str = "",
         project_name: str = "",
+        search: bool = False,
         citations: bool = False,
     ) -> None:
         """
@@ -267,6 +268,7 @@ class BaseHandlers:
             append=append or "",
             system_message=system_message,
             project_name=project_name,
+            search=search,
             cache=not local,
             local=local,
             preferred_model=model,  # Model is already resolved by the Command layer
