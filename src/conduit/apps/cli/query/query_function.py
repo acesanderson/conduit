@@ -120,6 +120,8 @@ def default_query_function(
     """
     Default query function.
     """
+    if inputs.search:
+        return _search_query_function(inputs)
     logger.debug("Running default_query_function...")
     # Extract inputs from dict
     project_name = inputs.project_name
