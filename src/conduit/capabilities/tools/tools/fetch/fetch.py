@@ -518,78 +518,121 @@ async def fetch_url(
     return _paginate_content(full_md, url, page)
 
 
-async def web_search(
-    query: Annotated[str, "The search query to find information online."],
-) -> dict[str, str]:
-    """
-    Performs a web search using the Brave Search API.
-    """
-    import os
-    import httpx
+def _format_results(items: list[dict]) -> dict[str, str]:
+    """Format a list of search result dicts with keys title, url, snippet."""
+    lines = []
+    for i, item in enumerate(items, 1):
+        title = item.get("title", "No Title")
+        link = item.get("url", "")
+        snippet = item.get("snippet", "")
+        lines.append(f"[{i}] Title: {title}\n    URL: {link}\n    Snippet: {snippet}")
+    return {
+        "result": "\n---\n".join(lines),
+        "next_step_hint": "Use fetch_url to see full page content or transcripts.",
+    }
 
-    # Validate input
-    if not query or not query.strip():
-        raise ToolConfigurationError("Search query cannot be empty")
+
+async def _search_brave(query: str, client) -> list[dict]:
+    import os
 
     api_key = os.getenv("BRAVE_API_KEY")
     if not api_key:
         raise ToolConfigurationError(
-            "BRAVE_API_KEY environment variable not set. Configure your API key to use web search."
+            "BRAVE_API_KEY environment variable not set."
         )
 
-    url = "https://api.search.brave.com/res/v1/web/search"
-    headers = {
-        "Accept": "application/json",
-        "X-Subscription-Token": api_key,
-    }
-    params = {"q": query, "count": 5}
+    response = await client.get(
+        "https://api.search.brave.com/res/v1/web/search",
+        headers={"Accept": "application/json", "X-Subscription-Token": api_key},
+        params={"q": query, "count": 5},
+        timeout=10.0,
+    )
+    response.raise_for_status()
+    data = response.json()
+    return [
+        {"title": r.get("title", ""), "url": r.get("url", ""), "snippet": r.get("description", "")}
+        for r in data.get("web", {}).get("results", [])
+    ]
+
+
+async def _search_serper(query: str, client) -> list[dict]:
+    import os
+
+    api_key = os.getenv("SERPER_API_KEY")
+    if not api_key:
+        raise ToolConfigurationError(
+            "SERPER_API_KEY environment variable not set."
+        )
+
+    response = await client.post(
+        "https://google.serper.dev/search",
+        headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
+        json={"q": query, "num": 5},
+        timeout=10.0,
+    )
+    response.raise_for_status()
+    data = response.json()
+    return [
+        {"title": r.get("title", ""), "url": r.get("link", ""), "snippet": r.get("snippet", "")}
+        for r in data.get("organic", [])
+    ]
+
+
+async def web_search(
+    query: Annotated[str, "The search query to find information online."],
+) -> dict[str, str]:
+    """
+    Performs a web search. Uses Brave Search API, falling back to Serper (Google)
+    if Brave is rate-limited or unavailable.
+    """
+    import httpx
+
+    if not query or not query.strip():
+        raise ToolConfigurationError("Search query cannot be empty")
 
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get(
-                url, headers=headers, params=params, timeout=10.0
-            )
-            response.raise_for_status()
-            data = response.json()
+            try:
+                results = await _search_brave(query, client)
+                if results:
+                    return _format_results(results)
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 429:
+                    logger.warning("Brave Search rate-limited (429), falling back to Serper")
+                elif e.response.status_code == 401:
+                    raise ToolConfigurationError(
+                        "Invalid Brave Search API key. Check your BRAVE_API_KEY configuration."
+                    )
+                else:
+                    raise ToolExecutionError(
+                        f"Brave Search API error ({e.response.status_code}): {str(e)}"
+                    )
+            except ToolConfigurationError:
+                logger.warning("Brave Search not configured, falling back to Serper")
 
-        results = []
-        web_results = data.get("web", {}).get("results", [])
+            # Fallback: Serper
+            try:
+                results = await _search_serper(query, client)
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 401:
+                    raise ToolConfigurationError(
+                        "Invalid Serper API key. Check your SERPER_API_KEY configuration."
+                    )
+                raise ToolExecutionError(
+                    f"Serper API error ({e.response.status_code}): {str(e)}"
+                )
 
-        if not web_results:
-            return {"result": "No results found."}
+            if not results:
+                return {"result": "No results found."}
 
-        for i, item in enumerate(web_results, 1):
-            title = item.get("title", "No Title")
-            link = item.get("url", "")
-            description = item.get("description", "")
-            results.append(
-                f"[{i}] Title: {title}\n    URL: {link}\n    Snippet: {description}"
-            )
+            return _format_results(results)
 
-        return {
-            "result": "\n---\n".join(results),
-            "next_step_hint": "Use fetch_url to see full page content or transcripts.",
-        }
-
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 401:
-            raise ToolConfigurationError(
-                "Invalid Brave Search API key. Check your BRAVE_API_KEY configuration."
-            )
-        elif e.response.status_code == 429:
-            raise ToolExecutionError(
-                "Brave Search rate limit exceeded. Try again in a few moments."
-            )
-        else:
-            raise ToolExecutionError(
-                f"Brave Search API error ({e.response.status_code}): {str(e)}"
-            )
-
+    except (ToolExecutionError, ToolConfigurationError):
+        raise
     except httpx.TimeoutException:
         raise ToolExecutionError(
             "Search request timed out. Check your internet connection or try again."
         )
-
     except Exception as e:
         raise ToolExecutionError(f"Search failed: {str(e)}")
 
