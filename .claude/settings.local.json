@@ -22,7 +22,10 @@
       "Bash(imagegen last:*)",
       "Bash(/tmp/reflow_test.md:*)",
       "Bash(.venv/bin/python:*)",
-      "Bash(imagegen:*)"
+      "Bash(imagegen:*)",
+      "Bash(pytest:*)",
+      "Bash(python:*)",
+      "Bash(git:*)"
     ]
   }
 }
