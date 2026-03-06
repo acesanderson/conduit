@@ -9,8 +9,10 @@ from __future__ import annotations
 from conduit.config import settings
 from typing import TYPE_CHECKING
 import logging
+import json
 import sys
 import asyncio
+import click
 
 if TYPE_CHECKING:
     from conduit.utils.progress.verbosity import Verbosity
@@ -278,3 +280,48 @@ class BaseHandlers:
             printer.print_raw(response.content)
         else:
             printer.print_markdown(response.content)
+
+    @staticmethod
+    def handle_citations(
+        response: object,
+        citations: bool,
+        raw: bool,
+        printer: Printer,
+    ) -> None:
+        """
+        Print citations after a query response.
+        All warnings go to stderr via printer.print_err.
+        Raw JSON goes to stdout via click.echo. Formatted list goes to printer.print_citations.
+        """
+        if not citations:
+            return
+
+        # Provider check — only Perplexity populates citations
+        metadata: dict = getattr(getattr(response, "message", None), "metadata", {}) or {}
+        provider: str | None = metadata.get("provider")
+
+        if provider != "perplexity":
+            logger.warning(
+                "--citations requested but provider is %r, not 'perplexity'", provider
+            )
+            printer.print_err(
+                "[red]--citations is only supported for Perplexity models "
+                "(sonar, sonar-pro). No citations available.[/red]"
+            )
+            return
+
+        citations_list: list[dict] = metadata.get("citations", [])
+
+        if not citations_list:
+            logger.debug("--citations: no citations returned by model")
+            printer.print_err(
+                "[yellow]No citations were returned by the model.[/yellow]"
+            )
+            return
+
+        logger.debug("--citations: printing %d citations", len(citations_list))
+
+        if raw:
+            click.echo(json.dumps(citations_list))
+        else:
+            printer.print_citations(citations_list)
