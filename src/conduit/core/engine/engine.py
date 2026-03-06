@@ -26,7 +26,7 @@ class Engine:
         conversation: Conversation,
         params: GenerationParams,
         options: ConduitOptions,
-        max_steps: int = 10,  # Safety limit for auto-looping
+        max_steps: int = 20,  # Safety limit for auto-looping
     ) -> Conversation:
         step_count = 0
 
