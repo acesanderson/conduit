@@ -97,7 +97,7 @@ def _search_query_function(inputs: CLIQueryFunctionInputs) -> Conversation:
     }
 
     if inputs.local:
-        opt_updates["use_remote"] = True
+        opt_updates["use_remote"] = True  # --local routes through HeadwaterServer (remote from API perspective)
 
     if inputs.cache:
         cache_name = inputs.project_name or settings.default_project_name
