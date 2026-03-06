@@ -95,6 +95,17 @@ class AnthropicClient(Client):
             else:
                 converted_messages.append(self._convert_message(message))
 
+            # Check if content is empty whitespace before adding
+            content_str = str(message.content or "").strip()
+            if not content_str and not getattr(message, "tool_calls", None):
+                continue
+
+            converted_messages.append(self._convert_message(message))
+
+        # Anthropic requirement: messages cannot be empty
+        if not converted_messages:
+            converted_messages.append({"role": "user", "content": "..."})
+
         # Combine system messages into a single system parameter
         system_content = "\n\n".join(system_messages) if system_messages else None
 
