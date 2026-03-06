@@ -64,6 +64,54 @@ class CLIQueryFunctionProtocol(Protocol):
     ) -> Conversation: ...
 
 
+def _search_query_function(inputs: CLIQueryFunctionInputs) -> Conversation:
+    """
+    Query function variant that registers web_search and fetch_url as tools,
+    enabling the Engine's multi-turn GENERATE → EXECUTE → TERMINATE loop.
+    """
+    from conduit.capabilities.tools.registry import ToolRegistry
+    from conduit.capabilities.tools.tools.fetch.fetch import fetch_url, web_search
+    from conduit.core.conduit.conduit_sync import ConduitSync
+    from conduit.domain.request.generation_params import GenerationParams
+    from conduit.core.prompt.prompt import Prompt
+    from conduit.config import settings
+
+    tool_registry = ToolRegistry()
+    tool_registry.register_function(web_search)
+    tool_registry.register_function(fetch_url)
+
+    combined_query = "\n\n".join(
+        [inputs.query_input, inputs.context, inputs.append]
+    ).strip()
+    prompt = Prompt(combined_query)
+
+    params = GenerationParams(
+        model=inputs.preferred_model,
+        system=inputs.system_message or None,
+        temperature=inputs.temperature,
+    )
+
+    options = settings.default_conduit_options()
+    opt_updates: dict = {
+        "verbosity": inputs.verbose,
+        "tool_registry": tool_registry,
+        "include_history": inputs.include_history,
+    }
+
+    if inputs.cache:
+        cache_name = inputs.project_name or settings.default_project_name
+        opt_updates["cache"] = settings.default_cache(project_name=cache_name)
+
+    if not inputs.ephemeral:
+        repo_name = inputs.project_name or settings.default_project_name
+        opt_updates["repository"] = settings.default_repository(project_name=repo_name)
+
+    options = options.model_copy(update=opt_updates)
+
+    conduit = ConduitSync(prompt=prompt, params=params, options=options)
+    return conduit.run()
+
+
 # Now, our default implementation -- the beauty of LLMs with POSIX philosophy
 def default_query_function(
     inputs: CLIQueryFunctionInputs,
