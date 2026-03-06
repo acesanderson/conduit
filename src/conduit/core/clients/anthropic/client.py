@@ -92,10 +92,9 @@ class AnthropicClient(Client):
 
             if isinstance(message, SystemMessage):
                 system_messages.append(message.content)
-            else:
-                converted_messages.append(self._convert_message(message))
+                continue
 
-            # Check if content is empty whitespace before adding
+            # Skip empty messages with no tool calls
             content_str = str(message.content or "").strip()
             if not content_str and not getattr(message, "tool_calls", None):
                 continue
