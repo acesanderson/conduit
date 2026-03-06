@@ -6,14 +6,18 @@ Our default query function -- passed into ConduitCLI as a dependency.
 Define your own for customization.
 """
 
+from __future__ import annotations
+
 from conduit.config import settings
 from conduit.core.prompt.prompt import Prompt
-from conduit.domain.result.response import GenerationResponse
 from conduit.utils.progress.verbosity import Verbosity
 from conduit.apps.cli.utils.printer import Printer
 from dataclasses import dataclass, field
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 import logging
+
+if TYPE_CHECKING:
+    from conduit.domain.conversation.conversation import Conversation
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +47,7 @@ class CLIQueryFunctionInputs:
     verbose: Verbosity = Verbosity.PROGRESS
     include_history: bool = True  # whether to include conversation history in messages
     ephemeral: bool = False  # whether to avoid persisting this conversation
+    search: bool = False  # Enable web search + URL fetch tools
     client_params: dict = field(default_factory=dict)
 
 
@@ -56,13 +61,13 @@ class CLIQueryFunctionProtocol(Protocol):
     def __call__(
         self,
         inputs: CLIQueryFunctionInputs,
-    ) -> GenerationResponse: ...
+    ) -> Conversation: ...
 
 
 # Now, our default implementation -- the beauty of LLMs with POSIX philosophy
 def default_query_function(
     inputs: CLIQueryFunctionInputs,
-) -> GenerationResponse:
+) -> Conversation:
     """
     Default query function.
     """
