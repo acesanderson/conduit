@@ -119,3 +119,22 @@ def test_handle_citations_handles_none_metadata():
     printer.print_err.assert_called_once()
     call_arg = printer.print_err.call_args[0][0]
     assert "[red]" in call_arg
+
+
+def test_handle_citations_works_with_conversation_shape():
+    """handle_citations works when response has .last (Conversation shape, not .message)."""
+    # Simulate a Conversation object: no .message attribute, has .last
+    msg = MagicMock(spec=[])  # spec=[] means no attributes by default
+    msg.metadata = {
+        "provider": "perplexity",
+        "citations": [{"title": "T", "url": "https://t.com", "source": "", "date": ""}],
+    }
+
+    response = MagicMock(spec=[])  # no .message attribute
+    response.last = msg
+
+    printer = make_printer()
+    BaseHandlers.handle_citations(response, citations=True, raw=False, printer=printer)
+
+    printer.print_citations.assert_called_once()
+    printer.print_err.assert_not_called()
