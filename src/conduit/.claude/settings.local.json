@@ -9,7 +9,11 @@
       "Bash(python -c \"from conduit.apps.cli.commands.cache_commands import cache; print\\(''cache_commands: ok''\\)\")",
       "Bash(python -c \"from conduit.apps.cli.handlers.cache_handlers import CacheHandlers; print\\(''cache_handlers: ok''\\)\")",
       "Bash(python -c \"from conduit.apps.cli.utils.duration import parse_duration; print\\(''7d ->'', parse_duration\\(''7d''\\)\\); print\\(''2w ->'', parse_duration\\(''2w''\\)\\); print\\(''48h ->'', parse_duration\\(''48h''\\)\\)\")",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(conduit query:*)",
+      "Bash(uv run:*)",
+      "Bash(/bin/zsh:*)",
+      "Bash(source:*)"
     ]
   }
 }
