@@ -29,6 +29,7 @@ class Printer:
         self.emit_data = (not IS_TTY) or raw  # pipe/redirect OR --raw
         self.emit_ui = IS_TTY and (not raw)  # bare terminal AND not --raw
         self.ui = Console(file=sys.stderr) if self.emit_ui else None
+        self._err_console: Console = self.ui if self.ui is not None else Console(file=sys.stderr)
         self._write = sys.stdout.write
 
     def set_raw(self, raw: bool):
@@ -63,6 +64,35 @@ class Printer:
         if self.ui:
             return self.ui.status(*args, **kwargs)
         return nullcontext()
+
+    def print_err(self, message: str) -> None:
+        """
+        Print rich-formatted message to stderr unconditionally.
+        Used for warnings that must reach the user regardless of TTY or --raw state.
+        """
+        self._err_console.print(message)
+
+    def print_citations(self, citations: list[dict]) -> None:
+        """
+        Print formatted citations list via print_pretty (stderr in TTY, silent in pipe).
+        Raw JSON output is handled by the caller, not here.
+        """
+        if not self.emit_ui:
+            return
+        self.print_pretty("")
+        self.print_pretty("[bold]Sources[/bold]")
+        index = 1
+        for c in citations:
+            title = c.get("title") or ""
+            url = c.get("url") or ""
+            if not title and not url:
+                continue
+            display = title if title else url
+            line = f"  {index}. {display}"
+            if title and url:
+                line += f" — {url}"
+            self.print_pretty(line)
+            index += 1
 
     def print_markdown(
         self, markdown_string: str | RenderableType, add_rule: bool = True
