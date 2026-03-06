@@ -209,6 +209,13 @@ class AsyncPostgresSessionRepository:
         msg_records = []
         for msg in sorted_msgs:
             d = msg.model_dump(mode="json")
+            # ToolMessage fields tool_call_id and name have no dedicated column;
+            # stash them in metadata so they survive the round-trip.
+            metadata = dict(d.get("metadata") or {})
+            if d.get("tool_call_id"):
+                metadata["_tool_call_id"] = d["tool_call_id"]
+            if d.get("name") and d.get("role") == "tool":
+                metadata["_tool_name"] = d["name"]
             msg_records.append(
                 (
                     d["message_id"],
@@ -217,7 +224,7 @@ class AsyncPostgresSessionRepository:
                     d["role"],
                     json.dumps(d.get("content")),
                     d["created_at"],
-                    json.dumps(d.get("metadata") or {}),
+                    json.dumps(metadata),
                     json.dumps(d.get("tool_calls")),
                     json.dumps(d.get("images")),
                     json.dumps(d.get("audio")),
@@ -289,6 +296,16 @@ class AsyncPostgresSessionRepository:
                     pass
         if "role" in msg_data:
             msg_data["role_str"] = msg_data["role"]
+        # Restore ToolMessage fields stashed in metadata during save.
+        meta = msg_data.get("metadata") or {}
+        if "_tool_call_id" in meta:
+            msg_data["tool_call_id"] = meta["_tool_call_id"]
+        if "_tool_name" in meta:
+            msg_data["name"] = meta["_tool_name"]
+        # Backwards compat: tool messages stored before this fix lack tool_call_id.
+        # Use message_id as a surrogate so they deserialize rather than crash.
+        if msg_data.get("role") == "tool" and not msg_data.get("tool_call_id"):
+            msg_data["tool_call_id"] = msg_data.get("message_id", "unknown")
         return self._message_adapter.validate_python(msg_data)
 
     def _topological_sort(self, message_dict: dict[str, Message]) -> list[Message]:
