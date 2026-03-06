@@ -245,6 +245,7 @@ class BaseHandlers:
         stdin: str | None,
         system_message: str = "",
         project_name: str = "",
+        citations: bool = False,
     ) -> None:
         """
         Here we resolve all inputs for flat input to the query function.
@@ -257,6 +258,8 @@ class BaseHandlers:
         context_text = stdin if isinstance(stdin, str) and stdin.strip() else ""
 
         # 2. Build Inputs
+        client_params = {"return_citations": True} if citations else {}
+
         inputs = CLIQueryFunctionInputs(
             query_input=query_input,
             printer=printer,
@@ -270,6 +273,7 @@ class BaseHandlers:
             verbose=verbosity,
             include_history=chat,
             temperature=temperature,
+            client_params=client_params,
         )
 
         # 3. Execute
@@ -280,6 +284,9 @@ class BaseHandlers:
             printer.print_raw(response.content)
         else:
             printer.print_markdown(response.content)
+
+        # 5. Citations
+        BaseHandlers.handle_citations(response, citations=citations, raw=raw, printer=printer)
 
     @staticmethod
     def handle_citations(
@@ -297,7 +304,9 @@ class BaseHandlers:
             return
 
         # Provider check — only Perplexity populates citations
-        metadata: dict = getattr(getattr(response, "message", None), "metadata", {}) or {}
+        # Try GenerationResponse shape (.message) first, fall back to Conversation shape (.last)
+        message = getattr(response, "message", None) or getattr(response, "last", None)
+        metadata: dict = getattr(message, "metadata", {}) or {}
         provider: str | None = metadata.get("provider")
 
         if provider != "perplexity":

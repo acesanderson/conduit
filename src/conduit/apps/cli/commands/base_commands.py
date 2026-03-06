@@ -50,6 +50,13 @@ class BaseCommands(CommandCollection):
             help="Append to query after stdin.",
             default=None,
         )
+        @click.option(
+            "-C",
+            "--citations",
+            is_flag=True,
+            default=False,
+            help="Print citations (Perplexity models only).",
+        )
         @click.argument("query_input", nargs=-1)
         @click.pass_context
         def query(
@@ -60,6 +67,7 @@ class BaseCommands(CommandCollection):
             temperature: float | None,
             chat: bool,
             append: str | None,
+            citations: bool,
             query_input: tuple[str, ...],
         ):
             """
@@ -100,6 +108,7 @@ class BaseCommands(CommandCollection):
                 temperature=temperature,
                 chat=chat,
                 append=append,
+                citations=citations,
                 # Injected Dependencies
                 printer=printer,
                 query_function=query_function,
