@@ -87,14 +87,29 @@ def _atexit_cleanup():
     closes, triggering async cleanup on a dead loop — which propagates through
     call_exception_handler into Rich logging at a point where sys.meta_path is
     None, causing an ImportError during interpreter teardown.
+
+    After closing sessions we also drain pending tasks (curl_cffi creates
+    internal timeout tasks that need one event loop tick to process cancellation
+    before the loop is destroyed, otherwise asyncio warns "Task was destroyed
+    but it is pending!").
     """
     import asyncio
 
     if _session_pool is None:
         return
+
+    async def _cleanup_and_drain():
+        await _session_pool.cleanup()
+        # Drain any pending tasks (e.g. curl_cffi _force_timeout coroutines)
+        tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+        if tasks:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
     try:
         loop = asyncio.new_event_loop()
-        loop.run_until_complete(_session_pool.cleanup())
+        loop.run_until_complete(_cleanup_and_drain())
         loop.close()
     except Exception:
         pass
