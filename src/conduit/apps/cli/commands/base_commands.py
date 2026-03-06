@@ -57,6 +57,10 @@ class BaseCommands(CommandCollection):
             default=False,
             help="Print citations (Perplexity models only).",
         )
+        @click.option(
+            "-S", "--search", is_flag=True,
+            help="Use web search and URL fetch to inform the answer (multi-turn agent).",
+        )
         @click.argument("query_input", nargs=-1)
         @click.pass_context
         def query(
@@ -68,6 +72,7 @@ class BaseCommands(CommandCollection):
             chat: bool,
             append: str | None,
             citations: bool,
+            search: bool,
             query_input: tuple[str, ...],
         ):
             """
@@ -109,6 +114,7 @@ class BaseCommands(CommandCollection):
                 chat=chat,
                 append=append,
                 citations=citations,
+                search=search,
                 # Injected Dependencies
                 printer=printer,
                 query_function=query_function,
