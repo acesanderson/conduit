@@ -73,8 +73,6 @@ def _search_query_function(inputs: CLIQueryFunctionInputs) -> Conversation:
     from conduit.capabilities.tools.tools.fetch.fetch import fetch_url, web_search
     from conduit.core.conduit.conduit_sync import ConduitSync
     from conduit.domain.request.generation_params import GenerationParams
-    from conduit.core.prompt.prompt import Prompt
-    from conduit.config import settings
 
     tool_registry = ToolRegistry()
     tool_registry.register_function(web_search)
@@ -97,6 +95,9 @@ def _search_query_function(inputs: CLIQueryFunctionInputs) -> Conversation:
         "tool_registry": tool_registry,
         "include_history": inputs.include_history,
     }
+
+    if inputs.local:
+        opt_updates["use_remote"] = True
 
     if inputs.cache:
         cache_name = inputs.project_name or settings.default_project_name
