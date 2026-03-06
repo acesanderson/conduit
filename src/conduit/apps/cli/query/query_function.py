@@ -11,7 +11,7 @@ from conduit.core.prompt.prompt import Prompt
 from conduit.domain.result.response import GenerationResponse
 from conduit.utils.progress.verbosity import Verbosity
 from conduit.apps.cli.utils.printer import Printer
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 import logging
 
@@ -43,6 +43,7 @@ class CLIQueryFunctionInputs:
     verbose: Verbosity = Verbosity.PROGRESS
     include_history: bool = True  # whether to include conversation history in messages
     ephemeral: bool = False  # whether to avoid persisting this conversation
+    client_params: dict = field(default_factory=dict)
 
 
 # Our protocol
@@ -85,6 +86,8 @@ def default_query_function(
 
     from conduit.core.conduit.conduit_sync import ConduitSync
 
+    client_params = inputs.client_params or None  # normalize empty dict -> None
+
     prompt = Prompt(combined_query)
     conduit = ConduitSync.create(
         project_name=project_name,
@@ -97,6 +100,7 @@ def default_query_function(
         debug_payload=False,  # Change to True to debug payloads
         include_history=include_history,
         use_remote=local,
+        client_params=client_params,
     )
     logger.info(f"Using model: {preferred_model}")
     response = conduit()
