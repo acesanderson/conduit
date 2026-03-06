@@ -80,6 +80,30 @@ def _get_session_pool():
     return _session_pool
 
 
+def _atexit_cleanup():
+    """Close all curl_cffi sessions before Python shuts down.
+
+    Without this, the GC finalizes AsyncSession objects after the event loop
+    closes, triggering async cleanup on a dead loop — which propagates through
+    call_exception_handler into Rich logging at a point where sys.meta_path is
+    None, causing an ImportError during interpreter teardown.
+    """
+    import asyncio
+
+    if _session_pool is None:
+        return
+    try:
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(_session_pool.cleanup())
+        loop.close()
+    except Exception:
+        pass
+
+
+import atexit
+atexit.register(_atexit_cleanup)
+
+
 # --- JAVASCRIPT DETECTION ---
 def _is_javascript_heavy(html: str) -> bool:
     """
