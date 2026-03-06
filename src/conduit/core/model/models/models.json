@@ -27,6 +27,7 @@
     "llama-3.3-70b-versatile"
   ],
   "perplexity": [
+    "sonar-deep-research",
     "sonar-reasoning",
     "sonar-pro",
     "sonar"
