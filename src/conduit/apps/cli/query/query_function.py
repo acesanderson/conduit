@@ -8,7 +8,10 @@ Define your own for customization.
 
 from __future__ import annotations
 
+import mimetypes
+
 from conduit.config import settings
+from conduit.core.conduit.conduit_sync import ConduitSync
 from conduit.core.prompt.prompt import Prompt
 from conduit.utils.progress.verbosity import Verbosity
 from conduit.apps.cli.utils.printer import Printer
@@ -72,7 +75,6 @@ def _search_query_function(inputs: CLIQueryFunctionInputs) -> Conversation:
     """
     from conduit.capabilities.tools.registry import ToolRegistry
     from conduit.capabilities.tools.tools.fetch.fetch import fetch_url, web_search
-    from conduit.core.conduit.conduit_sync import ConduitSync
     from conduit.domain.request.generation_params import GenerationParams
 
     tool_registry = ToolRegistry()
@@ -114,6 +116,65 @@ def _search_query_function(inputs: CLIQueryFunctionInputs) -> Conversation:
     return conduit.run()
 
 
+def _image_query_function(inputs: CLIQueryFunctionInputs) -> Conversation:
+    """
+    Query function variant for multimodal (image + text) queries.
+    Hand-rolls a Conversation with a UserMessage containing [TextContent, ImageContent],
+    then routes through ConduitSync.pipe_sync() to bypass _prepare_conversation.
+    No history loading — --chat is blocked upstream.
+    """
+    from conduit.domain.conversation.conversation import Conversation
+    from conduit.domain.message.message import UserMessage, TextContent, ImageContent
+    from conduit.domain.request.generation_params import GenerationParams
+
+    image_path = inputs.image_path
+    combined_query = "\n\n".join(
+        [inputs.query_input, inputs.context, inputs.append]
+    ).strip()
+
+    mime_type, _ = mimetypes.guess_type(image_path)
+    mime_type = mime_type or "application/octet-stream"
+    logger.info("Image query: loading %s (MIME: %s)", image_path, mime_type)
+
+    user_message = UserMessage(
+        content=[
+            TextContent(text=combined_query),
+            ImageContent.from_file(image_path),
+        ]
+    )
+
+    conversation = Conversation()
+    if inputs.system_message:
+        conversation.ensure_system_message(inputs.system_message)
+    conversation.add(user_message)
+
+    logger.debug(
+        "pipe_sync: entering with conversation length %d", len(conversation.messages)
+    )
+
+    params = GenerationParams(
+        model=inputs.preferred_model,
+        system=inputs.system_message or None,
+        temperature=inputs.temperature,
+    )
+    options = settings.default_conduit_options()
+    opt_updates: dict = {
+        "verbosity": inputs.verbose,
+        "include_history": False,
+    }
+    if inputs.cache:
+        cache_name = inputs.project_name or settings.default_project_name
+        opt_updates["cache"] = settings.default_cache(project_name=cache_name)
+    options = options.model_copy(update=opt_updates)
+
+    conduit = ConduitSync(
+        prompt=Prompt(combined_query or " "),
+        params=params,
+        options=options,
+    )
+    return conduit.pipe_sync(conversation)
+
+
 # Now, our default implementation -- the beauty of LLMs with POSIX philosophy
 def default_query_function(
     inputs: CLIQueryFunctionInputs,
@@ -123,6 +184,10 @@ def default_query_function(
     """
     if inputs.search:
         return _search_query_function(inputs)
+
+    if inputs.image_path:
+        return _image_query_function(inputs)
+
     logger.debug("Running default_query_function...")
     # Extract inputs from dict
     project_name = inputs.project_name
@@ -140,8 +205,6 @@ def default_query_function(
     # ConduitCLI's default POSIX philosophy: embrace pipes and redirection
     combined_query = "\n\n".join([query_input, context, append]).strip()
     logger.info("Combined query prepared.")
-
-    from conduit.core.conduit.conduit_sync import ConduitSync
 
     client_params = inputs.client_params or None  # normalize empty dict -> None
 
