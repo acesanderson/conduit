@@ -95,6 +95,37 @@ def test_image_query_composes_stdin_and_query_into_text_content(tmp_path):
     assert text == "convert this\n\nsome stdin context"
 
 
+def test_image_query_with_no_text_produces_empty_text_content(tmp_path):
+    """AC7: No query text and no stdin → TextContent(text='') — provider decides if valid."""
+    img = tmp_path / "diagram.png"
+    img.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 8)
+
+    inputs = make_inputs(query_input="", context="", append="", image_path=str(img))
+
+    captured = {}
+
+    def fake_pipe_sync(conversation):
+        captured["conversation"] = conversation
+        return MagicMock()
+
+    mock_conduit = MagicMock()
+    mock_conduit.pipe_sync.side_effect = fake_pipe_sync
+
+    with patch(
+        "conduit.apps.cli.query.query_function.ConduitSync",
+        return_value=mock_conduit,
+    ):
+        default_query_function(inputs)
+
+    user_msgs = [
+        m for m in captured["conversation"].messages
+        if hasattr(m, "role") and str(m.role) == "Role.USER"
+    ]
+    text_content = user_msgs[0].content[0]
+    assert isinstance(text_content, TextContent)
+    assert text_content.text == ""
+
+
 def test_inputs_has_client_params_field():
     """CLIQueryFunctionInputs accepts client_params kwarg."""
     inputs = make_inputs(client_params={"return_citations": True})
