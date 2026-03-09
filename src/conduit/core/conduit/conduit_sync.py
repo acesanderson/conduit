@@ -104,6 +104,10 @@ class ConduitSync:
             )
         )
 
+    def pipe_sync(self, conversation: Conversation) -> Conversation:
+        """Run pipe() synchronously using self.params and self.options."""
+        return self._run_sync(self._impl.pipe(conversation, self.params, self.options))
+
     # Factory
     @classmethod
     def create(
