@@ -61,6 +61,40 @@ def test_image_query_builds_multimodal_usermessage(tmp_path):
     assert content[0].text == "describe this"
 
 
+def test_image_query_composes_stdin_and_query_into_text_content(tmp_path):
+    """AC5: TextContent.text = query_input + '\\n\\n' + stdin context, joined and stripped."""
+    img = tmp_path / "slide.png"
+    img.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 8)
+
+    inputs = make_inputs(
+        query_input="convert this",
+        context="some stdin context",
+        image_path=str(img),
+    )
+
+    captured = {}
+
+    def fake_pipe_sync(conversation):
+        captured["conversation"] = conversation
+        return MagicMock()
+
+    mock_conduit = MagicMock()
+    mock_conduit.pipe_sync.side_effect = fake_pipe_sync
+
+    with patch(
+        "conduit.apps.cli.query.query_function.ConduitSync",
+        return_value=mock_conduit,
+    ):
+        default_query_function(inputs)
+
+    user_msgs = [
+        m for m in captured["conversation"].messages
+        if hasattr(m, "role") and str(m.role) == "Role.USER"
+    ]
+    text = user_msgs[0].content[0].text
+    assert text == "convert this\n\nsome stdin context"
+
+
 def test_inputs_has_client_params_field():
     """CLIQueryFunctionInputs accepts client_params kwarg."""
     inputs = make_inputs(client_params={"return_citations": True})
