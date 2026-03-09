@@ -16,6 +16,18 @@ def make_inputs(**overrides) -> CLIQueryFunctionInputs:
     return CLIQueryFunctionInputs(**defaults)
 
 
+def test_inputs_image_path_defaults_to_none():
+    """image_path field exists and defaults to None."""
+    inputs = make_inputs()
+    assert inputs.image_path is None
+
+
+def test_inputs_accepts_image_path():
+    """image_path accepts a string path."""
+    inputs = make_inputs(image_path="/tmp/test.png")
+    assert inputs.image_path == "/tmp/test.png"
+
+
 def test_inputs_has_client_params_field():
     """CLIQueryFunctionInputs accepts client_params kwarg."""
     inputs = make_inputs(client_params={"return_citations": True})
