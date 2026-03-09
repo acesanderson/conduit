@@ -247,6 +247,7 @@ class BaseHandlers:
         project_name: str = "",
         search: bool = False,
         citations: bool = False,
+        image_path: str | None = None,
     ) -> None:
         """
         Here we resolve all inputs for flat input to the query function.
@@ -276,6 +277,7 @@ class BaseHandlers:
             include_history=chat,
             temperature=temperature,
             client_params=client_params,
+            image_path=image_path,
         )
 
         # 3. Execute

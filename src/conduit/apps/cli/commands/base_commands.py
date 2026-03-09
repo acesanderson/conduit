@@ -61,6 +61,13 @@ class BaseCommands(CommandCollection):
             "-S", "--search", is_flag=True,
             help="Use web search and URL fetch to inform the answer (multi-turn agent).",
         )
+        @click.option(
+            "-i",
+            "--image",
+            type=click.Path(exists=True, readable=True),
+            default=None,
+            help="Path to a local image file to include in the query.",
+        )
         @click.argument("query_input", nargs=-1)
         @click.pass_context
         def query(
@@ -73,6 +80,7 @@ class BaseCommands(CommandCollection):
             append: str | None,
             citations: bool,
             search: bool,
+            image: str | None,
             query_input: tuple[str, ...],
         ):
             """
@@ -85,6 +93,11 @@ class BaseCommands(CommandCollection):
                 conduit query Explain quantum computing --model gpt-4
                 cat file.py | conduit query "Refactor this code"
             """
+            if image and chat:
+                raise click.UsageError("--image cannot be used with --chat")
+            if image and search:
+                raise click.UsageError("--image cannot be used with --search")
+
             # 1. Unpack Dependencies from Context
             # The command layer is responsible for knowing WHERE things live (ctx.obj)
             printer = ctx.obj["printer"]
@@ -115,6 +128,7 @@ class BaseCommands(CommandCollection):
                 append=append,
                 citations=citations,
                 search=search,
+                image_path=image,
                 # Injected Dependencies
                 printer=printer,
                 query_function=query_function,
