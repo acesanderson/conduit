@@ -1,6 +1,6 @@
 from __future__ import annotations
 from pydantic import BaseModel, Field
-from conduit.domain.message.message import Message
+from conduit.domain.message.message import Message, MessageUnion
 import time
 from typing import TYPE_CHECKING
 
@@ -15,7 +15,7 @@ class Session(BaseModel):
     """
 
     session_id: str = Field(..., description="Unique identifier for the session")
-    message_dict: dict[str, Message] = Field(
+    message_dict: dict[str, MessageUnion] = Field(
         ..., description="Mapping of message_id to Message objects"
     )
     leaf: str = Field(
