@@ -49,6 +49,7 @@ class CLIQueryFunctionInputs:
     ephemeral: bool = False  # whether to avoid persisting this conversation
     search: bool = False  # Enable web search + URL fetch tools
     client_params: dict = field(default_factory=dict)
+    image_path: str | None = None
 
 
 # Our protocol
