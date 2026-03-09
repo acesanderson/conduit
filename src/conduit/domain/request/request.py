@@ -98,7 +98,12 @@ class GenerationRequest(BaseModel):
 
     def _normalize_messages_for_cache(self) -> list[dict]:
         # Ordered list; each message contributes only role + content.
-        return [{"role": m.role_str, "content": m.content} for m in self.messages]
+        # Use model_dump(mode="json") so nested Pydantic content blocks
+        # (TextContent, ImageContent, etc.) are serialized to plain dicts.
+        return [
+            {"role": m.role_str, "content": m.model_dump(mode="json")["content"]}
+            for m in self.messages
+        ]
 
     @classmethod
     def from_conversation(
