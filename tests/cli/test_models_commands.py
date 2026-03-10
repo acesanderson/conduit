@@ -130,3 +130,15 @@ def test_aliases_flag_prints_aliases(runner, cli):
         mock_aliases.assert_called_once()
         assert result.exit_code == 0
         assert "sonnet" in result.output or "claude-3-5-sonnet" in result.output
+
+
+def test_embeddings_flag_prints_embedding_models(runner, cli):
+    """AC2: -e lists embedding models from HeadwaterClient."""
+    mock_spec = MagicMock()
+    mock_spec.model = "sentence-transformers/all-mpnet-base-v2"
+
+    with patch("conduit.embeddings.generate_embeddings.list_embedding_models", return_value=[mock_spec]):
+        result = runner.invoke(cli, ["models", "-e"])
+        assert result.exit_code == 0
+        assert "sentence-transformers/all-mpnet-base-v2" in result.output
+        assert "Embedding models" in result.output

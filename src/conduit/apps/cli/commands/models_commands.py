@@ -25,7 +25,14 @@ def models_command(
         return
 
     if embeddings:
-        pass  # placeholder — implemented in Task 6
+        from conduit.embeddings.generate_embeddings import list_embedding_models
+        from rich.console import Console
+
+        specs = list_embedding_models()
+        console = Console()
+        console.print("Embedding models:", style="bold green")
+        for spec in specs:
+            console.print(f"  - {spec.model}", style="cyan")
         return
 
     if aliases:
