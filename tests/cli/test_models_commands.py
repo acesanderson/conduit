@@ -157,8 +157,11 @@ def test_rerankers_flag_prints_reranker_models(runner, cli):
         assert "Reranker models" in result.output
 
 
-def test_models_command_registered_on_conduit_cli():
+def test_models_command_registered_on_conduit_cli(monkeypatch):
     """AC1 integration: models command is reachable via the ConduitCLI group."""
+    import io
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))
+
     from conduit.apps.cli.cli_class import ConduitCLI
     from conduit.apps.cli.commands.base_commands import BaseCommands
     from conduit.apps.cli.commands.cache_commands import cache
