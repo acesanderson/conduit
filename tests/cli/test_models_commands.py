@@ -28,6 +28,14 @@ def cli():
     return _cli
 
 
+def test_no_flags_calls_modelstore_display(runner, cli):
+    """AC1: conduit models with no flags calls ModelStore.display()."""
+    with patch("conduit.core.model.models.modelstore.ModelStore.display") as mock_display:
+        result = runner.invoke(cli, ["models"])
+        mock_display.assert_called_once()
+        assert result.exit_code == 0
+
+
 def test_no_module_level_modelstore_calls():
     """AC9: importing models_commands must not call any ModelStore methods."""
     sys.modules.pop("conduit.apps.cli.commands.models_commands", None)
