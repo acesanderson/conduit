@@ -29,7 +29,12 @@ def models_command(
         return
 
     if aliases:
-        pass  # placeholder — implemented in Task 5
+        from conduit.core.model.models.modelstore import ModelStore
+        from rich.console import Console
+
+        console = Console()
+        aliases_data = ModelStore.aliases()
+        console.print(aliases_data)
         return
 
     if model:
@@ -72,7 +77,18 @@ def models_command(
         return
 
     if provider:
-        pass  # placeholder — implemented in Task 5
+        from conduit.core.model.models.modelstore import ModelStore
+
+        provider = provider.lower()
+        providers_list = ModelStore.list_providers()
+        if provider not in providers_list:
+            raise click.BadParameter(
+                f"Must be one of: {' | '.join(providers_list)}",
+                param_hint="'--provider'",
+            )
+        modelspecs = ModelStore.by_provider(provider)
+        for ms in modelspecs:
+            click.echo(ms.model)
         return
 
     from conduit.core.model.models.modelstore import ModelStore
