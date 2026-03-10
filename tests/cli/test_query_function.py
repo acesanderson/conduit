@@ -150,6 +150,37 @@ def test_inputs_accepts_image_content_alone():
     assert inputs.image_content is content
 
 
+def test_image_query_uses_image_content_when_set():
+    """image_content takes precedence over image_path when set in _image_query_function."""
+    from conduit.domain.message.message import ImageContent
+
+    pre_resolved = ImageContent(url="data:image/png;base64,FAKEDATA")
+    inputs = make_inputs(query_input="describe", image_content=pre_resolved)
+
+    captured = {}
+
+    def fake_pipe_sync(conversation):
+        captured["conversation"] = conversation
+        return MagicMock()
+
+    mock_conduit = MagicMock()
+    mock_conduit.pipe_sync.side_effect = fake_pipe_sync
+
+    with patch(
+        "conduit.apps.cli.query.query_function.ConduitSync",
+        return_value=mock_conduit,
+    ):
+        default_query_function(inputs)
+
+    user_msgs = [
+        m for m in captured["conversation"].messages
+        if hasattr(m, "role") and str(m.role) == "Role.USER"
+    ]
+    content = user_msgs[0].content
+    assert isinstance(content[1], ImageContent)
+    assert content[1].url == "data:image/png;base64,FAKEDATA"
+
+
 def test_inputs_has_client_params_field():
     """CLIQueryFunctionInputs accepts client_params kwarg."""
     inputs = make_inputs(client_params={"return_citations": True})
