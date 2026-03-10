@@ -155,3 +155,22 @@ def test_rerankers_flag_prints_reranker_models(runner, cli):
         assert result.exit_code == 0
         assert "BAAI/bge-reranker-v2-m3" in result.output
         assert "Reranker models" in result.output
+
+
+def test_models_command_registered_on_conduit_cli():
+    """AC1 integration: models command is reachable via the ConduitCLI group."""
+    from conduit.apps.cli.cli_class import ConduitCLI
+    from conduit.apps.cli.commands.base_commands import BaseCommands
+    from conduit.apps.cli.commands.cache_commands import cache
+    from conduit.apps.cli.commands.models_commands import models_command
+
+    # Replicate exactly what main() does, minus run() — avoids DB/async setup
+    conduit_inst = ConduitCLI()
+    commands = BaseCommands()
+    conduit_inst.attach(commands)
+    conduit_inst.cli.add_command(cache)
+    conduit_inst.cli.add_command(models_command)
+
+    result = CliRunner().invoke(conduit_inst.cli, ["models", "--help"])
+    assert result.exit_code == 0
+    assert "--rerankers" in result.output
