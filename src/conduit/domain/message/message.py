@@ -55,6 +55,15 @@ class ImageContent(BaseModel):
         data_url = f"data:{mime_type};base64,{image_b64}"
         return cls(url=data_url)
 
+    @classmethod
+    def from_bytes(cls, data: bytes, mime_type: str = "image/png") -> ImageContent:
+        """
+        Encode raw bytes as a base64 data URL.
+        Use this when image data is already in memory (e.g., from clipboard).
+        """
+        image_b64 = base64.b64encode(data).decode("utf-8")
+        return cls(url=f"data:{mime_type};base64,{image_b64}")
+
 
 class AudioContent(BaseModel):
     """
