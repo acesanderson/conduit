@@ -126,6 +126,30 @@ def test_image_query_with_no_text_produces_empty_text_content(tmp_path):
     assert text_content.text == ""
 
 
+def test_inputs_rejects_both_image_path_and_image_content():
+    """AC7: Setting both image_path and image_content raises ValueError."""
+    import pytest
+    from conduit.domain.message.message import ImageContent
+
+    content = ImageContent(url="data:image/png;base64,abc")
+    with pytest.raises(ValueError, match="Only one of image_path or image_content"):
+        make_inputs(image_path="/tmp/test.png", image_content=content)
+
+
+def test_inputs_image_content_defaults_to_none():
+    """AC7 (field existence): image_content field exists and defaults to None."""
+    inputs = make_inputs()
+    assert inputs.image_content is None
+
+
+def test_inputs_accepts_image_content_alone():
+    """AC7 (valid): image_content can be set without image_path."""
+    from conduit.domain.message.message import ImageContent
+    content = ImageContent(url="data:image/png;base64,abc")
+    inputs = make_inputs(image_content=content)
+    assert inputs.image_content is content
+
+
 def test_inputs_has_client_params_field():
     """CLIQueryFunctionInputs accepts client_params kwarg."""
     inputs = make_inputs(client_params={"return_citations": True})

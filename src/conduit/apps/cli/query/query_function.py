@@ -21,6 +21,7 @@ import logging
 
 if TYPE_CHECKING:
     from conduit.domain.conversation.conversation import Conversation
+    from conduit.domain.message.message import ImageContent
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,13 @@ class CLIQueryFunctionInputs:
     search: bool = False  # Enable web search + URL fetch tools
     client_params: dict = field(default_factory=dict)
     image_path: str | None = None
+    image_content: ImageContent | None = None
+
+    def __post_init__(self):
+        if self.image_path is not None and self.image_content is not None:
+            raise ValueError(
+                "Only one of image_path or image_content may be set, not both."
+            )
 
 
 # Our protocol
