@@ -179,3 +179,42 @@ def test_clipboard_cmyk_image_converted_to_rgb():
     assert result.exit_code == 0, result.output
     assert captured_image_content.get("image_content") is not None
     assert captured_image_content["image_content"].url.startswith("data:image/png;base64,")
+
+
+# ---------------------------------------------------------------------------
+# AC1: end-to-end success path
+# ---------------------------------------------------------------------------
+
+def test_clipboard_image_success_path():
+    """AC1: valid clipboard image → ImageContent passed to query function, query succeeds."""
+    from PIL import Image as PILImage
+    from conduit.domain.message.message import ImageContent
+    from conduit.apps.cli.cli_class import ConduitCLI
+    from conduit.apps.cli.commands.base_commands import BaseCommands
+
+    runner = CliRunner()
+    rgb_image = PILImage.new("RGB", (100, 100), color=(255, 0, 0))
+    captured = {}
+
+    def fake_query_fn(inputs):
+        captured["inputs"] = inputs
+        mock_conv = MagicMock()
+        mock_conv.content = "It is a red square."
+        mock_conv.last = MagicMock()
+        mock_conv.last.metadata = {}
+        return mock_conv
+
+    cli = ConduitCLI(query_function=fake_query_fn)
+    cli.attach(BaseCommands())
+
+    with patch("conduit.apps.cli.commands.base_commands.ImageGrab") as mock_grab:
+        mock_grab.grabclipboard.return_value = rgb_image
+        result = runner.invoke(cli.cli, ["query", "--image", "@clipboard", "describe this"])
+
+    assert result.exit_code == 0, result.output
+    assert "inputs" in captured
+    inputs = captured["inputs"]
+    assert inputs.image_content is not None
+    assert isinstance(inputs.image_content, ImageContent)
+    assert inputs.image_content.url.startswith("data:image/png;base64,")
+    assert inputs.image_path is None
