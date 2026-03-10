@@ -91,3 +91,33 @@ def test_type_flag_rejects_invalid_type(runner, cli):
         result = runner.invoke(cli, ["models", "-t", "nonexistent"])
         assert result.exit_code != 0
         assert "Must be one of" in result.output
+
+
+def test_help_documents_all_six_flags(runner, cli):
+    """AC6: --help output contains all 6 flag names."""
+    result = runner.invoke(cli, ["models", "--help"])
+    assert result.exit_code == 0
+    for flag in ["-m", "--model", "-t", "--type", "-p", "--provider",
+                 "-a", "--aliases", "-e", "--embeddings", "-r", "--rerankers"]:
+        assert flag in result.output, f"Missing flag {flag} in --help output"
+
+
+def test_provider_flag_prints_filtered_models(runner, cli):
+    """AC6 (--provider branch): -p prints models filtered by provider."""
+    mock_spec = MagicMock()
+    mock_spec.model = "claude-3-5-sonnet"
+
+    with patch("conduit.core.model.models.modelstore.ModelStore.list_providers", return_value=["anthropic", "openai"]):
+        with patch("conduit.core.model.models.modelstore.ModelStore.by_provider", return_value=[mock_spec]) as mock_by_prov:
+            result = runner.invoke(cli, ["models", "-p", "anthropic"])
+            mock_by_prov.assert_called_once_with("anthropic")
+            assert "claude-3-5-sonnet" in result.output
+            assert result.exit_code == 0
+
+
+def test_aliases_flag_prints_aliases(runner, cli):
+    """AC6 (--aliases branch): -a calls ModelStore.aliases()."""
+    with patch("conduit.core.model.models.modelstore.ModelStore.aliases", return_value={"sonnet": "claude-3-5-sonnet"}) as mock_aliases:
+        result = runner.invoke(cli, ["models", "-a"])
+        mock_aliases.assert_called_once()
+        assert result.exit_code == 0
