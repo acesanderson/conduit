@@ -21,6 +21,19 @@ def query_entrypoint():
     main()
 
 
+def models_entrypoint():
+    """
+    Shortcut entry point for 'models'.
+    Takes us directly to "conduit models ..."
+    """
+    if len(sys.argv) > 1 and sys.argv[1] == "models":
+        pass
+    else:
+        sys.argv.insert(1, "models")
+
+    main()
+
+
 def main():
     conduit_cli = ConduitCLI()
     commands = BaseCommands()
