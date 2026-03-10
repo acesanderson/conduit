@@ -58,7 +58,17 @@ def models_command(
         return
 
     if model_type:
-        pass  # placeholder — implemented in Task 4
+        from conduit.core.model.models.modelstore import ModelStore
+
+        modeltypes = ModelStore.list_model_types()
+        if model_type not in modeltypes:
+            raise click.BadParameter(
+                f"Must be one of: {' | '.join(modeltypes)}",
+                param_hint="'--type'",
+            )
+        modelspecs = ModelStore.by_type(model_type)
+        for ms in modelspecs:
+            click.echo(ms.model)
         return
 
     if provider:
