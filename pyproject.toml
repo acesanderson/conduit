@@ -95,6 +95,7 @@ include = ["src/**", "README.*", "LICENSE*", "*.json"]
 addopts = "-v -s --tb=short --no-header --showlocals --pdb -x"
 log_cli = true
 log_cli_level = "INFO"
+asyncio_mode = "auto"
 
 # ── Ruff ───────────────────────────────────────────────────────────────────────
 [tool.ruff]
