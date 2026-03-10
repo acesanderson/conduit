@@ -70,3 +70,24 @@ def test_model_flag_fuzzy_on_unknown_model(runner, cli):
                 result = runner.invoke(cli, ["models", "-m", "claud"])
                 assert result.exit_code == 0
                 assert "Did you mean" in result.output
+
+
+def test_type_flag_prints_filtered_models(runner, cli):
+    """AC5: -t prints models filtered by type."""
+    mock_spec = MagicMock()
+    mock_spec.model = "claude-3-5-sonnet"
+
+    with patch("conduit.core.model.models.modelstore.ModelStore.list_model_types", return_value=["chat", "embedding"]):
+        with patch("conduit.core.model.models.modelstore.ModelStore.by_type", return_value=[mock_spec]) as mock_by_type:
+            result = runner.invoke(cli, ["models", "-t", "chat"])
+            mock_by_type.assert_called_once_with("chat")
+            assert "claude-3-5-sonnet" in result.output
+            assert result.exit_code == 0
+
+
+def test_type_flag_rejects_invalid_type(runner, cli):
+    """AC5: -t with an invalid type exits non-zero with an error message."""
+    with patch("conduit.core.model.models.modelstore.ModelStore.list_model_types", return_value=["chat", "embedding"]):
+        result = runner.invoke(cli, ["models", "-t", "nonexistent"])
+        assert result.exit_code != 0
+        assert "Must be one of" in result.output
