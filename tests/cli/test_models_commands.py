@@ -186,3 +186,16 @@ def test_models_entrypoint_injects_models_subcommand(monkeypatch):
 
         assert sys.argv == ["models", "models", "-e"]
         mock_main.assert_called_once()
+
+
+def test_models_entrypoint_guard_against_double_injection(monkeypatch):
+    """AC8: if sys.argv[1] is already 'models', entrypoint does not inject again."""
+    monkeypatch.setattr(sys, "argv", ["models", "models", "-e"])
+
+    with patch("conduit.apps.scripts.conduit_cli.main") as mock_main:
+        from conduit.apps.scripts.conduit_cli import models_entrypoint
+        models_entrypoint()
+
+        # argv must not have a third 'models' prepended
+        assert sys.argv == ["models", "models", "-e"]
+        mock_main.assert_called_once()
