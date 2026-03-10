@@ -47,4 +47,4 @@ def test_nonexistent_image_raises_bad_parameter():
 
     result = runner.invoke(cli, ["query", "-i", "/nonexistent/path.png", "describe"])
     assert result.exit_code != 0
-    assert "does not exist" in result.output or "Invalid value" in result.output
+    assert "--image: file not found:" in result.output

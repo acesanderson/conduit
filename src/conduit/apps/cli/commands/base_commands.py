@@ -6,15 +6,66 @@ If context needs to be edited (like with conversation state management), it shou
 
 from __future__ import annotations
 import click
+import io
+import logging
+import warnings
+from pathlib import Path
 from conduit.apps.cli.commands.commands import CommandCollection
 from conduit.apps.cli.handlers.base_handlers import BaseHandlers
 from typing import override, TYPE_CHECKING
+from PIL import ImageGrab
 
 if TYPE_CHECKING:
     from conduit.utils.progress.verbosity import Verbosity
     from conduit.domain.conversation.conversation import Conversation
     from conduit.storage.repository.protocol import ConversationRepository
     from conduit.apps.cli.utils.printer import Printer
+    from conduit.domain.message.message import ImageContent
+
+logger = logging.getLogger(__name__)
+
+_CLIPBOARD_SENTINEL = "@clipboard"
+
+
+def _resolve_clipboard_image() -> ImageContent:
+    """
+    Grab an image from the system clipboard and return it as an ImageContent object.
+    Raises click.UsageError for empty clipboard or non-image clipboard contents.
+    """
+    from PIL import Image as PILImage
+    from conduit.domain.message.message import ImageContent
+
+    logger.info("--image @clipboard: grabbing image from clipboard")
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        clip = ImageGrab.grabclipboard()
+
+    if not isinstance(clip, PILImage.Image):
+        logger.warning("grabclipboard() returned %s", type(clip))
+        if clip is None:
+            raise click.UsageError(
+                "--image @clipboard: clipboard is empty or contains no image. "
+                "On macOS, check that your terminal has Accessibility/Paste "
+                "permissions in System Settings."
+            )
+        raise click.UsageError(
+            f"--image @clipboard: clipboard contains data but not an image "
+            f"(found: {type(clip).__name__})."
+        )
+
+    mode = "RGBA" if clip.mode in ("RGBA", "LA", "PA") else "RGB"
+    img = clip.convert(mode)
+    w, h = img.size
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    buf.seek(0)
+    data = buf.read()
+    logger.info(
+        "Clipboard image: mode=%s, size=%dx%d, encoded_bytes=%d", mode, w, h, len(data)
+    )
+
+    return ImageContent.from_bytes(data, "image/png")
 
 handlers = BaseHandlers()
 
@@ -64,9 +115,9 @@ class BaseCommands(CommandCollection):
         @click.option(
             "-i",
             "--image",
-            type=click.Path(exists=True, readable=True),
+            type=str,
             default=None,
-            help="Path to a local image file to include in the query.",
+            help='Path to a local image file, or "@clipboard" to read from clipboard.',
         )
         @click.argument("query_input", nargs=-1)
         @click.pass_context
@@ -117,6 +168,20 @@ class BaseCommands(CommandCollection):
             # Smudge query arguments
             query_input_str = " ".join(query_input).strip()
 
+            # Resolve --image into image_path (file) or image_content (clipboard)
+            image_path: str | None = None
+            image_content: ImageContent | None = None
+            if image is not None:
+                if image == _CLIPBOARD_SENTINEL:
+                    image_content = _resolve_clipboard_image()
+                else:
+                    p = Path(image)
+                    if not p.exists():
+                        raise click.UsageError(f"--image: file not found: {image}")
+                    if not p.is_file():
+                        raise click.UsageError(f"--image: not a file: {image}")
+                    image_path = image
+
             # 4. Delegate to Handler
             handlers.handle_query(
                 query_input=query_input_str,
@@ -128,7 +193,8 @@ class BaseCommands(CommandCollection):
                 append=append,
                 citations=citations,
                 search=search,
-                image_path=image,
+                image_path=image_path,
+                image_content=image_content,
                 # Injected Dependencies
                 printer=printer,
                 query_function=query_function,
