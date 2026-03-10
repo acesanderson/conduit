@@ -115,9 +115,18 @@ def test_provider_flag_prints_filtered_models(runner, cli):
             assert result.exit_code == 0
 
 
+def test_provider_flag_rejects_invalid_provider(runner, cli):
+    """AC6: -p with an invalid provider exits non-zero with an error message."""
+    with patch("conduit.core.model.models.modelstore.ModelStore.list_providers", return_value=["anthropic", "openai"]):
+        result = runner.invoke(cli, ["models", "-p", "nonexistent"])
+        assert result.exit_code != 0
+        assert "Must be one of" in result.output
+
+
 def test_aliases_flag_prints_aliases(runner, cli):
-    """AC6 (--aliases branch): -a calls ModelStore.aliases()."""
+    """AC6 (--aliases branch): -a calls ModelStore.aliases() and prints the result."""
     with patch("conduit.core.model.models.modelstore.ModelStore.aliases", return_value={"sonnet": "claude-3-5-sonnet"}) as mock_aliases:
         result = runner.invoke(cli, ["models", "-a"])
         mock_aliases.assert_called_once()
         assert result.exit_code == 0
+        assert "sonnet" in result.output or "claude-3-5-sonnet" in result.output
