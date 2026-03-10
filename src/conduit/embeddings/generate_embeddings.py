@@ -3,6 +3,7 @@ from headwater_api.classes import (
     ChromaBatch,
     EmbeddingsRequest,
     EmbeddingsResponse,
+    EmbeddingModelSpec,
 )
 
 
@@ -54,7 +55,7 @@ def quick_embedding(query_string: str) -> list[list[float]]:
     return embeddings
 
 
-def list_embedding_models() -> list[str]:
+def list_embedding_models() -> list[EmbeddingModelSpec]:
     """
     List available embedding models from the server.
     """
