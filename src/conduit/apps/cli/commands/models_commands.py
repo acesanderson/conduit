@@ -21,7 +21,14 @@ def models_command(
 ) -> None:
     """List and inspect available models."""
     if rerankers:
-        pass  # placeholder — implemented in Task 7
+        from headwater_client.client.headwater_client import HeadwaterClient
+        from rich.console import Console
+
+        specs = HeadwaterClient().reranker.list_reranker_models()
+        console = Console()
+        console.print("Reranker models:", style="bold green")
+        for spec in specs:
+            console.print(f"  - {spec.name}", style="cyan")
         return
 
     if embeddings:

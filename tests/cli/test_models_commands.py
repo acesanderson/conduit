@@ -142,3 +142,16 @@ def test_embeddings_flag_prints_embedding_models(runner, cli):
         assert result.exit_code == 0
         assert "sentence-transformers/all-mpnet-base-v2" in result.output
         assert "Embedding models" in result.output
+
+
+def test_rerankers_flag_prints_reranker_models(runner, cli):
+    """AC3: -r lists reranker models from HeadwaterClient."""
+    mock_spec = MagicMock()
+    mock_spec.name = "BAAI/bge-reranker-v2-m3"
+
+    with patch("headwater_client.client.headwater_client.HeadwaterClient") as MockClient:
+        MockClient.return_value.reranker.list_reranker_models.return_value = [mock_spec]
+        result = runner.invoke(cli, ["models", "-r"])
+        assert result.exit_code == 0
+        assert "BAAI/bge-reranker-v2-m3" in result.output
+        assert "Reranker models" in result.output
