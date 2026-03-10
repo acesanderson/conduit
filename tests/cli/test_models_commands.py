@@ -174,3 +174,15 @@ def test_models_command_registered_on_conduit_cli():
     result = CliRunner().invoke(conduit_inst.cli, ["models", "--help"])
     assert result.exit_code == 0
     assert "--rerankers" in result.output
+
+
+def test_models_entrypoint_injects_models_subcommand(monkeypatch):
+    """AC7: models_entrypoint inserts 'models' into sys.argv and calls main()."""
+    monkeypatch.setattr(sys, "argv", ["models", "-e"])
+
+    with patch("conduit.apps.scripts.conduit_cli.main") as mock_main:
+        from conduit.apps.scripts.conduit_cli import models_entrypoint
+        models_entrypoint()
+
+        assert sys.argv == ["models", "models", "-e"]
+        mock_main.assert_called_once()
