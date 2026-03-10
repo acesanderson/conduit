@@ -20,4 +20,30 @@ def models_command(
     rerankers: bool,
 ) -> None:
     """List and inspect available models."""
-    pass
+    if rerankers:
+        pass  # placeholder — implemented in Task 7
+        return
+
+    if embeddings:
+        pass  # placeholder — implemented in Task 6
+        return
+
+    from conduit.core.model.models.modelstore import ModelStore
+
+    if aliases:
+        pass  # placeholder — implemented in Task 5
+        return
+
+    if model:
+        pass  # placeholder — implemented in Task 3
+        return
+
+    if model_type:
+        pass  # placeholder — implemented in Task 4
+        return
+
+    if provider:
+        pass  # placeholder — implemented in Task 5
+        return
+
+    ModelStore.display()
