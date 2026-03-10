@@ -5,6 +5,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from conduit.batch import ConduitBatchSync
+from conduit.config import settings
 
 if TYPE_CHECKING:
     from conduit.apps.cli.utils.printer import Printer
@@ -18,17 +19,13 @@ class BatchHandlers:
         prompts: list[str],
         model: str,
         temperature: float | None,
-        local: bool,
-        citations: bool,
         max_concurrent: int | None,
         raw: bool,
         as_json: bool,
         printer: Printer,
     ) -> None:
         """Run prompts in parallel and display results."""
-        from conduit.config import settings
-
-        param_kwargs: dict = {}
+        param_kwargs: dict[str, object] = {}
         if temperature is not None:
             param_kwargs["temperature"] = temperature
 
@@ -44,7 +41,7 @@ class BatchHandlers:
         )
 
         results = [
-            {"index": i, "prompt": p, "response": conv.content}
+            {"index": i, "prompt": p, "response": str(conv.content)}
             for i, (p, conv) in enumerate(zip(prompts, conversations))
         ]
 
