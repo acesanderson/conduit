@@ -34,7 +34,6 @@ def models_command(
 
     if model:
         from conduit.core.model.models.modelstore import ModelStore
-        from rich.console import Console
 
         try:
             modelspec = ModelStore.get_model(model)
@@ -43,6 +42,7 @@ def models_command(
             from rapidfuzz import process
             from rapidfuzz import fuzz
             from collections import namedtuple
+            from rich.console import Console
 
             Match = namedtuple("Match", ["title", "score", "rank"])
             models_list = ModelStore.list_models()
