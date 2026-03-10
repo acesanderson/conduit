@@ -144,7 +144,7 @@ siphon_server = { path = "../siphon/siphon-server", editable = true }
 [project.scripts]
 chat = "conduit.apps.scripts.chat_cli:main"
 imagegen = "conduit.apps.scripts.imagegen_cli:main"
-models = "conduit.apps.scripts.models_cli:main"
+models = "conduit.apps.scripts.conduit_cli:models_entrypoint"
 tokens = "conduit.apps.scripts.tokens_cli:main"
 update = "conduit.apps.scripts.update_modelstore:main"
 update_ollama = "conduit.apps.scripts.update_ollama_list:main"
