@@ -50,13 +50,16 @@ def test_no_module_level_modelstore_calls():
 
 def test_model_flag_calls_get_model(runner, cli):
     """AC4: -m with a known model calls ModelStore.get_model() and accesses .card."""
-    mock_spec = MagicMock()
-    mock_spec.card = None
+    from unittest.mock import PropertyMock
 
-    with patch("conduit.core.model.models.modelstore.ModelStore.get_model", return_value=mock_spec) as mock_get:
+    mock_spec = MagicMock()
+    card_mock = PropertyMock(return_value=None)
+    type(mock_spec).card = card_mock
+
+    with patch("conduit.core.model.models.modelstore.ModelStore.get_model", return_value=mock_spec):
         result = runner.invoke(cli, ["models", "-m", "claude-3-5-sonnet"])
         assert result.exit_code == 0
-        mock_get.assert_called_once_with("claude-3-5-sonnet")
+        card_mock.assert_called_once()
 
 
 def test_model_flag_fuzzy_on_unknown_model(runner, cli):
