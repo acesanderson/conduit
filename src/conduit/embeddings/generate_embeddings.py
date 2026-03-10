@@ -3,7 +3,6 @@ from headwater_api.classes import (
     ChromaBatch,
     EmbeddingsRequest,
     EmbeddingsResponse,
-    load_embedding_models,
 )
 
 
@@ -64,8 +63,9 @@ def list_embedding_models() -> list[str]:
 
 
 def validate_model(model_name: str) -> bool:
-    embedding_models = load_embedding_models()
-    return model_name in embedding_models
+    client = HeadwaterClient()
+    specs = client.embeddings.list_embedding_models()
+    return any(spec.model == model_name for spec in specs)
 
 
 if __name__ == "__main__":
