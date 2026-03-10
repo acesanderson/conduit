@@ -28,14 +28,33 @@ def models_command(
         pass  # placeholder — implemented in Task 6
         return
 
-    from conduit.core.model.models.modelstore import ModelStore
-
     if aliases:
         pass  # placeholder — implemented in Task 5
         return
 
     if model:
-        pass  # placeholder — implemented in Task 3
+        from conduit.core.model.models.modelstore import ModelStore
+        from rich.console import Console
+
+        try:
+            modelspec = ModelStore.get_model(model)
+            modelspec.card
+        except ValueError:
+            from rapidfuzz import process
+            from rapidfuzz import fuzz
+            from collections import namedtuple
+
+            Match = namedtuple("Match", ["title", "score", "rank"])
+            models_list = ModelStore.list_models()
+            results = process.extract(model, models_list, scorer=fuzz.WRatio, limit=3)
+            matches = [
+                Match(title=title, score=score, rank=rank + 1)
+                for rank, (title, score, _) in enumerate(results)
+            ]
+            console = Console()
+            console.print(f"[red]Model '{model}' not found. Did you mean:[/red]")
+            for match in matches:
+                console.print(f"  {match.rank}. {match.title}")
         return
 
     if model_type:
@@ -46,4 +65,5 @@ def models_command(
         pass  # placeholder — implemented in Task 5
         return
 
+    from conduit.core.model.models.modelstore import ModelStore
     ModelStore.display()
