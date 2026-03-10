@@ -50,17 +50,13 @@ def main():
     # Validate arguments
     if args.embeddings:
         from conduit.embeddings.generate_embeddings import list_embedding_models
-
-        embedding_model_str = list_embedding_models()
-        # Convert the string representation of the list to an actual list
-        embedding_models = embedding_model_str.strip("[]").replace('"', "").split(",")
-
         from rich.console import Console
 
+        specs = list_embedding_models()
         console = Console()
         console.print("Embedding models:", style="bold green")
-        for model in embedding_models:
-            console.print(f"  - {model}", style="cyan")
+        for spec in specs:
+            console.print(f"  - {spec.model}", style="cyan")
         return
     if args.type:
         if args.type not in modeltypes:
