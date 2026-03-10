@@ -135,19 +135,24 @@ def _image_query_function(inputs: CLIQueryFunctionInputs) -> Conversation:
     from conduit.domain.message.message import UserMessage, TextContent, ImageContent
     from conduit.domain.request.generation_params import GenerationParams
 
-    image_path = inputs.image_path
     combined_query = "\n\n".join(
         [inputs.query_input, inputs.context, inputs.append]
     ).strip()
 
-    mime_type, _ = mimetypes.guess_type(image_path)
-    mime_type = mime_type or "application/octet-stream"
-    logger.info("Image query: loading %s (MIME: %s)", image_path, mime_type)
+    # Resolve image: pre-built ImageContent takes priority over a file path
+    if inputs.image_content is not None:
+        logger.info("Image query: using pre-resolved ImageContent from caller")
+        resolved_image = inputs.image_content
+    else:
+        mime_type, _ = mimetypes.guess_type(inputs.image_path)
+        mime_type = mime_type or "application/octet-stream"
+        logger.info("Image query: loading %s (MIME: %s)", inputs.image_path, mime_type)
+        resolved_image = ImageContent.from_file(inputs.image_path)
 
     user_message = UserMessage(
         content=[
             TextContent(text=combined_query),
-            ImageContent.from_file(image_path),
+            resolved_image,
         ]
     )
 
@@ -193,7 +198,7 @@ def default_query_function(
     if inputs.search:
         return _search_query_function(inputs)
 
-    if inputs.image_path:
+    if inputs.image_path or inputs.image_content:
         return _image_query_function(inputs)
 
     logger.debug("Running default_query_function...")
