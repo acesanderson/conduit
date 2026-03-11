@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 import logging
 from pathlib import Path
 
@@ -71,9 +70,11 @@ def batch_command(
     collected.extend(prompts)
 
     # 3. Stdin (only when no args and no file, and stdin is not a TTY)
-    if not collected and not sys.stdin.isatty():
-        stdin_text = sys.stdin.read()
-        collected.extend(line for line in stdin_text.splitlines() if line.strip())
+    if not collected:
+        stdin_stream = click.get_text_stream("stdin")
+        if not stdin_stream.isatty():
+            stdin_text = stdin_stream.read()
+            collected.extend(line for line in stdin_text.splitlines() if line.strip())
 
     if not collected:
         raise click.UsageError(
