@@ -1,4 +1,5 @@
 from conduit.apps.cli.commands.base_commands import BaseCommands
+from conduit.apps.cli.commands.batch_commands import batch_command
 from conduit.apps.cli.commands.cache_commands import cache
 from conduit.apps.cli.commands.models_commands import models_command
 from conduit.apps.cli.cli_class import ConduitCLI
@@ -40,6 +41,7 @@ def main():
     conduit_cli.attach(commands)
     conduit_cli.cli.add_command(cache)
     conduit_cli.cli.add_command(models_command)
+    conduit_cli.cli.add_command(batch_command)
     conduit_cli.run()
 
 
