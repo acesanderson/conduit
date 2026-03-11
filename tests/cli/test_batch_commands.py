@@ -38,7 +38,8 @@ def test_batch_model_flag():
     cli = _make_cli()
     runner = CliRunner()
     with patch(PATCH_HANDLER) as mock_handler:
-        runner.invoke(cli, ["batch", "-m", "sonar-pro", "hello"])
+        result = runner.invoke(cli, ["batch", "-m", "sonar-pro", "hello"])
+    assert result.exit_code == 0, result.output
     call_kwargs = mock_handler.call_args.kwargs
     assert call_kwargs["model"] == "sonar-pro"
 
@@ -48,6 +49,7 @@ def test_batch_raw_and_json_mutually_exclusive():
     runner = CliRunner()
     result = runner.invoke(cli, ["batch", "--raw", "--json", "hello"])
     assert result.exit_code != 0
+    assert "mutually exclusive" in result.output.lower() or "raw" in result.output.lower()
 
 
 def test_batch_no_prompts_raises_error():
@@ -86,7 +88,8 @@ def test_batch_append_suffix_applied():
     cli = _make_cli()
     runner = CliRunner()
     with patch(PATCH_HANDLER) as mock_handler:
-        runner.invoke(cli, ["batch", "--append", "be concise", "question"])
+        result = runner.invoke(cli, ["batch", "--append", "be concise", "question"])
+    assert result.exit_code == 0, result.output
     call_kwargs = mock_handler.call_args.kwargs
     assert all("be concise" in p for p in call_kwargs["prompts"])
 
@@ -95,7 +98,8 @@ def test_batch_max_concurrent_passed():
     cli = _make_cli()
     runner = CliRunner()
     with patch(PATCH_HANDLER) as mock_handler:
-        runner.invoke(cli, ["batch", "-n", "4", "hello"])
+        result = runner.invoke(cli, ["batch", "-n", "4", "hello"])
+    assert result.exit_code == 0, result.output
     call_kwargs = mock_handler.call_args.kwargs
     assert call_kwargs["max_concurrent"] == 4
 
