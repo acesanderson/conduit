@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd /Users/bianders/Brian_Code/conduit-project && python -m pytest tests/strategies/document_edits/test_models.py --no-pdb -x 2>&1 | head -20)",
+      "Bash(python -m pytest /Users/bianders/Brian_Code/conduit-project/tests/strategies/document_edits/test_models.py --no-pdb -x 2>&1 | head -20)",
+      "Bash(python -m pytest /Users/bianders/Brian_Code/conduit-project/tests/strategies/document_edits/test_models.py --override-ini=\"addopts=-v --tb=short -x\" 2>&1 | head -25)",
+      "Bash(python -m pytest /Users/bianders/Brian_Code/conduit-project/tests/strategies/document_edits/test_models.py --override-ini=\"addopts=-v --tb=short\" -k \"not prompt\" 2>&1 | tail -15)",
+      "Bash(git -C /Users/bianders/Brian_Code/conduit-project add src/conduit/strategies/document_edits/ tests/strategies/ pyproject.toml && git -C /Users/bianders/Brian_Code/conduit-project commit -m \"$\\(cat <<'EOF'\nfeat: add DocumentEdits pydantic models \\(AC-1\\)\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(python -m pytest /Users/bianders/Brian_Code/conduit-project/tests/strategies/document_edits/test_apply.py --override-ini=\"addopts=-v --tb=short -x\" 2>&1 | tail -12)",
+      "Bash(python -m pytest /Users/bianders/Brian_Code/conduit-project/tests/strategies/document_edits/test_apply.py --override-ini=\"addopts=-v --tb=short\" 2>&1 | tail -15)",
+      "Bash(git -C /Users/bianders/Brian_Code/conduit-project add src/conduit/strategies/document_edits/apply.py tests/strategies/document_edits/test_apply.py && git -C /Users/bianders/Brian_Code/conduit-project commit -m \"$\\(cat <<'EOF'\nfeat: apply_edits with replace/insert/delete ops and error cases \\(AC-2 through AC-6\\)\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(python -m pytest /Users/bianders/Brian_Code/conduit-project/tests/strategies/document_edits/test_models.py::test_prompt_template_renders_with_required_variables --override-ini=\"addopts=-v --tb=short\" 2>&1 | tail -10)",
+      "Bash(python -m pytest /Users/bianders/Brian_Code/conduit-project/tests/strategies/document_edits/test_models.py --override-ini=\"addopts=-v --tb=short\" 2>&1 | tail -12)",
+      "Bash(git -C /Users/bianders/Brian_Code/conduit-project add src/conduit/strategies/document_edits/prompt.py && git -C /Users/bianders/Brian_Code/conduit-project commit -m \"$\\(cat <<'EOF'\nfeat: add PROMPT_TEMPLATE with user_prompt and document variables \\(AC-12\\)\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(python -m pytest /Users/bianders/Brian_Code/conduit-project/tests/strategies/document_edits/test_strategy.py::test_strategy_call_is_wrapped_with_step --override-ini=\"addopts=-v --tb=short\" 2>&1 | tail -10)",
+      "Bash(python -m pytest /Users/bianders/Brian_Code/conduit-project/tests/strategies/document_edits/test_strategy.py --override-ini=\"addopts=-v --tb=short\" 2>&1 | tail -20)",
+      "Bash(git -C /Users/bianders/Brian_Code/conduit-project add src/conduit/strategies/document_edits/strategy.py tests/strategies/document_edits/test_strategy.py && git -C /Users/bianders/Brian_Code/conduit-project commit -m \"$\\(cat <<'EOF'\nfeat: DocumentEditStrategy with @step, GenerationParams, ConduitOptions, apply \\(AC-7 through AC-11\\)\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(python -m pytest /Users/bianders/Brian_Code/conduit-project/tests/strategies/document_edits/ --override-ini=\"addopts=-v --tb=short\" 2>&1 | tail -25)",
+      "Bash(python -m pytest /Users/bianders/Brian_Code/conduit-project/tests/unit/ /Users/bianders/Brian_Code/conduit-project/tests/cli/ --override-ini=\"addopts=-v --tb=short\" 2>&1 | tail -20)",
+      "Bash(python -m pytest /Users/bianders/Brian_Code/conduit-project/tests/cli/test_citations_e2e.py::test_citations_flag_appears_in_help --override-ini=\"addopts=-v --tb=long\" 2>&1 | tail -30)",
+      "Bash(git -C /Users/bianders/Brian_Code/conduit-project stash && python -m pytest /Users/bianders/Brian_Code/conduit-project/tests/cli/test_citations_e2e.py::test_citations_flag_appears_in_help --override-ini=\"addopts=-v --tb=line\" 2>&1 | tail -5 && git -C /Users/bianders/Brian_Code/conduit-project stash pop)",
+      "Bash(python -m pytest /Users/bianders/Brian_Code/conduit-project/tests/strategies/document_edits/ --override-ini=\"addopts=-v --tb=short\" 2>&1 | tail -10)"
+    ]
+  }
+}
