@@ -113,7 +113,7 @@ class OllamaClient(Client):
             )
 
         # Filter for supported Ollama options in extra_body
-        allowed_params = {"num_ctx", "repeat_penalty", "seed", "top_k", "num_predict"}
+        allowed_params = {"num_ctx", "repeat_penalty", "seed", "top_k", "num_predict", "think"}
         filtered_extra = {k: v for k, v in client_params.items() if k in allowed_params}
 
         return OllamaPayload(
@@ -249,6 +249,13 @@ class OllamaClient(Client):
     async def _generate_structured_response(
         self, request: GenerationRequest
     ) -> GenerationResponse:
+        # Ollama 0.17+ enables thinking mode by default on models that support it
+        # (e.g. gpt-oss). The <think>...</think> prefix breaks instructor's Mode.JSON
+        # parsing. Disable it explicitly for all structured inference calls.
+        if request.params.client_params is None:
+            request.params.client_params = {}
+        request.params.client_params.setdefault("think", False)
+
         payload = self._convert_request(request)
         payload_dict = payload.model_dump(exclude_none=True)
 
