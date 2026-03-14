@@ -251,37 +251,47 @@ class OllamaClient(Client):
     async def _generate_structured_response(
         self, request: GenerationRequest
     ) -> GenerationResponse:
-        payload = self._convert_request(request)
-        payload_dict = payload.model_dump(exclude_none=True)
+        if request.params.response_model is not None:
+            # ---- instructor path ----
+            payload = self._convert_request(request)
+            payload_dict = payload.model_dump(exclude_none=True)
 
-        start_time = time.time()
-        (
-            user_obj,
-            completion,
-        ) = await self._client.chat.completions.create_with_completion(
-            response_model=request.params.response_model, **payload_dict
-        )
-
-        # Fail-safe check for structured response
-        if not user_obj and not completion.choices[0].message.content:
-            allocated_ctx = payload_dict.get("extra_body", {}).get("num_ctx", "unknown")
-            raise ValueError(
-                f"Ollama structured response failed. num_ctx: {allocated_ctx}"
+            start_time = time.time()
+            (
+                user_obj,
+                completion,
+            ) = await self._client.chat.completions.create_with_completion(
+                response_model=request.params.response_model, **payload_dict
             )
 
-        metadata = ResponseMetadata(
-            duration=(time.time() - start_time) * 1000,
-            model_slug=completion.model,
-            input_tokens=completion.usage.prompt_tokens,
-            output_tokens=completion.usage.completion_tokens,
-            stop_reason=StopReason.STOP,
-        )
+            # Fail-safe check for structured response
+            if not user_obj and not completion.choices[0].message.content:
+                allocated_ctx = payload_dict.get("extra_body", {}).get("num_ctx", "unknown")
+                raise ValueError(
+                    f"Ollama structured response failed. num_ctx: {allocated_ctx}"
+                )
 
-        assistant_message = AssistantMessage(
-            content=completion.choices[0].message.content,
-            parsed=user_obj,
-        )
+            metadata = ResponseMetadata(
+                duration=(time.time() - start_time) * 1000,
+                model_slug=completion.model,
+                input_tokens=completion.usage.prompt_tokens,
+                output_tokens=completion.usage.completion_tokens,
+                stop_reason=StopReason.STOP,
+            )
 
-        return GenerationResponse(
-            message=assistant_message, request=request, metadata=metadata
-        )
+            assistant_message = AssistantMessage(
+                content=completion.choices[0].message.content,
+                parsed=user_obj,
+            )
+
+            return GenerationResponse(
+                message=assistant_message, request=request, metadata=metadata
+            )
+
+        if request.params.response_model_schema is None:
+            raise ValueError(
+                "structured_response requires response_model or response_model_schema"
+            )
+
+        # ---- schema path (implemented in Task 6) ----
+        raise NotImplementedError("schema path not yet implemented")
