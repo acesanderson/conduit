@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from conduit.core.clients.ollama.client import OllamaClient
 from conduit.domain.request.generation_params import GenerationParams
+from conduit.domain.request.request import GenerationRequest
 
 
 @pytest.fixture
@@ -109,3 +110,42 @@ def test_convert_request_no_response_format_for_text_output(client):
 
     payload_dict = payload.model_dump(exclude_none=True)
     assert "response_format" not in payload_dict
+
+
+# Fulfills AC 7: schema path sets message.parsed = None in the GenerationResponse.
+@pytest.mark.asyncio
+async def test_schema_path_returns_parsed_none(client):
+    from pydantic import BaseModel
+
+    class Widget(BaseModel):
+        name: str
+
+    schema = Widget.model_json_schema()
+    params = make_params(
+        output_type="structured_response",
+        response_model=None,
+        response_model_schema=schema,
+    )
+    request = GenerationRequest.model_construct(params=params, messages=[], options=None)
+
+    # Mock the raw_client response
+    mock_choice = MagicMock()
+    mock_choice.message.content = '{"name": "thing"}'
+    mock_choice.finish_reason = "stop"
+    mock_completion = MagicMock()
+    mock_completion.choices = [mock_choice]
+    mock_completion.model = "gpt-oss:latest"
+    mock_completion.usage.prompt_tokens = 10
+    mock_completion.usage.completion_tokens = 5
+    client._raw_client.chat.completions.create = AsyncMock(
+        return_value=mock_completion
+    )
+
+    with patch.object(client, "_convert_request") as mock_convert:
+        mock_payload = MagicMock()
+        mock_payload.model_dump.return_value = {"model": "gpt-oss:latest", "messages": []}
+        mock_convert.return_value = mock_payload
+        response = await client._generate_structured_response(request)
+
+    assert response.message.parsed is None
+    assert response.message.content == '{"name": "thing"}'

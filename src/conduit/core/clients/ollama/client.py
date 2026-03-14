@@ -310,5 +310,39 @@ class OllamaClient(Client):
                 "structured_response requires response_model or response_model_schema"
             )
 
-        # ---- schema path (implemented in Task 6) ----
-        raise NotImplementedError("schema path not yet implemented")
+        # ---- schema path ----
+        logger.debug(
+            "OllamaClient schema path: model=%s schema=%s",
+            request.params.model,
+            request.params.response_model_schema.get("title", "?"),
+        )
+
+        payload = self._convert_request(request)
+        payload_dict = payload.model_dump(exclude_none=True)
+
+        start_time = time.time()
+        result = await self._raw_client.chat.completions.create(**payload_dict)
+
+        content = result.choices[0].message.content
+        if not content:
+            raise ValueError(
+                f"OllamaClient schema path: empty content for model {result.model}"
+            )
+
+        logger.debug(
+            "OllamaClient schema path: %d input tokens, %d output tokens",
+            result.usage.prompt_tokens,
+            result.usage.completion_tokens,
+        )
+
+        return GenerationResponse(
+            message=AssistantMessage(content=content, parsed=None),
+            request=request,
+            metadata=ResponseMetadata(
+                duration=(time.time() - start_time) * 1000,
+                model_slug=result.model,
+                input_tokens=result.usage.prompt_tokens,
+                output_tokens=result.usage.completion_tokens,
+                stop_reason=StopReason.STOP,
+            ),
+        )
