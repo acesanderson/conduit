@@ -84,3 +84,28 @@ def test_convert_request_injects_response_format_for_schema_path(client):
     assert payload_dict["response_format"]["json_schema"]["schema"] == schema
     assert payload_dict["response_format"]["json_schema"]["name"] == "Widget"
     assert payload_dict["response_format"]["json_schema"]["strict"] is True
+
+
+# Fulfills AC 4: _convert_request with output_type="text" and response_model_schema
+# set does NOT produce a response_format key — guards against poisoning text calls.
+def test_convert_request_no_response_format_for_text_output(client):
+    from pydantic import BaseModel
+
+    class Widget(BaseModel):
+        name: str
+
+    schema = Widget.model_json_schema()
+    params = make_params(
+        output_type="text",
+        response_model=None,
+        response_model_schema=schema,   # schema present but output_type is text
+    )
+    request = MagicMock()
+    request.params = params
+    request.messages = []
+
+    with patch.object(client, "_convert_messages", return_value=[]):
+        payload = client._convert_request(request)
+
+    payload_dict = payload.model_dump(exclude_none=True)
+    assert "response_format" not in payload_dict
