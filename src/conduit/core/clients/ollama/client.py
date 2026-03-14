@@ -118,6 +118,22 @@ class OllamaClient(Client):
         allowed_params = {"num_ctx", "repeat_penalty", "seed", "top_k", "num_predict"}
         filtered_extra = {k: v for k, v in client_params.items() if k in allowed_params}
 
+        response_format = None
+        if (
+            request.params.output_type == "structured_response"
+            and request.params.response_model is None
+            and request.params.response_model_schema is not None
+        ):
+            schema = request.params.response_model_schema
+            response_format = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": schema.get("title", "Response"),
+                    "schema": schema,
+                    "strict": True,
+                },
+            }
+
         return OllamaPayload(
             model=model_name,
             messages=self._convert_messages(request.messages),
@@ -127,6 +143,7 @@ class OllamaClient(Client):
             stream=request.params.stream,
             extra_body=filtered_extra if filtered_extra else None,
             logprobs=client_params.get("logprobs"),
+            response_format=response_format,
         )
 
     def update_ollama_models(self):

@@ -48,3 +48,39 @@ async def test_structured_response_raises_when_no_model_and_no_schema(client):
 
     client._raw_client.chat.completions.create.assert_not_called()
     client._client.chat.completions.create_with_completion.assert_not_called()
+
+
+# Fulfills AC 3: _convert_request with schema path conditions produces
+# payload_dict["response_format"]["type"] == "json_schema" and schema matches.
+def test_convert_request_injects_response_format_for_schema_path(client):
+    from pydantic import BaseModel
+    from enum import Enum
+
+    class Color(str, Enum):
+        red = "red"
+        blue = "blue"
+
+    class Widget(BaseModel):
+        name: str
+        color: Color
+
+    schema = Widget.model_json_schema()
+    params = make_params(
+        output_type="structured_response",
+        response_model=None,
+        response_model_schema=schema,
+    )
+    request = MagicMock()
+    request.params = params
+    request.messages = []
+
+    with patch.object(client, "_convert_messages", return_value=[]):
+        payload = client._convert_request(request)
+
+    payload_dict = payload.model_dump(exclude_none=True)
+
+    assert "response_format" in payload_dict
+    assert payload_dict["response_format"]["type"] == "json_schema"
+    assert payload_dict["response_format"]["json_schema"]["schema"] == schema
+    assert payload_dict["response_format"]["json_schema"]["name"] == "Widget"
+    assert payload_dict["response_format"]["json_schema"]["strict"] is True
