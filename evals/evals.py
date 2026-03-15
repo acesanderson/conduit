@@ -35,8 +35,12 @@ class EvalFunction(Protocol):
 
 # Data Models
 class RunInput(BaseModel):
+    """
+    Has the full input data and an optional reference output for evaluation.
+    """
+
     data: Any
-    source_id: str  # unique identifier for the input source
+    reference: str | None = None  # optional reference output for evaluation
 
 
 class RunOutput(BaseModel):
@@ -45,10 +49,13 @@ class RunOutput(BaseModel):
 
 
 class RunResult(BaseModel):
-    # Identity
+    # Identity: hash of the strategy, config, and input to uniquely identify this run
     strategy: str  # __name__ of the strategy function
     config_id: str  # hash of the config dict or pydantic model
     source_id: str  # hash of the input data or a unique identifier for the input source
+    reference_id: str | None = (
+        None  # hash of the reference output if provided, for evaluation purposes
+    )
 
     # Config
     config: dict | BaseModel  # either dict or a pydantic model

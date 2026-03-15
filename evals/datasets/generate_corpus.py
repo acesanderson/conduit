@@ -115,7 +115,9 @@ async def fetch_siphon_stratified() -> list[Document]:
     return selected_docs
 
 
-async def build_public_dataset(name, split, category, source_id_fn, text_fn) -> list[Document]:
+async def build_public_dataset(
+    name, split, category, source_id_fn, text_fn
+) -> list[Document]:
     """
     Helper to load and tokenize public datasets asynchronously.
     """
@@ -179,7 +181,9 @@ async def build_composite_dataset() -> list[Document]:
     return siphon_docs + gov_docs + bill_docs + wiki_docs
 
 
-def save_dataset(docs: list[Document], name: str = "summarization_corpus.parquet") -> None:
+def save_dataset(
+    docs: list[Document], name: str = "summarization_corpus.parquet"
+) -> None:
     path = f"{DATASETS_DIR}/{name}"
     records = [{"content": d.content, **d.metadata} for d in docs]
     pd.DataFrame(records).to_parquet(path, index=False)
