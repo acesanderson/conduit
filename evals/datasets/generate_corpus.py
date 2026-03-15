@@ -84,13 +84,23 @@ def sample_bins(
 async def fetch_siphon_candidates() -> list[str]:
     db = SessionLocal()
     try:
-        rows = (
+        # General pool: any length >= 2K chars
+        short_rows = (
             db.query(ProcessedContentORM.content_text)
             .filter(func.length(ProcessedContentORM.content_text) >= 2_000)
             .order_by(func.random())
-            .limit(400)
+            .limit(200)
             .all()
         )
+        # Long pool: bias toward high bins (approx 20K+ tokens)
+        long_rows = (
+            db.query(ProcessedContentORM.content_text)
+            .filter(func.length(ProcessedContentORM.content_text) >= 80_000)
+            .order_by(func.random())
+            .limit(200)
+            .all()
+        )
+        rows = short_rows + long_rows
         return [r.content_text for r in rows if r.content_text]
     finally:
         db.close()
@@ -109,9 +119,9 @@ def fetch_hf_texts(
     print(f"   Loading {label}...")
     try:
         if subset:
-            ds = load_dataset(name, subset, split=split, trust_remote_code=True)
+            ds = load_dataset(name, subset, split=split)
         else:
-            ds = load_dataset(name, split=split, trust_remote_code=True)
+            ds = load_dataset(name, split=split)
         ds = ds.shuffle(seed=42).select(range(min(n, len(ds))))
         texts = [text_fn(item) for item in ds]
         return [t for t in texts if t and len(t.strip()) > 200]
@@ -149,29 +159,20 @@ async def build_candidate_pool() -> list[str]:
             name="ccdv/arxiv-summarization", split="test", n=150,
             text_fn=lambda x: x["article"],
         ),
-        # Medium-long (20K–80K tokens) — TV transcripts and meeting transcripts
+        # Medium (5K–20K tokens) — biomedical papers
         dict(
-            name="tau/scrolls", subset="summ_screen_fd", split="test", n=150,
-            text_fn=lambda x: x["input"],
+            name="ccdv/pubmed-summarization", split="test", n=150,
+            text_fn=lambda x: x["article"],
         ),
-        dict(
-            name="tau/scrolls", subset="qmsum", split="test", n=150,
-            text_fn=lambda x: x["input"],
-        ),
-        # Long (40K–200K tokens)
+        # Medium-long (20K–100K tokens) — book chapters
         dict(
             name="kmfoda/booksum", split="test", n=150,
             text_fn=lambda x: x.get("chapter") or x.get("text") or "",
         ),
-        # Very long — SEC 10-K filings; tries common field names across versions
+        # Long (40K–200K tokens) — more book chapters, larger pool
         dict(
-            name="eloukas/edgar-corpus", split="train", n=150,
-            text_fn=lambda x: (
-                x.get("text")
-                or x.get("item_1")
-                or x.get("item_1a")
-                or ""
-            ),
+            name="kmfoda/booksum", split="train", n=500,
+            text_fn=lambda x: x.get("chapter") or x.get("text") or "",
         ),
     ]
 
