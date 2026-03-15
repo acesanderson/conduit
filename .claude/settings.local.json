@@ -25,7 +25,8 @@
       "Bash(imagegen:*)",
       "Bash(pytest:*)",
       "Bash(python:*)",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Bash(printenv:*)"
     ]
   }
 }

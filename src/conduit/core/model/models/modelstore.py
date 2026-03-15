@@ -382,6 +382,10 @@ class ModelStore:
             from conduit.core.clients.mistral.client import MistralClient
 
             return MistralClient()
+        elif model_name in model_list["openai"]:
+            from conduit.core.clients.openai.client import OpenAIClient
+
+            return OpenAIClient()
         else:
             raise ValueError(f"Model {model_name} not found in ModelStore")
 
