@@ -1,208 +1,225 @@
 import asyncio
+import random
+import numpy as np
 import pandas as pd
 from sqlalchemy import func
 from conduit.async_ import ModelAsync
-from conduit.core.eval.models import Document
+from conduit.config import settings
 from siphon_server.database.postgres.connection import SessionLocal
 from siphon_server.database.postgres.models import ProcessedContentORM
-from uuid import uuid4
-from conduit.config import settings
 
-
-# Initialize Tokenizer (Global) # <--- As requested
-# We use 'gpt-4o' for accurate counting, matching your standard
-tokenizer = ModelAsync("gpt-4o")
+tokenizer = ModelAsync("gpt3")
 DATASETS_DIR = settings.paths["DATASETS_DIR"]
 
-
-async def get_token_count(text: str) -> int:
-    """Async wrapper for ModelAsync tokenization."""
-    if not text:
-        return 0
-    try:
-        # Await the tokenization as per your snippet
-        tokens = await tokenizer.tokenize(text)
-        return tokens
-    except Exception as e:
-        # print(f"Tokenization failed: {e}")
-        return 0
+N_BINS = 20
+MIN_TOKENS = 500
+MAX_TOKENS = 200_000
+DOCS_PER_BIN = 10
+TOKENIZE_CONCURRENCY = 20
 
 
-async def fetch_siphon_stratified() -> list[Document]:
-    """
-    Pulls stratified samples from Siphon DB (Async Tokenization).
-    """
+# ---------------------------------------------------------------------------
+# Tokenization
+# ---------------------------------------------------------------------------
+
+async def get_token_count(sem: asyncio.Semaphore, text: str) -> int:
+    async with sem:
+        if not text:
+            return 0
+        try:
+            return await tokenizer.tokenize(text)
+        except Exception:
+            return 0
+
+
+async def tokenize_all(texts: list[str]) -> list[tuple[str, int]]:
+    sem = asyncio.Semaphore(TOKENIZE_CONCURRENCY)
+    counts = await asyncio.gather(*[get_token_count(sem, t) for t in texts])
+    return list(zip(texts, counts))
+
+
+# ---------------------------------------------------------------------------
+# Binning
+# ---------------------------------------------------------------------------
+
+def make_log_bins(n: int = N_BINS, lo: int = MIN_TOKENS, hi: int = MAX_TOKENS) -> list[tuple[int, int]]:
+    edges = np.logspace(np.log10(lo), np.log10(hi), n + 1).astype(int)
+    return [(int(edges[i]), int(edges[i + 1])) for i in range(n)]
+
+
+def assign_to_bins(
+    tokenized: list[tuple[str, int]], bins: list[tuple[int, int]]
+) -> dict[int, list[str]]:
+    binned: dict[int, list[str]] = {i: [] for i in range(len(bins))}
+    for text, count in tokenized:
+        if count == 0:
+            continue
+        for i, (lo, hi) in enumerate(bins):
+            if lo <= count < hi:
+                binned[i].append(text)
+                break
+    return binned
+
+
+def sample_bins(
+    binned: dict[int, list[str]], bins: list[tuple[int, int]]
+) -> list[str]:
+    random.seed(42)
+    selected = []
+    print("\nBin fill report:")
+    for i, (lo, hi) in enumerate(bins):
+        available = binned[i]
+        n = min(DOCS_PER_BIN, len(available))
+        sample = random.sample(available, n)
+        selected.extend(sample)
+        tag = "OK" if n == DOCS_PER_BIN else f"SPARSE ({n}/{DOCS_PER_BIN})"
+        print(f"   Bin {i + 1:2d}  [{lo:>7,} – {hi:>7,} tok]  {tag}")
+    return selected
+
+
+# ---------------------------------------------------------------------------
+# Candidate sources
+# ---------------------------------------------------------------------------
+
+async def fetch_siphon_candidates() -> list[str]:
     db = SessionLocal()
-
-    tiers = [
-        {
-            "label": "Tier_A_Tech",
-            "sources": ["Article", "Doc"],
-            "min_char": 7_000,
-            "max_char": 45_000,
-            "min_tokens": 2_000,
-            "max_tokens": 10_000,
-            "target": 5,
-        },
-        {
-            "label": "Tier_B_Messy",
-            "sources": ["YouTube"],
-            "min_char": 45_000,
-            "max_char": 160_000,
-            "min_tokens": 12_000,
-            "max_tokens": 40_000,
-            "target": 10,
-        },
-        {
-            "label": "Tier_C_Long",
-            "sources": ["Doc", "Article", "YouTube"],
-            "min_char": 160_000,
-            "max_char": 2_000_000,
-            "min_tokens": 40_000,
-            "max_tokens": 1_000_000,
-            "target": 5,
-        },
-    ]
-
-    selected_docs: list[Document] = []
-    print(f"Connecting to Siphon DB...")
-
     try:
-        for tier in tiers:
-            print(f"   Searching for {tier['label']} ({tier['sources']})...")
-
-            # Synchronous SQL query (fast enough)
-            query = (
-                db.query(ProcessedContentORM)
-                .filter(ProcessedContentORM.source_type.in_(tier["sources"]))
-                .filter(
-                    func.length(ProcessedContentORM.content_text) >= tier["min_char"]
-                )
-                .filter(
-                    func.length(ProcessedContentORM.content_text) <= tier["max_char"]
-                )
-                .order_by(func.random())
-                .limit(tier["target"] * 4)
-            )
-
-            candidates = query.all()
-            found_in_tier = 0
-
-            for orm in candidates:
-                if found_in_tier >= tier["target"]:
-                    break
-
-                count = await get_token_count(orm.content_text)
-
-                if tier["min_tokens"] <= count <= tier["max_tokens"]:
-                    selected_docs.append(
-                        Document(
-                            content=orm.content_text,
-                            metadata={
-                                "source_id": orm.uri,
-                                "category": tier["label"],
-                                "token_count": count,
-                            },
-                        )
-                    )
-                    found_in_tier += 1
-
-            print(f"Selected {found_in_tier}/{tier['target']} docs.")
-
+        rows = (
+            db.query(ProcessedContentORM.content_text)
+            .filter(func.length(ProcessedContentORM.content_text) >= 2_000)
+            .order_by(func.random())
+            .limit(400)
+            .all()
+        )
+        return [r.content_text for r in rows if r.content_text]
     finally:
         db.close()
 
-    return selected_docs
 
-
-async def build_public_dataset(
-    name, split, category, source_id_fn, text_fn
-) -> list[Document]:
-    """
-    Helper to load and tokenize public datasets asynchronously.
-    """
+def fetch_hf_texts(
+    name: str,
+    split: str,
+    text_fn,
+    n: int = 150,
+    subset: str = None,
+) -> list[str]:
     from datasets import load_dataset
 
-    print(f"   Loading {name}...")
-    ds = load_dataset(name, split=split).shuffle(seed=42).select(range(10))
-
-    docs: list[Document] = []
-    for i, item in enumerate(ds):
-        text = text_fn(item)
-        count = await get_token_count(text)
-        docs.append(
-            Document(
-                content=text,
-                metadata={
-                    "category": category,
-                    "source_id": source_id_fn(item, i),
-                    "token_count": count,
-                },
-            )
-        )
-    return docs
+    label = f"{name}/{subset}" if subset else name
+    print(f"   Loading {label}...")
+    try:
+        if subset:
+            ds = load_dataset(name, subset, split=split, trust_remote_code=True)
+        else:
+            ds = load_dataset(name, split=split, trust_remote_code=True)
+        ds = ds.shuffle(seed=42).select(range(min(n, len(ds))))
+        texts = [text_fn(item) for item in ds]
+        return [t for t in texts if t and len(t.strip()) > 200]
+    except Exception as e:
+        print(f"   Failed ({label}): {e}")
+        return []
 
 
-async def build_composite_dataset() -> list[Document]:
-    print("\nBuilding Composite Dataset (Async)...")
+async def build_candidate_pool() -> list[str]:
+    print("\nFetching candidates...")
+    pool: list[str] = []
 
-    # 1. Siphon Data (Async)
-    siphon_docs = await fetch_siphon_stratified()
+    # Internal Siphon DB
+    siphon = await fetch_siphon_candidates()
+    print(f"   Siphon: {len(siphon)}")
+    pool.extend(siphon)
 
-    # 2. Public Datasets (Async Iteration)
+    # Public HuggingFace sources, roughly ordered short → long
+    hf_sources = [
+        # Short (500–5K tokens)
+        dict(
+            name="gursi26/wikihow-cleaned", split="train", n=150,
+            text_fn=lambda x: x.get("text") or x.get("article") or "",
+        ),
+        dict(
+            name="billsum", split="test", n=150,
+            text_fn=lambda x: x["text"],
+        ),
+        # Medium (5K–30K tokens)
+        dict(
+            name="ccdv/govreport-summarization", split="test", n=150,
+            text_fn=lambda x: x["report"],
+        ),
+        dict(
+            name="ccdv/arxiv-summarization", split="test", n=150,
+            text_fn=lambda x: x["article"],
+        ),
+        # Medium-long (20K–80K tokens) — TV transcripts and meeting transcripts
+        dict(
+            name="tau/scrolls", subset="summ_screen_fd", split="test", n=150,
+            text_fn=lambda x: x["input"],
+        ),
+        dict(
+            name="tau/scrolls", subset="qmsum", split="test", n=150,
+            text_fn=lambda x: x["input"],
+        ),
+        # Long (40K–200K tokens)
+        dict(
+            name="kmfoda/booksum", split="test", n=150,
+            text_fn=lambda x: x.get("chapter") or x.get("text") or "",
+        ),
+        # Very long — SEC 10-K filings; tries common field names across versions
+        dict(
+            name="eloukas/edgar-corpus", split="train", n=150,
+            text_fn=lambda x: (
+                x.get("text")
+                or x.get("item_1")
+                or x.get("item_1a")
+                or ""
+            ),
+        ),
+    ]
 
-    # GovReport
-    gov_docs = await build_public_dataset(
-        name="ccdv/govreport-summarization",
-        split="test",
-        category="GovReport",
-        source_id_fn=lambda x, i: str(uuid4().hex)[:8],
-        text_fn=lambda x: x["report"],
-    )
+    for src in hf_sources:
+        texts = fetch_hf_texts(**src)
+        label = src["name"] + ("/" + src["subset"] if "subset" in src else "")
+        print(f"   {label}: {len(texts)}")
+        pool.extend(texts)
 
-    # BillSum
-    bill_docs = await build_public_dataset(
-        name="billsum",
-        split="test",
-        category="BillSum",
-        source_id_fn=lambda x, i: x["title"][:50],
-        text_fn=lambda x: x["text"],
-    )
+    # Deduplicate by leading 300 chars
+    seen: dict[str, str] = {}
+    for t in pool:
+        key = t[:300]
+        if key not in seen:
+            seen[key] = t
+    pool = list(seen.values())
 
-    # WikiHow (gursi26)
-    wiki_docs = await build_public_dataset(
-        name="gursi26/wikihow-cleaned",
-        split="train",
-        category="WikiHow",
-        source_id_fn=lambda x, i: f"wiki_{i}",
-        text_fn=lambda x: x.get("text") or x.get("article") or x.get("input", ""),
-    )
-
-    return siphon_docs + gov_docs + bill_docs + wiki_docs
+    print(f"\nTotal unique candidates: {len(pool)}")
+    return pool
 
 
-def save_dataset(
-    docs: list[Document], name: str = "summarization_corpus.parquet"
-) -> None:
+# ---------------------------------------------------------------------------
+# Save
+# ---------------------------------------------------------------------------
+
+def save_dataset(texts: list[str], name: str = "summarization_corpus.parquet") -> None:
     path = f"{DATASETS_DIR}/{name}"
-    records = [{"content": d.content, **d.metadata} for d in docs]
-    pd.DataFrame(records).to_parquet(path, index=False)
-    print(f"Dataset saved to: {path}")
+    pd.DataFrame({"text": texts}).to_parquet(path, index=False)
+    print(f"\nSaved {len(texts)} documents → {path}")
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+async def main() -> None:
+    bins = make_log_bins()
+    pool = await build_candidate_pool()
+
+    print(f"\nTokenizing {len(pool)} candidates...")
+    tokenized = await tokenize_all(pool)
+
+    binned = assign_to_bins(tokenized, bins)
+    docs = sample_bins(binned, bins)
+
+    print(f"\nFinal count: {len(docs)} documents")
+    save_dataset(docs)
 
 
 if __name__ == "__main__":
-    # The Entry Point
-    docs = asyncio.run(build_composite_dataset())
-
-    print(f"\nFinal Count: {len(docs)} documents")
-    if len(docs) > 0:
-        from collections import Counter
-
-        cats = Counter(d.metadata["category"] for d in docs)
-        print(f"   Breakdown: {dict(cats)}")
-
-        avg_tokens = sum(d.metadata["token_count"] for d in docs) / len(docs)
-        print(f"   Avg Tokens: {int(avg_tokens)}")
-        print(f"   Sample ID: {docs[0].metadata['source_id']}")
-
-    save_dataset(docs)
+    asyncio.run(main())
