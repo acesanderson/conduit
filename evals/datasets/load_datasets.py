@@ -2,7 +2,7 @@ from __future__ import annotations
 from conduit.config import settings
 from conduit.core.eval.models import Document, GoldDatum, GoldSummary
 from typing import TYPE_CHECKING
-from conduit.strategies.summarize.datasets.gold_standard import (
+from gold_standard import (
     GoldStandardDatum,
     GoldStandardSummaryWithMetadata,
     GoldStandardEntry,
