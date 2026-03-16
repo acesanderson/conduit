@@ -5,6 +5,15 @@ from typing import override
 
 
 class OneShotSummarizer(SummarizationStrategy):
+    """
+    Config schema:
+    - model: str (default: "gpt3")
+    - prompt: str (default: "Summarize the following text:\n\n{{text}}")
+    - max_tokens: int (optional) - max tokens for the summary
+    - temperature: float (optional) - temperature for generation
+    - top_p: float (optional) - top_p for generation
+    """
+
     @step
     @override
     async def __call__(self, text: str, **kwargs) -> str:
