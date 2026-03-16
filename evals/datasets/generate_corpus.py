@@ -1,12 +1,16 @@
 import asyncio
+import hashlib
 import pandas as pd
 from sqlalchemy import func
 from conduit.async_ import ModelAsync
 from conduit.core.eval.models import Document
 from siphon_server.database.postgres.connection import SessionLocal
 from siphon_server.database.postgres.models import ProcessedContentORM
-from uuid import uuid4
 from conduit.config import settings
+
+
+def generate_source_id(text: str) -> str:
+    return hashlib.md5(text.encode()).hexdigest()[:16]
 
 
 # Initialize Tokenizer (Global) # <--- As requested
@@ -99,7 +103,7 @@ async def fetch_siphon_stratified() -> list[Document]:
                         Document(
                             content=orm.content_text,
                             metadata={
-                                "source_id": orm.uri,
+                                "source_id": generate_source_id(orm.content_text),
                                 "category": tier["label"],
                                 "token_count": count,
                             },
@@ -116,7 +120,7 @@ async def fetch_siphon_stratified() -> list[Document]:
 
 
 async def build_public_dataset(
-    name, split, category, source_id_fn, text_fn
+    name, split, category, text_fn
 ) -> list[Document]:
     """
     Helper to load and tokenize public datasets asynchronously.
@@ -127,7 +131,7 @@ async def build_public_dataset(
     ds = load_dataset(name, split=split).shuffle(seed=42).select(range(10))
 
     docs: list[Document] = []
-    for i, item in enumerate(ds):
+    for item in ds:
         text = text_fn(item)
         count = await get_token_count(text)
         docs.append(
@@ -135,7 +139,7 @@ async def build_public_dataset(
                 content=text,
                 metadata={
                     "category": category,
-                    "source_id": source_id_fn(item, i),
+                    "source_id": generate_source_id(text),
                     "token_count": count,
                 },
             )
@@ -156,7 +160,6 @@ async def build_composite_dataset() -> list[Document]:
         name="ccdv/govreport-summarization",
         split="test",
         category="GovReport",
-        source_id_fn=lambda x, i: str(uuid4().hex)[:8],
         text_fn=lambda x: x["report"],
     )
 
@@ -165,7 +168,6 @@ async def build_composite_dataset() -> list[Document]:
         name="billsum",
         split="test",
         category="BillSum",
-        source_id_fn=lambda x, i: x["title"][:50],
         text_fn=lambda x: x["text"],
     )
 
@@ -174,7 +176,6 @@ async def build_composite_dataset() -> list[Document]:
         name="gursi26/wikihow-cleaned",
         split="train",
         category="WikiHow",
-        source_id_fn=lambda x, i: f"wiki_{i}",
         text_fn=lambda x: x.get("text") or x.get("article") or x.get("input", ""),
     )
 
