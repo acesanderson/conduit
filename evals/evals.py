@@ -39,8 +39,10 @@ class RunInput(BaseModel):
     Has the full input data and an optional reference output for evaluation.
     """
 
+    source_id: str
     data: Any
     reference: str | None = None  # optional reference output for evaluation
+    metadata: dict | None = None  # optional metadata about the input
 
 
 class RunOutput(BaseModel):
@@ -52,9 +54,9 @@ class RunResult(BaseModel):
     # Identity: hash of the strategy, config, and input to uniquely identify this run
     strategy: str  # __name__ of the strategy function
     config_id: str  # hash of the config dict or pydantic model
-    source_id: str  # hash of the input data or a unique identifier for the input source
+    source_id: str  # source_id from input
     reference_id: str | None = (
-        None  # hash of the reference output if provided, for evaluation purposes
+        None  # optional reference_id derived from input.reference for evaluation purposes
     )
 
     # Config

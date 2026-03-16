@@ -6,10 +6,9 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from asyncio import Semaphore
 import pandas as pd
 from conduit.config import settings
-from conduit.strategies.summarize.datasets.load_datasets import load_corpus
+from load_datasets import load_corpus
 from conduit.core.eval.models import GoldSummary, GoldDatum, Document
 from conduit.strategies.summarize.compression import get_target_summary_length
 from conduit.core.prompt.prompt_loader import PromptLoader

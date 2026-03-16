@@ -1,6 +1,11 @@
 from __future__ import annotations
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
 from conduit.config import settings
-from conduit.core.eval.models import Document, GoldDatum, GoldSummary
+from conduit.core.eval.models import GoldDatum, GoldSummary
+from evals import RunInput
 from typing import TYPE_CHECKING
 from gold_standard import (
     GoldStandardDatum,
@@ -20,25 +25,20 @@ GOLD_STANDARD_DATASET_PATH = (
 )
 
 
-def load_corpus(path: Path = SUMMARIZATION_DATASET_PATH) -> list[Document]:
+def load_corpus(path: Path = SUMMARIZATION_DATASET_PATH) -> list[RunInput]:
     """
-    Loads the corpus from disk as a list of Document objects.
+    Loads the corpus from disk as a list of RunInput objects.
     """
     df = pd.read_parquet(str(path))
     records = df.to_dict(orient="records")
-    return [Document.model_validate(r) for r in records]
-    # return [
-    #     Document(
-    #         content=row["content"],
-    #         metadata={
-    #             "source_id": row["source_id"],
-    #             "category": row["category"],
-    #             "token_count": row["token_count"],
-    #         },
-    #     )
-    #     for _, row in df.iterrows()
-    # ]
-    #
+    return [
+        RunInput(
+            source_id=r["source_id"],
+            data=r["content"],
+            metadata={"token_count": r["token_count"], "category": r["category"]},
+        )
+        for r in records
+    ]
 
 
 def load_golden_dataset(
@@ -57,5 +57,5 @@ if __name__ == "__main__":
     docs = load_corpus()
     print(f"Loaded {len(docs)} documents")
     if docs:
-        print(f"Sample: {docs[0].metadata}")
-    # gold = load_golden_dataset(k)
+        print(f"Sample source_id: {docs[0].source_id}")
+        print(f"Sample metadata: {docs[0].metadata}")
