@@ -1,6 +1,13 @@
 - [ ] finalize data models
 - [ ] recreate the more simplified gold standard dataset
 
+### Strategies (5) for run matrix
+one_shot.py
+recursive.py
+rolling_refine.py
+extractive_pre_filter.py
+hierarchical_tree.py
+
 ### Our config params for RecursiveSummarizer
 - model
 - effective_context_window_percentage
