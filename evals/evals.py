@@ -72,7 +72,7 @@ class EvalResult(BaseModel):
 
 
 # Generate an evaluation run.
-async def run(
+async def run_eval(
     input: RunInput, config: dict | BaseModel, strategy: Callable
 ) -> RunResult:
     """

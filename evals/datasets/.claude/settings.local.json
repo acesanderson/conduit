@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(cd /home/fishhouses/Brian_Code/siphon/siphon-server && PYTHONPATH=src .venv/bin/python -u dev/fetch_pg19_books.py 2>&1)",
-      "Bash(cd /home/fishhouses/Brian_Code/siphon/siphon-server && PYTHONPATH=src .venv/bin/python -u dev/fetch_pg19_books.py)",
-      "Bash(bash -c 'cd /home/fishhouses/Brian_Code/siphon/siphon-server && PYTHONPATH=src .venv/bin/python -u dev/fetch_pg19_books.py')"
-    ]
-  }
-}
