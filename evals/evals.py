@@ -94,7 +94,7 @@ async def run_eval(
     # Run the strategy with the input and config to get the output
     output = await strategy(input, config)
     # Identity
-    strategy = strategy.__name__
+    strategy = strategy.__class__.__name__
     config_id = hashlib.md5(json.dumps(config, sort_keys=True).encode()).hexdigest()[:8]
     source_id = input.source_id
     # Output
@@ -127,7 +127,7 @@ async def generate_runs(
     coroutines = []
     for input in inputs:
         for config in configs:
-            coroutines.append(run(input, config, strategy))
+            coroutines.append(run_eval(input, config, strategy))
 
     # Run all evaluations concurrently and gather results
     sem = asyncio.Semaphore(CONCURRENCY_LIMIT)

@@ -20,9 +20,10 @@ from __future__ import annotations
 
 import math
 import logging
-from typing import override
+from typing import override, Any
 from conduit.core.workflow.step import step, get_param, add_metadata
-from conduit.strategies.summarize.strategy import SummarizationStrategy
+from conduit.core.workflow.context import context
+from conduit.strategies.summarize.strategy import SummarizationStrategy, _TextInput
 from conduit.strategies.summarize.summarizers.one_shot import OneShotSummarizer
 from conduit.strategies.summarize.summarizers.chunker import Chunker
 
@@ -66,57 +67,64 @@ class ExtractivePreFilterSummarizer(SummarizationStrategy):
 
     @step
     @override
-    async def __call__(self, text: str, *args, **kwargs) -> str:
-        from headwater_client.client.headwater_client_async import HeadwaterAsyncClient
-        from headwater_api.classes import EmbeddingsRequest, ChromaBatch
+    async def __call__(self, input: Any, config: dict) -> str:
+        token_conf = context.config.set(config)
+        token_defaults = context.use_defaults.set(True)
+        try:
+            text = input.data
+            from headwater_client.client.headwater_client_async import HeadwaterAsyncClient
+            from headwater_api.classes import EmbeddingsRequest, ChromaBatch
 
-        embedding_model = get_param(
-            "embedding_model",
-            default="sentence-transformers/all-MiniLM-L6-v2",
-        )
-        keep_ratio = get_param("keep_ratio", default=0.3)
+            embedding_model = get_param(
+                "embedding_model",
+                default="sentence-transformers/all-MiniLM-L6-v2",
+            )
+            keep_ratio = get_param("keep_ratio", default=0.3)
 
-        # 1. Chunk
-        chunker = Chunker()
-        chunks = await chunker(text)
-        total_chunks = len(chunks)
-        logger.info(
-            f"ExtractivePreFilterSummarizer: {total_chunks} chunks, keep_ratio={keep_ratio}"
-        )
-        add_metadata("num_chunks_before_filter", total_chunks)
+            # 1. Chunk
+            chunker = Chunker()
+            chunks = await chunker(text)
+            total_chunks = len(chunks)
+            logger.info(
+                f"ExtractivePreFilterSummarizer: {total_chunks} chunks, keep_ratio={keep_ratio}"
+            )
+            add_metadata("num_chunks_before_filter", total_chunks)
 
-        if total_chunks == 1:
-            logger.info("Single chunk — skipping filter, delegating to OneShotSummarizer")
-            return await OneShotSummarizer()(text=chunks[0])
+            if total_chunks == 1:
+                logger.info("Single chunk — skipping filter, delegating to OneShotSummarizer")
+                return await OneShotSummarizer()(_TextInput(chunks[0]), config)
 
-        # 2. Embed all chunks via Headwater
-        request = EmbeddingsRequest(
-            model=embedding_model,
-            batch=ChromaBatch(
-                ids=[str(i) for i in range(total_chunks)],
-                documents=chunks,
-            ),
-        )
-        async with HeadwaterAsyncClient() as client:
-            response = await client.embeddings.generate_embeddings(request)
-        embeddings = response.embeddings
+            # 2. Embed all chunks via Headwater
+            request = EmbeddingsRequest(
+                model=embedding_model,
+                batch=ChromaBatch(
+                    ids=[str(i) for i in range(total_chunks)],
+                    documents=chunks,
+                ),
+            )
+            async with HeadwaterAsyncClient() as client:
+                response = await client.embeddings.generate_embeddings(request)
+            embeddings = response.embeddings
 
-        # 3. Score each chunk against the document centroid
-        centroid = _centroid(embeddings)
-        scores = [_cosine_similarity(emb, centroid) for emb in embeddings]
+            # 3. Score each chunk against the document centroid
+            centroid = _centroid(embeddings)
+            scores = [_cosine_similarity(emb, centroid) for emb in embeddings]
 
-        # 4. Keep top keep_ratio chunks; restore original document order
-        keep_n = max(1, int(total_chunks * keep_ratio))
-        ranked = sorted(range(total_chunks), key=lambda i: scores[i], reverse=True)
-        selected_indices = sorted(ranked[:keep_n])
+            # 4. Keep top keep_ratio chunks; restore original document order
+            keep_n = max(1, int(total_chunks * keep_ratio))
+            ranked = sorted(range(total_chunks), key=lambda i: scores[i], reverse=True)
+            selected_indices = sorted(ranked[:keep_n])
 
-        logger.info(f"Kept {keep_n}/{total_chunks} chunks after extractive filter")
-        add_metadata("num_chunks_after_filter", keep_n)
-        add_metadata("filter_reduction_ratio", round(1.0 - keep_n / total_chunks, 3))
+            logger.info(f"Kept {keep_n}/{total_chunks} chunks after extractive filter")
+            add_metadata("num_chunks_after_filter", keep_n)
+            add_metadata("filter_reduction_ratio", round(1.0 - keep_n / total_chunks, 3))
 
-        # 5. Reassemble and summarize
-        filtered_text = "\n\n".join(chunks[i] for i in selected_indices)
-        return await OneShotSummarizer()(text=filtered_text)
+            # 5. Reassemble and summarize
+            filtered_text = "\n\n".join(chunks[i] for i in selected_indices)
+            return await OneShotSummarizer()(_TextInput(filtered_text), config)
+        finally:
+            context.config.reset(token_conf)
+            context.use_defaults.reset(token_defaults)
 
 
 if __name__ == "__main__":
@@ -136,7 +144,7 @@ if __name__ == "__main__":
             "This is an important fact about the topic. " * 50
             + "This is filler boilerplate content that adds little value. " * 200
         )
-        result = await harness.run(summarizer, text=test_text)
+        result = await harness.run(summarizer, _TextInput(test_text), config)
         print(f"Summary: {result}")
         print(f"Trace: {harness.trace}")
 

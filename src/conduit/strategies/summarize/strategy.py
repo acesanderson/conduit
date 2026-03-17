@@ -1,5 +1,14 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import Any
 from conduit.core.workflow.protocols import Strategy
+
+
+@dataclass
+class _TextInput:
+    """Lightweight input wrapper for internal sub-calls between summarizers."""
+    data: str
+    source_id: str = "internal"
 
 
 class SummarizationStrategy(Strategy, ABC):
@@ -10,9 +19,11 @@ class SummarizationStrategy(Strategy, ABC):
     """
 
     @abstractmethod
-    async def __call__(self, text: str, **kwargs) -> str:
+    async def __call__(self, input: Any, config: dict) -> str:
         """
         Execute the summarization workflow.
+        input.data contains the text to summarize.
+        config contains strategy parameters (model, prompt, etc.).
         """
         ...
 

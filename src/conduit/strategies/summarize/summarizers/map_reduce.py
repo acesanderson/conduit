@@ -1,9 +1,10 @@
-from conduit.strategies.summarize.strategy import SummarizationStrategy
+from conduit.strategies.summarize.strategy import SummarizationStrategy, _TextInput
 from conduit.strategies.summarize.summarizers.one_shot import OneShotSummarizer
 from conduit.strategies.summarize.summarizers.chunker import Chunker
 from conduit.domain.result.response import GenerationResponse
 from conduit.core.workflow.step import step, get_param, add_metadata
-from typing import override
+from conduit.core.workflow.context import context
+from typing import override, Any
 import logging
 
 logger = logging.getLogger(__name__)
@@ -28,74 +29,81 @@ Target ~{{ target_tokens }} tokens.
 class MapReduceSummarizer(SummarizationStrategy):
     @step
     @override
-    async def __call__(self, text: str, **kwargs) -> str:
-        logger.info("Starting MapReduceSummarizer")
-        # Grab llm params
-        model = get_param("model", default="gpt3")
-        prompt = get_param("prompt", default=chunk_summarization_prompt)
-        concurrency_limit = get_param("concurrency_limit", default=5)
+    async def __call__(self, input: Any, config: dict) -> str:
+        token_conf = context.config.set(config)
+        token_defaults = context.use_defaults.set(True)
+        try:
+            text = input.data
+            logger.info("Starting MapReduceSummarizer")
+            # Grab llm params
+            model = get_param("model", default="gpt3")
+            prompt = get_param("prompt", default=chunk_summarization_prompt)
+            concurrency_limit = get_param("concurrency_limit", default=5)
 
-        # Chunk that shit
-        chunker = Chunker()
-        chunks = await chunker(text)
-        logger.info(f"Text chunked into {len(chunks)} chunks.")
+            # Chunk that shit
+            chunker = Chunker()
+            chunks = await chunker(text)
+            logger.info(f"Text chunked into {len(chunks)} chunks.")
 
-        # MAP: Run the conduit
-        from conduit.core.model.model_async import ModelAsync
-        from conduit.core.prompt.prompt import Prompt
-        from conduit.domain.request.generation_params import GenerationParams
-        from conduit.domain.config.conduit_options import ConduitOptions
-        from conduit.utils.progress.verbosity import Verbosity
-        import asyncio
+            # MAP: Run the conduit
+            from conduit.core.model.model_async import ModelAsync
+            from conduit.core.prompt.prompt import Prompt
+            from conduit.domain.request.generation_params import GenerationParams
+            from conduit.domain.config.conduit_options import ConduitOptions
+            from conduit.utils.progress.verbosity import Verbosity
+            import asyncio
 
-        generation_params = GenerationParams(
-            model=model,
-            max_tokens=get_param("max_tokens", default=None),
-            temperature=get_param("temperature", default=None),
-            top_p=get_param("top_p", default=None),
-        )
-        options = ConduitOptions(
-            project_name=get_param("project_name", default="conduit"),
-            verbosity=Verbosity.SILENT,
-            debug_payload=True,
-        )
-        model_instance = ModelAsync(model=model)
-
-        coroutines = []
-        for i, chunk in enumerate(chunks):
-            logger.debug(f"Creating coroutine for chunk {i + 1}/{len(chunks)}")
-            summarization_prompt = Prompt(prompt).render(
-                input_variables={
-                    "chunk": chunk,
-                    "chunk_index": str(i + 1),
-                    "total_chunks": str(len(chunks)),
-                    "target_tokens": get_param("target_tokens", default=150),
-                }
+            generation_params = GenerationParams(
+                model=model,
+                max_tokens=get_param("max_tokens", default=None),
+                temperature=get_param("temperature", default=None),
+                top_p=get_param("top_p", default=None),
             )
-            coroutine = model_instance.query(
-                query_input=summarization_prompt,
-                params=generation_params,
-                options=options,
+            options = ConduitOptions(
+                project_name=get_param("project_name", default="conduit"),
+                verbosity=Verbosity.SILENT,
+                debug_payload=True,
             )
-            coroutines.append(coroutine)
+            model_instance = ModelAsync(model=model)
 
-        # Create a semaphore to limit concurrent requests
-        semaphore = asyncio.Semaphore(concurrency_limit)  # From config
-        logger.debug("Awaiting all chunk summarization coroutines")
-        async with semaphore:
-            responses: list[GenerationResponse] = await asyncio.gather(*coroutines)
-        # REDUCE: Join structured summaries
-        response_strings = [str(r.content) for r in responses]
-        combined = "\n\n".join(response_strings)
+            coroutines = []
+            for i, chunk in enumerate(chunks):
+                logger.debug(f"Creating coroutine for chunk {i + 1}/{len(chunks)}")
+                summarization_prompt = Prompt(prompt).render(
+                    input_variables={
+                        "chunk": chunk,
+                        "chunk_index": str(i + 1),
+                        "total_chunks": str(len(chunks)),
+                        "target_tokens": get_param("target_tokens", default=150),
+                    }
+                )
+                coroutine = model_instance.query(
+                    query_input=summarization_prompt,
+                    params=generation_params,
+                    options=options,
+                )
+                coroutines.append(coroutine)
 
-        one_shot_summarizer = OneShotSummarizer()
-        logger.debug("Starting final summarization step")
-        final_summary = await one_shot_summarizer(combined)
+            # Create a semaphore to limit concurrent requests
+            semaphore = asyncio.Semaphore(concurrency_limit)  # From config
+            logger.debug("Awaiting all chunk summarization coroutines")
+            async with semaphore:
+                responses: list[GenerationResponse] = await asyncio.gather(*coroutines)
+            # REDUCE: Join structured summaries
+            response_strings = [str(r.content) for r in responses]
+            combined = "\n\n".join(response_strings)
 
-        # Collect trace metadata
-        total_input_tokens = sum(r.metadata.input_tokens for r in responses)
-        total_output_tokens = sum(r.metadata.output_tokens for r in responses)
-        add_metadata("input_tokens", total_input_tokens)
-        add_metadata("output_tokens", total_output_tokens)
+            one_shot_summarizer = OneShotSummarizer()
+            logger.debug("Starting final summarization step")
+            final_summary = await one_shot_summarizer(_TextInput(combined), config)
 
-        return final_summary
+            # Collect trace metadata
+            total_input_tokens = sum(r.metadata.input_tokens for r in responses)
+            total_output_tokens = sum(r.metadata.output_tokens for r in responses)
+            add_metadata("input_tokens", total_input_tokens)
+            add_metadata("output_tokens", total_output_tokens)
+
+            return final_summary
+        finally:
+            context.config.reset(token_conf)
+            context.use_defaults.reset(token_defaults)
