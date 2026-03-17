@@ -96,6 +96,8 @@ addopts = "-v -s --tb=short --no-header --showlocals --pdb -x"
 log_cli = true
 log_cli_level = "INFO"
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 
 # ── Ruff ───────────────────────────────────────────────────────────────────────
 [tool.ruff]
@@ -153,3 +155,4 @@ tokenize="conduit.apps.scripts.tokenize_cli:main"
 conduit = "conduit.apps.scripts.conduit_cli:main"
 ask = "conduit.apps.scripts.conduit_cli:query_entrypoint"
 conduit_cache = "conduit.apps.scripts.cache_cli:main"
+conduit-dataset = "conduit.apps.scripts.datasets_cli:main"

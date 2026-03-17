@@ -55,7 +55,9 @@
       "Bash(source /Users/bianders/.zshrc && cd /Users/bianders/Brian_Code/conduit-project && conduit models -t chat 2>&1 | head -20)",
       "Bash(source /Users/bianders/.zshrc && cd /Users/bianders/Brian_Code/conduit-project && conduit models -t text_completion 2>&1 | head -20)",
       "Bash(exec zsh:*)",
-      "Bash(cd /Users/bianders/Brian_Code/conduit-project && conduit batch --help 2>&1)"
+      "Bash(cd /Users/bianders/Brian_Code/conduit-project && conduit batch --help 2>&1)",
+      "Bash(.venv/bin/python -c \"import sklearn; print\\(sklearn.__version__\\)\")",
+      "Bash(/Users/bianders/Brian_Code/conduit-project/.venv/bin/python -c \"import sklearn; print\\(sklearn.__version__\\)\")"
     ]
   }
 }
