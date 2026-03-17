@@ -22,3 +22,4 @@ multimodal/tts/audio_files/*
 uv.lock
 src/conduit/summarize/essays/*
 *.txt
+.worktrees/
