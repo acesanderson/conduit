@@ -662,6 +662,14 @@ async def test_documents_delete_all_force_clears_all(cd, pool, project):
     assert evals == 0
 ```
 
+- [ ] **Step 4.3a: Run AC 3 tests to verify they fail**
+```bash
+python -m pytest \
+    tests/test_dataset.py::test_documents_delete_all_raises_if_runs_exist \
+    tests/test_dataset.py::test_documents_delete_all_force_clears_all -v
+```
+Expected: FAIL — `AttributeError: 'DocumentsNamespace' object has no attribute 'delete_all'`
+
 - [ ] **Step 4.4: Implement `swap()` and `delete_all()` in `DocumentsNamespace`**
 
 Add to the `DocumentsNamespace` class:
@@ -891,17 +899,23 @@ async def save_gold_standards(
                 f"source_id(s) not found in project '{self._project}': {missing}"
             )
 
-        if not force:
-            conflicts = [sid for sid, ref in existing.items() if ref is not None]
-            if conflicts:
+        conflicts = [sid for sid, ref in existing.items() if ref is not None]
+        if conflicts:
+            if not force:
+                logger.warning(
+                    "save_gold_standards: existing references found project=%s ids=%s",
+                    self._project, conflicts,
+                )
                 raise GoldStandardExistsError(
                     f"Gold standards already exist for: {conflicts}. "
                     "Pass force=True to overwrite."
                 )
-            logger.warning(
-                "save_gold_standards: existing references found project=%s ids=%s",
-                self._project, conflicts,
-            )
+            else:
+                logger.warning(
+                    "save_gold_standards: force=True, overwriting existing references "
+                    "project=%s ids=%s",
+                    self._project, conflicts,
+                )
 
         # All validation passed — write
         rows = [(i.reference, self._project, i.source_id) for i in to_write]
@@ -1263,7 +1277,7 @@ python -m pytest \
     tests/test_dataset.py::test_runs_list_filters_by_config_dict \
     tests/test_dataset.py::test_runs_list_unknown_config_returns_empty \
     tests/test_dataset.py::test_runs_list_raises_on_conflicting_config_args \
-    tests/test_dataset.py::test_runs_list_ordered_by_created_at -v
+    tests/test_dataset.py::test_runs_list_configs_ordered_by_created_at -v
 ```
 Expected: all PASS
 
@@ -1536,7 +1550,10 @@ git commit -m "feat: EvalsNamespace save() with per-result transactions — AC 1
 
 > `ConduitDatasetSync` and `_SyncProxy` are already implemented in Task 2. This task adds the tests.
 
-- [ ] **Step 9.1: Write failing test — AC 14**
+- [ ] **Step 9.1: Write test — AC 14**
+
+> **Note:** No red phase for AC 14. The running-loop guard was co-located with the `ConduitDatasetSync` skeleton in Task 2 and cannot be separated from it without breaking the skeleton. The guard fires immediately when pytest-asyncio runs the test inside its event loop, so the test goes straight to green.
+
 ```python
 # ── AC 14 ────────────────────────────────────────────────────────────────────
 # ConduitDataset() raises RuntimeError when instantiated inside a running loop.
@@ -1547,11 +1564,11 @@ async def test_sync_raises_when_loop_is_running():
         ConduitDataset("test_project")
 ```
 
-- [ ] **Step 9.2: Run to verify it passes (already implemented in skeleton)**
+- [ ] **Step 9.2: Run to verify it passes (no implementation step needed — guard already in skeleton)**
 ```bash
 python -m pytest tests/test_dataset.py::test_sync_raises_when_loop_is_running -v
 ```
-Expected: PASS — the `asyncio.get_event_loop().is_running()` check fires because pytest-asyncio runs tests inside an event loop. If FAIL: review `ConduitDatasetSync.__init__` detection logic.
+Expected: PASS — the `asyncio.get_event_loop().is_running()` check fires because pytest-asyncio runs tests inside an event loop. If FAIL: review `ConduitDatasetSync.__init__` detection logic in Task 2 skeleton.
 
 - [ ] **Step 9.3: Write failing test — AC 15**
 ```python
@@ -1684,24 +1701,25 @@ The CLI uses `argparse` + `rich`. It calls `ConduitDatasetAsync.list_projects()`
 
 def test_cli_status_exits_1_when_db_unreachable():
     """AC 16"""
-    import subprocess, sys
-    result = subprocess.run(
-        [sys.executable, "-m", "pytest", "--co", "-q"],  # placeholder — replaced below
-        capture_output=True, text=True,
-    )
-    # Real test: run the CLI script directly with a bad host env var
+    # Use a nonexistent host to guarantee connection failure regardless of
+    # how _get_pool() constructs its DSN. POSTGRES_PASSWORD would only work
+    # if the server rejects auth — a bad host fails at the TCP level, which
+    # is reliable and fast.
     import os, subprocess, sys
     env = os.environ.copy()
-    env["POSTGRES_PASSWORD"] = "wrongpassword"
+    env["POSTGRES_HOST"] = "nonexistent-host-conduit-test-xyz.local"
     result = subprocess.run(
         [sys.executable,
          str(Path(__file__).parent.parent.parent /
              "src/conduit/apps/scripts/datasets_cli.py"),
          "status"],
         capture_output=True, text=True, env=env,
+        timeout=10,
     )
     assert result.returncode == 1
-    assert "evals" in result.stdout or "evals" in result.stderr
+    output = result.stdout + result.stderr
+    assert "Cannot reach postgres" in output
+    assert "evals" in output  # database name must appear in the message
 ```
 
 - [ ] **Step 10.2: Run to verify it fails**
