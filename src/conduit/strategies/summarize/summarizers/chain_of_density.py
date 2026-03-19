@@ -1,127 +1,170 @@
-"""
-```python
-from conduit.core.workflow.harness import ConduitHarness
-from conduit.strategies.summarize.summarizers.chain_of_density import ChainOfDensitySummarizer
-
-config = {
-    "model": "gpt-oss:latest",
-    "density_iterations": 3,
-    "density_target_tokens": 100,
-}
-
-harness = ConduitHarness(config=config)
-result = await harness.run(ChainOfDensitySummarizer(), text=document)
-```
-"""
-
 from __future__ import annotations
 
 import logging
 from typing import override, Any
-from conduit.core.workflow.step import step, get_param, add_metadata
-from conduit.core.workflow.context import context
+from pydantic import BaseModel, ConfigDict
+from conduit.core.workflow.step import step, add_metadata
 from conduit.strategies.summarize.strategy import SummarizationStrategy, _TextInput
-from conduit.core.model.model_async import ModelAsync
-from conduit.core.prompt.prompt import Prompt
-from conduit.domain.request.generation_params import GenerationParams
-from conduit.domain.config.conduit_options import ConduitOptions
-from conduit.domain.result.response import GenerationResponse
-from conduit.utils.progress.verbosity import Verbosity
+from conduit.strategies.summarize.summarizers.one_shot import OneShotSummarizer
 
 logger = logging.getLogger(__name__)
 
+identify_entities_prompt = """
+You are analyzing a document and its current summary to identify missing information.
 
-density_iteration_prompt = """
-You are generating a increasingly dense summary of the same document.
-
-Previous summary (less dense):
-<previous_summary>
-{{ previous_summary }}
-</previous_summary>
-
-Original document:
+Source document:
 <document>
 {{ document }}
 </document>
 
-Generate a new summary that:
-1. Retains all key factual information from the previous summary
-2. Adds missing entities, relationships, and numerical details
-3. Is more information-dense while remaining coherent
-4. Target ~{{ target_tokens }} tokens
+Current summary:
+<summary>
+{{ summary }}
+</summary>
 
-Return only the new summary.
+Identify 5-10 specific entities (people, organizations, dates, numbers, events, locations)
+that are present in the source document but missing or underrepresented in the current summary.
+Return only a numbered list of the missing entities, one per line. No explanation.
+""".strip()
+
+fuse_entities_prompt = """
+You are densifying a summary by incorporating missing entities.
+
+Current summary:
+<summary>
+{{ summary }}
+</summary>
+
+Missing entities to incorporate:
+<missing_entities>
+{{ missing_entities }}
+</missing_entities>
+
+Rewrite the summary to fuse ALL of the missing entities into the text.
+Rules:
+- Do not increase the total word count.
+- Preserve all information already in the summary.
+- Every missing entity must appear in the new summary.
+- Return only the rewritten summary, no explanation.
 """.strip()
 
 
 class ChainOfDensitySummarizer(SummarizationStrategy):
     """
-    Chain-of-Density style summarization that iteratively adds missing details.
+    Chain-of-Density summarization: iterative densification via two-step loops.
 
     Workflow:
-    1. Generate an initial abstract summary.
-    2. For N iterations, ask the model to add missing entities/facts to the summary.
-    3. Return the final dense summary.
+    1. Generate an initial verbose summary via OneShotSummarizer.
+    2. For N iterations:
+       a. Identify 5-10 entities present in the source but missing from the draft.
+       b. Fuse those entities into the draft without increasing word count.
+    3. Return the final densified summary.
 
-    This approach produces summaries that progressively become more informative
-    while maintaining coherence, similar to the Chain-of-Density method.
+    Config params:
+        iterations:   number of densification loops (default: 3)
+        model:        LLM to use (default: gpt3)
+        max_tokens:   max tokens for generation
+        temperature:  sampling temperature
     """
+
+    class Config(BaseModel):
+        model_config = ConfigDict(extra="ignore")
+        model: str = "gpt3"
+        iterations: int = 3
+        max_tokens: int | None = None
+        temperature: float | None = None
+        top_p: float | None = None
+        project_name: str = "conduit"
+
+    config_model = Config
 
     @step
     @override
     async def __call__(self, input: Any, config: dict) -> str:
-        token_conf = context.config.set(config)
-        token_defaults = context.use_defaults.set(True)
-        try:
-            text = input.data
-            model = get_param("model", default="gpt3")
-            num_iterations = get_param("density_iterations", default=3)
-            target_tokens = get_param("density_target_tokens", default=100)
-            iteration_prompt = get_param("density_iteration_prompt", default=density_iteration_prompt)
+        cfg = self.Config(**config)
+        text = input.data
 
-            # 1. Initial abstract summary (same prompt as OneShotSummarizer)
-            from conduit.strategies.summarize.summarizers.one_shot import OneShotSummarizer
-            current_summary = await OneShotSummarizer()(_TextInput(text), config)
+        from conduit.core.model.model_async import ModelAsync
+        from conduit.core.prompt.prompt import Prompt
+        from conduit.domain.request.generation_params import GenerationParams
+        from conduit.domain.config.conduit_options import ConduitOptions
+        from conduit.domain.result.response import GenerationResponse
+        from conduit.utils.progress.verbosity import Verbosity
 
-            # 2. Iteratively refine
-            generation_params = GenerationParams(
-                model=model,
-                max_tokens=get_param("max_tokens", default=None),
-                temperature=get_param("temperature", default=None),
-                top_p=get_param("top_p", default=None),
+        current_summary = await OneShotSummarizer()(_TextInput(text), config)
+
+        generation_params = GenerationParams(
+            model=cfg.model,
+            max_tokens=cfg.max_tokens,
+            temperature=cfg.temperature,
+            top_p=cfg.top_p,
+        )
+        options = ConduitOptions(
+            project_name=cfg.project_name,
+            verbosity=Verbosity.SILENT,
+            debug_payload=True,
+        )
+        model_instance = ModelAsync(model=cfg.model)
+
+        total_input_tokens = 0
+        total_output_tokens = 0
+
+        for i in range(1, cfg.iterations + 1):
+            logger.info(f"ChainOfDensity iteration {i}/{cfg.iterations}")
+
+            # 2a: identify missing entities
+            identify_rendered = Prompt(identify_entities_prompt).render({
+                "document": text,
+                "summary": current_summary,
+            })
+            identify_response = await model_instance.query(
+                query_input=identify_rendered,
+                params=generation_params,
+                options=options,
             )
-            options = ConduitOptions(
-                project_name=get_param("project_name", default="conduit"),
-                verbosity=Verbosity.SILENT,
-                debug_payload=True,
+            assert isinstance(identify_response, GenerationResponse)
+            missing_entities = str(identify_response.content).strip()
+            total_input_tokens += identify_response.metadata.input_tokens
+            total_output_tokens += identify_response.metadata.output_tokens
+
+            # 2b: fuse missing entities into draft without increasing word count
+            fuse_rendered = Prompt(fuse_entities_prompt).render({
+                "summary": current_summary,
+                "missing_entities": missing_entities,
+            })
+            fuse_response = await model_instance.query(
+                query_input=fuse_rendered,
+                params=generation_params,
+                options=options,
             )
-            model_instance = ModelAsync(model=model)
+            assert isinstance(fuse_response, GenerationResponse)
+            current_summary = str(fuse_response.content).strip()
+            total_input_tokens += fuse_response.metadata.input_tokens
+            total_output_tokens += fuse_response.metadata.output_tokens
 
-            total_input_tokens = 0
-            total_output_tokens = 0
+        add_metadata("iterations_run", cfg.iterations)
+        add_metadata("input_tokens_total", total_input_tokens)
+        add_metadata("output_tokens_total", total_output_tokens)
 
-            for i in range(1, num_iterations + 1):
-                logger.info(f"Chain-of-Density iteration {i}/{num_iterations}")
-                rendered = Prompt(iteration_prompt).render({
-                    "previous_summary": current_summary,
-                    "document": text,
-                    "target_tokens": str(target_tokens),
-                })
-                response = await model_instance.query(
-                    query_input=rendered,
-                    params=generation_params,
-                    options=options,
-                )
-                assert isinstance(response, GenerationResponse)
-                current_summary = str(response.content)
-                total_input_tokens += response.metadata.input_tokens
-                total_output_tokens += response.metadata.output_tokens
+        return current_summary
 
-            add_metadata("density_iterations", num_iterations)
-            add_metadata("density_input_tokens", total_input_tokens)
-            add_metadata("density_output_tokens", total_output_tokens)
 
-            return current_summary
-        finally:
-            context.config.reset(token_conf)
-            context.use_defaults.reset(token_defaults)
+if __name__ == "__main__":
+    import asyncio
+
+    _sample = (
+        "The Apollo 11 mission launched on July 16, 1969, carrying astronauts Neil Armstrong, "
+        "Buzz Aldrin, and Michael Collins. On July 20, Armstrong and Aldrin landed on the Moon "
+        "in the Sea of Tranquility while Collins orbited above. Armstrong became the first human "
+        "to walk on the Moon at 02:56 UTC, followed by Aldrin. They collected 21.5 kg of lunar "
+        "material and deployed several scientific instruments. The mission returned to Earth on "
+        "July 24, splashing down in the Pacific Ocean. It was the fifth crewed mission of NASA's "
+        "Apollo program and fulfilled President Kennedy's 1961 goal of landing on the Moon before "
+        "the end of the decade."
+    )
+
+    async def _main() -> None:
+        result = await ChainOfDensitySummarizer()(_TextInput(_sample), {"model": "gpt3"})
+        print(result)
+
+    asyncio.run(_main())

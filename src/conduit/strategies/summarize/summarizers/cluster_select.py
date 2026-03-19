@@ -1,170 +1,129 @@
-"""
-```python
-from conduit.core.workflow.harness import ConduitHarness
-from conduit.strategies.summarize.summarizers.cluster_select import ClusterSelectSummarizer
-
-config = {
-    "model": "gpt-oss:latest",
-    "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
-    "num_clusters": 5,
-    "OneShotSummarizer.prompt": "Summarize: {{ text }}",
-}
-
-harness = ConduitHarness(config=config)
-result = await harness.run(ClusterSelectSummarizer(), text=document)
-```
-"""
-
 from __future__ import annotations
 
+import math
 import logging
 from typing import override, Any
-from conduit.core.workflow.step import step, get_param, add_metadata
-from conduit.core.workflow.context import context
+from pydantic import BaseModel, ConfigDict
+from conduit.core.workflow.step import step, add_metadata
 from conduit.strategies.summarize.strategy import SummarizationStrategy, _TextInput
 from conduit.strategies.summarize.summarizers.chunker import Chunker
 from conduit.strategies.summarize.summarizers.one_shot import OneShotSummarizer
-from conduit.utils.progress.verbosity import Verbosity
 
 logger = logging.getLogger(__name__)
 
 
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(x * x for x in b))
+    return dot / (norm_a * norm_b + 1e-8)
+
+
 class ClusterSelectSummarizer(SummarizationStrategy):
     """
-    Cluster-based document selection summarizer.
+    K-Means cluster-based chunk selection summarizer.
 
     Workflow:
-    1. Chunk the document.
-    2. Cluster chunks using embeddings (via Headwater).
-    3. For each cluster, select the most representative chunk(s).
-    4. Summarize the selected chunks.
+    1. Chunk the text.
+    2. Embed all chunks via HeadwaterAsyncClient.
+    3. Run K-Means clustering to find K semantic clusters.
+    4. For each cluster, select the chunk closest to the centroid (cosine similarity).
+    5. Pass the K selected chunks in original document order to OneShotSummarizer.
 
-    This approach aims to cover different aspects of the document while
-    avoiding redundancy by selecting only the most representative content
-    from each semantic cluster.
+    Config params:
+        k:               number of clusters (default: min(10, total_chunks))
+        embedding_model: model for embeddings (default: all-MiniLM-L6-v2)
+        model:           LLM for final summarization (default: gpt3)
     """
+
+    class Config(BaseModel):
+        model_config = ConfigDict(extra="ignore")
+        model: str = "gpt3"
+        k: int | None = None  # None → computed as min(10, total_chunks)
+        embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+        chunk_size: int = 12000
+        overlap: int = 500
+
+    config_model = Config
 
     @step
     @override
     async def __call__(self, input: Any, config: dict) -> str:
-        token_conf = context.config.set(config)
-        token_defaults = context.use_defaults.set(True)
-        try:
-            text = input.data
-            num_clusters = get_param("num_clusters", default=5)
-            embedding_model = get_param(
-                "embedding_model", default="sentence-transformers/all-MiniLM-L6-v2"
-            )
+        cfg = self.Config(**config)
+        text = input.data
 
-            # Chunk the text
-            chunker = Chunker()
-            chunks = await chunker(text)
-            total_chunks = len(chunks)
-            logger.info(
-                f"ClusterSelectSummarizer: {total_chunks} chunks, {num_clusters} clusters"
-            )
+        from headwater_client.client.headwater_client_async import HeadwaterAsyncClient
+        from headwater_api.classes import EmbeddingsRequest, ChromaBatch
+        from sklearn.cluster import KMeans
+        import numpy as np
 
-            if total_chunks == 0:
-                return ""
-            if total_chunks == 1:
-                return await OneShotSummarizer()(_TextInput(chunks[0]), config)
+        chunker = Chunker()
+        chunks = await chunker(text, config)
+        total_chunks = len(chunks)
+        logger.info(f"ClusterSelectSummarizer: {total_chunks} chunks")
 
-            # Import inside try block to avoid circular dependency issues
-            from headwater_client.client.headwater_client_async import (
-                HeadwaterAsyncClient,
-            )
-            from headwater_api.classes import EmbeddingsRequest, ChromaBatch
+        if total_chunks == 0:
+            return ""
+        if total_chunks == 1:
+            return await OneShotSummarizer()(_TextInput(chunks[0]), config)
 
-            # Get embeddings for all chunks
-            request = EmbeddingsRequest(
-                model=embedding_model,
-                batch=ChromaBatch(
-                    ids=[str(i) for i in range(total_chunks)],
-                    documents=chunks,
-                ),
-            )
+        k = cfg.k if cfg.k is not None else min(10, total_chunks)
+        k = min(k, total_chunks)
 
-            async with HeadwaterAsyncClient() as client:
-                response = await client.embeddings.generate_embeddings(request)
+        request = EmbeddingsRequest(
+            model=cfg.embedding_model,
+            batch=ChromaBatch(
+                ids=[str(i) for i in range(total_chunks)],
+                documents=chunks,
+            ),
+        )
+        async with HeadwaterAsyncClient() as client:
+            response = await client.embeddings.generate_embeddings(request)
+        embeddings = response.embeddings
 
-            embeddings = response.embeddings
+        embedding_matrix = np.array(embeddings)
+        kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+        labels = kmeans.fit_predict(embedding_matrix)
+        centroids = kmeans.cluster_centers_
 
-            # Simple clustering: use K-means style approach
-            # Since we don't have external clustering libraries, use a basic
-            # approach: group consecutive chunks into clusters
-            # For a more sophisticated approach, we'd use actual clustering
+        # For each cluster, select the chunk closest to the centroid
+        selected_indices: list[int] = []
+        for cluster_id in range(k):
+            member_indices = [i for i, label in enumerate(labels) if label == cluster_id]
+            if not member_indices:
+                continue
+            centroid = centroids[cluster_id].tolist()
+            best = max(member_indices, key=lambda i: _cosine_similarity(embeddings[i], centroid))
+            selected_indices.append(best)
 
-            # Calculate cluster assignments based on embedding similarity
-            import math
+        selected_indices.sort()  # preserve original document order
 
-            def cosine_similarity(a: list[float], b: list[float]) -> float:
-                dot = sum(x * y for x, y in zip(a, b))
-                norm_a = math.sqrt(sum(x * x for x in a))
-                norm_b = math.sqrt(sum(x * x for x in b))
-                return dot / (norm_a * norm_b + 1e-8)
+        add_metadata("num_chunks", total_chunks)
+        add_metadata("k", k)
+        add_metadata("chunks_selected", len(selected_indices))
 
-            def compute_centroid(indices: list[int]) -> list[float]:
-                if not indices:
-                    return [0.0] * len(embeddings[0])
-                dim = len(embeddings[0])
-                centroid = [0.0] * dim
-                for idx in indices:
-                    for d in range(dim):
-                        centroid[d] += embeddings[idx][d]
-                return [c / len(indices) for c in centroid]
+        selected_text = "\n\n".join(chunks[i] for i in selected_indices)
+        return await OneShotSummarizer()(_TextInput(selected_text), config)
 
-            # Assign chunks to clusters (simple approach)
-            # In production, use proper clustering (K-means, hierarchical, etc.)
-            chunk_size = max(1, total_chunks // num_clusters)
-            clusters: list[list[int]] = []
-            for i in range(num_clusters):
-                start = i * chunk_size
-                end = start + chunk_size if i < num_clusters - 1 else total_chunks
-                cluster_indices = list(range(start, end))
-                if cluster_indices:
-                    clusters.append(cluster_indices)
 
-            logger.info(f"Created {len(clusters)} clusters")
+if __name__ == "__main__":
+    import asyncio
 
-            # For each cluster, find the most representative chunk(s)
-            selected_chunks: list[str] = []
+    _sample = (
+        "The Apollo 11 mission launched on July 16, 1969, carrying astronauts Neil Armstrong, "
+        "Buzz Aldrin, and Michael Collins. On July 20, Armstrong and Aldrin landed on the Moon "
+        "in the Sea of Tranquility while Collins orbited above. Armstrong became the first human "
+        "to walk on the Moon at 02:56 UTC, followed by Aldrin. They collected 21.5 kg of lunar "
+        "material and deployed several scientific instruments. The mission returned to Earth on "
+        "July 24, splashing down in the Pacific Ocean. It was the fifth crewed mission of NASA's "
+        "Apollo program and fulfilled President Kennedy's 1961 goal of landing on the Moon before "
+        "the end of the decade."
+    )
 
-            for cluster_idx, cluster_indices in enumerate(clusters):
-                # Compute cluster centroid
-                centroid = compute_centroid(cluster_indices)
+    async def _main() -> None:
+        result = await ClusterSelectSummarizer()(
+            _TextInput(_sample), {"model": "gpt3", "k": 3}
+        )
+        print(result)
 
-                # Score each chunk by similarity to centroid
-                scores = [
-                    (idx, cosine_similarity(embeddings[idx], centroid))
-                    for idx in cluster_indices
-                ]
-
-                # Select top chunk(s) from each cluster
-                # Sort by score descending
-                scores.sort(key=lambda x: x[1], reverse=True)
-
-                # Take the top 1-2 chunks from each cluster
-                # This can be configurable
-                num_selected = min(2, len(scores))
-                for i in range(num_selected):
-                    if i < len(scores):
-                        selected_chunks.append(chunks[scores[i][0]])
-
-            logger.info(f"Selected {len(selected_chunks)} representative chunks")
-
-            add_metadata("num_chunks", total_chunks)
-            add_metadata("num_clusters", len(clusters))
-            add_metadata("selected_chunks", len(selected_chunks))
-
-            if not selected_chunks:
-                return ""
-
-            # Summarize the selected chunks
-            combined_text = "\n\n".join(selected_chunks)
-            one_shot = OneShotSummarizer()
-            summary = await one_shot(_TextInput(combined_text), config)
-
-            return summary
-        finally:
-            context.config.reset(token_conf)
-            context.use_defaults.reset(token_defaults)
+    asyncio.run(_main())

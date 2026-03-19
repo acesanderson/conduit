@@ -1,143 +1,165 @@
-"""
-```python
-from conduit.core.workflow.harness import ConduitHarness
-from conduit.strategies.summarize.summarizers.map_dedupe_reduce import MapDedupeReduceSummarizer
-
-config = {
-    "model": "gpt-oss:latest",
-    "chunk_size": 8000,
-    "overlap": 500,
-    "dedupe_similarity_threshold": 0.85,
-}
-
-harness = ConduitHarness(config=config)
-result = await harness.run(MapDedupeReduceSummarizer(), text=document)
-```
-"""
-
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import override, Any
-from conduit.core.workflow.step import step, get_param, add_metadata
-from conduit.core.workflow.context import context
+from pydantic import BaseModel, ConfigDict
+from conduit.core.workflow.step import step, add_metadata
 from conduit.strategies.summarize.strategy import SummarizationStrategy, _TextInput
 from conduit.strategies.summarize.summarizers.chunker import Chunker
 from conduit.strategies.summarize.summarizers.one_shot import OneShotSummarizer
-from conduit.core.model.model_async import ModelAsync
-from conduit.core.prompt.prompt import Prompt
-from conduit.domain.request.generation_params import GenerationParams
-from conduit.domain.config.conduit_options import ConduitOptions
-from conduit.domain.result.response import GenerationResponse
-from conduit.utils.progress.verbosity import Verbosity
-import asyncio
 
 logger = logging.getLogger(__name__)
 
+default_extraction_prompt = """
+Extract the key facts, entities, and decisions from the following text.
+Return a concise bulleted list. Each bullet should be a single, self-contained item.
+Do not include commentary or headers.
 
-dedupe_prompt = """
-Identify and remove duplicate or near-duplicate statements from the following text.
-Keep only unique, non-redundant information while preserving the key facts.
-
-Original text:
 <text>
 {{ text }}
 </text>
+""".strip()
 
-Return only the deduplicated content.
+deduplicate_prompt = """
+Below are extracted facts and entities from multiple sections of a document.
+Some items may be duplicated or near-identical across sections.
+
+Your task:
+1. Merge exact and near-duplicate entries.
+2. Normalize formatting across all items.
+3. Return the deduplicated, normalized list — one item per line.
+Do not add commentary or headers.
+
+<items>
+{{ items }}
+</items>
 """.strip()
 
 
 class MapDedupeReduceSummarizer(SummarizationStrategy):
     """
-    Map-Dedupe-Reduce summarization strategy.
+    Map-reduce with an explicit deduplication pass.
 
     Workflow:
-    1. MAP: Summarize each chunk to reduce its size.
-    2. DEDUPE: Remove duplicate/redundant information across summaries.
-    3. REDUCE: Combine all deduplicated summaries into a final summary.
+    1. Chunk the text.
+    2. Map (parallel): run an extraction prompt on every chunk to extract
+       key facts, entities, and decisions.
+    3. Collect all extracted lists into one combined string.
+    4. Dedupe pass: prompt the model to merge duplicates, normalize format,
+       and remove near-identical entries.
+    5. Final reduce: pass the deduplicated list to OneShotSummarizer.
 
-    This approach reduces redundancy at multiple levels, potentially improving
-    information density and coherence.
+    Config params:
+        model:              LLM (default: gpt3)
+        extraction_prompt:  override the default map-phase extraction prompt
+        concurrency_limit:  max parallel map calls (default: 5)
+        max_tokens:         max tokens per call
+        temperature:        sampling temperature
     """
+
+    class Config(BaseModel):
+        model_config = ConfigDict(extra="ignore")
+        model: str = "gpt3"
+        extraction_prompt: str = default_extraction_prompt
+        concurrency_limit: int = 5
+        max_tokens: int | None = None
+        temperature: float | None = None
+        top_p: float | None = None
+        project_name: str = "conduit"
+
+    config_model = Config
 
     @step
     @override
     async def __call__(self, input: Any, config: dict) -> str:
-        token_conf = context.config.set(config)
-        token_defaults = context.use_defaults.set(True)
-        try:
-            text = input.data
-            model = get_param("model", default="gpt3")
-            concurrency_limit = get_param("concurrency_limit", default=5)
+        cfg = self.Config(**config)
+        text = input.data
 
-            # Chunk the text
-            chunker = Chunker()
-            chunks = await chunker(text)
-            total_chunks = len(chunks)
-            logger.info(f"MapDedupeReduceSummarizer: {total_chunks} chunks")
+        from conduit.core.model.model_async import ModelAsync
+        from conduit.core.prompt.prompt import Prompt
+        from conduit.domain.request.generation_params import GenerationParams
+        from conduit.domain.config.conduit_options import ConduitOptions
+        from conduit.domain.result.response import GenerationResponse
+        from conduit.utils.progress.verbosity import Verbosity
 
-            if total_chunks == 0:
-                return ""
+        chunker = Chunker()
+        chunks = await chunker(text, config)
+        total_chunks = len(chunks)
+        logger.info(f"MapDedupeReduceSummarizer: {total_chunks} chunks")
 
-            # MAP: Summarize each chunk
-            generation_params = GenerationParams(
-                model=model,
-                max_tokens=get_param("max_tokens", default=None),
-                temperature=get_param("temperature", default=None),
-                top_p=get_param("top_p", default=None),
-            )
-            options = ConduitOptions(
-                project_name=get_param("project_name", default="conduit"),
-                verbosity=Verbosity.SILENT,
-                debug_payload=True,
-            )
-            model_instance = ModelAsync(model=model)
+        if total_chunks == 0:
+            return ""
 
-            # Use one-shot summarizer for the map phase
-            map_summarizer = OneShotSummarizer()
+        generation_params = GenerationParams(
+            model=cfg.model,
+            max_tokens=cfg.max_tokens,
+            temperature=cfg.temperature,
+            top_p=cfg.top_p,
+        )
+        options = ConduitOptions(
+            project_name=cfg.project_name,
+            verbosity=Verbosity.SILENT,
+            debug_payload=True,
+        )
+        model_instance = ModelAsync(model=cfg.model)
+        semaphore = asyncio.Semaphore(cfg.concurrency_limit)
 
-            # Create coroutines for parallel chunk summarization
-            coroutines = []
-            for i, chunk in enumerate(chunks):
-                logger.debug(f"Summarizing chunk {i + 1}/{total_chunks}")
-                coroutine = map_summarizer(_TextInput(chunk), config)
-                coroutines.append(coroutine)
-
-            semaphore = asyncio.Semaphore(concurrency_limit)
+        async def extract_chunk(chunk: str) -> GenerationResponse:
+            rendered = Prompt(cfg.extraction_prompt).render({"text": chunk})
             async with semaphore:
-                chunk_summaries: list[str] = await asyncio.gather(*coroutines)
+                response = await model_instance.query(
+                    query_input=rendered,
+                    params=generation_params,
+                    options=options,
+                )
+            assert isinstance(response, GenerationResponse)
+            return response
 
-            # Join summaries for deduplication
-            combined_before_dedupe = "\n\n".join(chunk_summaries)
+        map_responses: list[GenerationResponse] = await asyncio.gather(
+            *[extract_chunk(chunk) for chunk in chunks]
+        )
 
-            # DEDUPE: Remove redundancy across chunks
-            dedupe_rendered = Prompt(dedupe_prompt).render({"text": combined_before_dedupe})
-            dedupe_response = await model_instance.query(
-                query_input=dedupe_rendered,
-                params=generation_params,
-                options=options,
-            )
-            assert isinstance(dedupe_response, GenerationResponse)
+        map_input_tokens = sum(r.metadata.input_tokens for r in map_responses)
+        map_output_tokens = sum(r.metadata.output_tokens for r in map_responses)
 
-            deduped_text = str(dedupe_response.content)
-            logger.info(f"Reduced from {len(chunk_summaries)} summaries to deduplicated content")
+        combined = "\n\n".join(str(r.content) for r in map_responses)
 
-            # REDUCE: Final summary of deduplicated content
-            one_shot = OneShotSummarizer()
-            final_summary = await one_shot(_TextInput(deduped_text), config)
+        # Dedupe pass
+        dedupe_rendered = Prompt(deduplicate_prompt).render({"items": combined})
+        dedupe_response = await model_instance.query(
+            query_input=dedupe_rendered,
+            params=generation_params,
+            options=options,
+        )
+        assert isinstance(dedupe_response, GenerationResponse)
+        deduped_text = str(dedupe_response.content)
 
-            # Collect metadata
-            total_input_tokens = sum(r.metadata.input_tokens for r in chunk_summaries if hasattr(r, 'metadata'))
-            total_input_tokens += dedupe_response.metadata.input_tokens
-            total_output_tokens = sum(r.metadata.output_tokens for r in chunk_summaries if hasattr(r, 'metadata'))
-            total_output_tokens += dedupe_response.metadata.output_tokens
+        add_metadata("num_chunks", total_chunks)
+        add_metadata("map_input_tokens", map_input_tokens)
+        add_metadata("map_output_tokens", map_output_tokens)
+        add_metadata("dedupe_input_tokens", dedupe_response.metadata.input_tokens)
+        add_metadata("dedupe_output_tokens", dedupe_response.metadata.output_tokens)
 
-            add_metadata("input_tokens", total_input_tokens)
-            add_metadata("output_tokens", total_output_tokens)
-            add_metadata("num_chunks", total_chunks)
+        return await OneShotSummarizer()(_TextInput(deduped_text), config)
 
-            return final_summary
-        finally:
-            context.config.reset(token_conf)
-            context.use_defaults.reset(token_defaults)
+
+if __name__ == "__main__":
+    import asyncio
+
+    _sample = (
+        "The Apollo 11 mission launched on July 16, 1969, carrying astronauts Neil Armstrong, "
+        "Buzz Aldrin, and Michael Collins. On July 20, Armstrong and Aldrin landed on the Moon "
+        "in the Sea of Tranquility while Collins orbited above. Armstrong became the first human "
+        "to walk on the Moon at 02:56 UTC, followed by Aldrin. They collected 21.5 kg of lunar "
+        "material and deployed several scientific instruments. The mission returned to Earth on "
+        "July 24, splashing down in the Pacific Ocean. It was the fifth crewed mission of NASA's "
+        "Apollo program and fulfilled President Kennedy's 1961 goal of landing on the Moon before "
+        "the end of the decade."
+    )
+
+    async def _main() -> None:
+        result = await MapDedupeReduceSummarizer()(_TextInput(_sample), {"model": "gpt3"})
+        print(result)
+
+    asyncio.run(_main())
