@@ -1,26 +1,9 @@
-"""
-```python
-from conduit.core.workflow.harness import ConduitHarness
-from conduit.strategies.summarize.summarizers.rolling_refine import RollingRefineSummarizer
-
-config = {
-    "model": "gpt-oss:latest",
-    "chunk_size": 8000,
-    "overlap": 500,
-    "RollingRefineSummarizer.refine_prompt": "...",  # optional override
-}
-
-harness = ConduitHarness(config=config)
-result = await harness.run(RollingRefineSummarizer(), text=long_document)
-```
-"""
-
 from __future__ import annotations
 
 import logging
 from typing import override, Any
-from conduit.core.workflow.step import step, get_param, add_metadata
-from conduit.core.workflow.context import context
+from pydantic import BaseModel, ConfigDict
+from conduit.core.workflow.step import step, add_metadata
 from conduit.strategies.summarize.strategy import SummarizationStrategy, _TextInput
 from conduit.strategies.summarize.summarizers.one_shot import OneShotSummarizer
 from conduit.strategies.summarize.summarizers.chunker import Chunker
@@ -61,105 +44,83 @@ class RollingRefineSummarizer(SummarizationStrategy):
     refinement step has the full accumulated context of all prior chunks.
     """
 
+    class Config(BaseModel):
+        model_config = ConfigDict(extra="ignore")
+        model: str = "gpt-oss:latest"
+        refine_prompt: str = refine_prompt_default
+        chunk_size: int = 12000
+        overlap: int = 500
+        max_tokens: int | None = None
+        temperature: float | None = None
+        top_p: float | None = None
+        project_name: str = "conduit"
+
+    config_model = Config
+
     @step
     @override
     async def __call__(self, input: Any, config: dict) -> str:
-        token_conf = context.config.set(config)
-        token_defaults = context.use_defaults.set(True)
-        try:
-            text = input.data
-            from conduit.core.model.model_async import ModelAsync
-            from conduit.core.prompt.prompt import Prompt
-            from conduit.domain.request.generation_params import GenerationParams
-            from conduit.domain.config.conduit_options import ConduitOptions
-            from conduit.domain.result.response import GenerationResponse
-            from conduit.utils.progress.verbosity import Verbosity
+        cfg = self.Config(**config)
+        text = input.data
 
-            # 1. Resolve params
-            model = get_param("model", default="gpt3")
-            refine_prompt = get_param("refine_prompt", default=refine_prompt_default)
+        from conduit.core.model.model_async import ModelAsync
+        from conduit.core.prompt.prompt import Prompt
+        from conduit.domain.request.generation_params import GenerationParams
+        from conduit.domain.config.conduit_options import ConduitOptions
+        from conduit.domain.result.response import GenerationResponse
+        from conduit.utils.progress.verbosity import Verbosity
 
-            # 2. Chunk
-            chunker = Chunker()
-            chunks = await chunker(text)
-            total_chunks = len(chunks)
-            logger.info(f"RollingRefineSummarizer: {total_chunks} chunks")
+        chunker = Chunker()
+        chunks = await chunker(text, config)
+        total_chunks = len(chunks)
+        logger.info(f"RollingRefineSummarizer: {total_chunks} chunks")
 
-            add_metadata("num_chunks", total_chunks)
+        add_metadata("num_chunks", total_chunks)
 
-            # 3. Base case: single chunk — delegate directly to OneShotSummarizer
-            if total_chunks == 1:
-                logger.info("Single chunk — delegating to OneShotSummarizer")
-                return await OneShotSummarizer()(_TextInput(chunks[0]), config)
+        if total_chunks == 1:
+            logger.info("Single chunk — delegating to OneShotSummarizer")
+            return await OneShotSummarizer()(_TextInput(chunks[0]), config)
 
-            # 4. Summarize first chunk to seed the rolling summary
-            logger.info("Seeding summary from chunk 1")
-            current_summary = await OneShotSummarizer()(_TextInput(chunks[0]), config)
+        logger.info("Seeding summary from chunk 1")
+        current_summary = await OneShotSummarizer()(_TextInput(chunks[0]), config)
 
-            # 5. Refine iteratively over remaining chunks
-            generation_params = GenerationParams(
-                model=model,
-                max_tokens=get_param("max_tokens", default=None),
-                temperature=get_param("temperature", default=None),
-                top_p=get_param("top_p", default=None),
+        generation_params = GenerationParams(
+            model=cfg.model,
+            max_tokens=cfg.max_tokens,
+            temperature=cfg.temperature,
+            top_p=cfg.top_p,
+        )
+        options = ConduitOptions(
+            project_name=cfg.project_name,
+            verbosity=Verbosity.SILENT,
+            debug_payload=True,
+        )
+        model_instance = ModelAsync(model=cfg.model)
+
+        total_input_tokens = 0
+        total_output_tokens = 0
+
+        for i, chunk in enumerate(chunks[1:], start=2):
+            logger.info(f"Refining with chunk {i}/{total_chunks}")
+            rendered = Prompt(cfg.refine_prompt).render(
+                {
+                    "current_summary": current_summary,
+                    "new_chunk": chunk,
+                    "chunk_index": str(i),
+                    "total_chunks": str(total_chunks),
+                }
             )
-            options = ConduitOptions(
-                project_name=get_param("project_name", default="conduit"),
-                verbosity=Verbosity.SILENT,
-                debug_payload=True,
+            response = await model_instance.query(
+                query_input=rendered,
+                params=generation_params,
+                options=options,
             )
-            model_instance = ModelAsync(model=model)
+            assert isinstance(response, GenerationResponse)
+            current_summary = str(response.content)
+            total_input_tokens += response.metadata.input_tokens
+            total_output_tokens += response.metadata.output_tokens
 
-            total_input_tokens = 0
-            total_output_tokens = 0
+        add_metadata("refine_input_tokens", total_input_tokens)
+        add_metadata("refine_output_tokens", total_output_tokens)
 
-            for i, chunk in enumerate(chunks[1:], start=2):
-                logger.info(f"Refining with chunk {i}/{total_chunks}")
-                rendered = Prompt(refine_prompt).render(
-                    {
-                        "current_summary": current_summary,
-                        "new_chunk": chunk,
-                        "chunk_index": str(i),
-                        "total_chunks": str(total_chunks),
-                    }
-                )
-                response = await model_instance.query(
-                    query_input=rendered,
-                    params=generation_params,
-                    options=options,
-                )
-                assert isinstance(response, GenerationResponse)
-                current_summary = str(response.content)
-                total_input_tokens += response.metadata.input_tokens
-                total_output_tokens += response.metadata.output_tokens
-
-            add_metadata("refine_input_tokens", total_input_tokens)
-            add_metadata("refine_output_tokens", total_output_tokens)
-
-            return current_summary
-        finally:
-            context.config.reset(token_conf)
-            context.use_defaults.reset(token_defaults)
-
-
-if __name__ == "__main__":
-    import asyncio
-    from conduit.core.workflow.harness import ConduitHarness
-
-    async def main():
-        summarizer = RollingRefineSummarizer()
-
-        config = {
-            "model": "gpt-oss:latest",
-            "chunk_size": 4000,
-            "overlap": 200,
-        }
-
-        harness = ConduitHarness(config=config)
-        test_text = "This is a test sentence with some content. " * 200
-        result = await harness.run(summarizer, _TextInput(test_text), config)
-
-        print(f"Summary: {result}")
-        print(f"Trace: {harness.trace}")
-
-    asyncio.run(main())
+        return current_summary
