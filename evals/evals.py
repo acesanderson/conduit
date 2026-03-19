@@ -16,7 +16,8 @@ scores = await evaluate(results, eval_function=semantic_similarity_scorer)
 from __future__ import annotations
 from typing import Any, Protocol
 from collections.abc import Callable
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
+from conduit.core.workflow.context import context
 import asyncio
 import hashlib
 import json
@@ -64,11 +65,23 @@ class RunResult(BaseModel):
 
     # Results
     output: RunOutput
+    warnings: list[str] = []
 
 
 class EvalResult(BaseModel):
     run_result: RunResult
     score: float = Field(..., ge=0.0, le=1.0)
+
+
+def validate_config(strategy: Any, config: dict) -> list[str]:
+    model = getattr(strategy, "config_model", None)
+    if model is None:
+        return []
+    try:
+        model(**config)
+        return []
+    except ValidationError as e:
+        return [f"{err['loc'][0]}: {err['msg']}" for err in e.errors()]
 
 
 # Generate an evaluation run.
@@ -88,23 +101,24 @@ async def run_eval(
 
     NOTE: The config schema is tightly coupled with the strategy, so we assume that the strategy can handle the provided config.
     """
-
-    # If config is a pydantic model, convert it to a dict for the strategy function
     config = config.model_dump() if isinstance(config, BaseModel) else config
-    # Run the strategy with the input and config to get the output
-    output = await strategy(input, config)
-    # Identity
-    strategy = strategy.__class__.__name__
+    warnings = validate_config(strategy, config)
+
+    trace: list = []
+    token = context.trace.set(trace)
+    try:
+        output = await strategy(input, config)
+    finally:
+        context.trace.reset(token)
+
     config_id = hashlib.md5(json.dumps(config, sort_keys=True).encode()).hexdigest()[:8]
-    source_id = input.source_id
-    # Output
-    run_output = RunOutput(output=output, metadata={})
     return RunResult(
-        strategy=strategy,
+        strategy=strategy.__class__.__name__,
         config_id=config_id,
-        source_id=source_id,
+        source_id=input.source_id,
         config=config,
-        output=run_output,
+        output=RunOutput(output=output, metadata={"trace": trace}),
+        warnings=warnings,
     )
 
 

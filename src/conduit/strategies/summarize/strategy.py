@@ -36,7 +36,7 @@ class ChunkingStrategy(Strategy, ABC):
     """
 
     @abstractmethod
-    async def __call__(self, text: str, **kwargs) -> list[str]:
+    async def __call__(self, text: str, config: dict) -> list[str]:
         """
         Execute the chunking workflow.
         Return type should be LLM-ready list of strings (i.e. any necessary metadata should be injected here).
