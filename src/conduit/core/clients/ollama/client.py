@@ -211,12 +211,26 @@ class OllamaClient(Client):
             if max_tokens is not None:
                 # Empty response with a token limit is valid — the model exhausted
                 # its budget (e.g. a thinking model consuming all tokens internally).
-                # Treat as a length-truncated response rather than an error.
-                stop_reason = StopReason.LENGTH
+                # Return early with LENGTH stop reason; skip AssistantMessage construction
+                # since its validator rejects empty content.
                 logger.debug(
                     "Ollama model %s returned empty content with max_tokens=%d; treating as length truncation.",
                     result.model,
                     max_tokens,
+                )
+                duration = (time.time() - start_time) * 1000
+                metadata = ResponseMetadata(
+                    duration=duration,
+                    model_slug=result.model,
+                    input_tokens=result.usage.prompt_tokens,
+                    output_tokens=result.usage.completion_tokens,
+                    stop_reason=StopReason.LENGTH,
+                    cache_hit=False,
+                )
+                return GenerationResponse(
+                    message=AssistantMessage(content=" "),
+                    request=request,
+                    metadata=metadata,
                 )
             else:
                 allocated_ctx = payload_dict.get("extra_body", {}).get("num_ctx", "unknown")
@@ -236,9 +250,6 @@ class OllamaClient(Client):
                 stop_reason = StopReason.LENGTH
             elif finish_reason == "tool_calls":
                 stop_reason = StopReason.TOOL_CALLS
-        # Empty content with a token limit means the model exhausted its budget
-        if not content and not has_tool_calls and payload_dict.get("max_tokens") is not None:
-            stop_reason = StopReason.LENGTH
 
         tool_calls = []
         if stop_reason == StopReason.TOOL_CALLS:
