@@ -207,14 +207,26 @@ class OllamaClient(Client):
         has_tool_calls = bool(getattr(result.choices[0].message, "tool_calls", None))
 
         if not content and not has_tool_calls:
-            allocated_ctx = payload_dict.get("extra_body", {}).get("num_ctx", "unknown")
-            error_msg = (
-                f"Ollama model {result.model} returned an EMPTY response. "
-                f"Likely cause: Input exceeded the allocated num_ctx ({allocated_ctx}) "
-                f"causing silent truncation, or a local inference glitch."
-            )
-            logger.error(error_msg)
-            raise ValueError(error_msg)
+            max_tokens = payload_dict.get("max_tokens")
+            if max_tokens is not None:
+                # Empty response with a token limit is valid — the model exhausted
+                # its budget (e.g. a thinking model consuming all tokens internally).
+                # Treat as a length-truncated response rather than an error.
+                stop_reason = StopReason.LENGTH
+                logger.debug(
+                    "Ollama model %s returned empty content with max_tokens=%d; treating as length truncation.",
+                    result.model,
+                    max_tokens,
+                )
+            else:
+                allocated_ctx = payload_dict.get("extra_body", {}).get("num_ctx", "unknown")
+                error_msg = (
+                    f"Ollama model {result.model} returned an EMPTY response. "
+                    f"Likely cause: Input exceeded the allocated num_ctx ({allocated_ctx}) "
+                    f"causing silent truncation, or a local inference glitch."
+                )
+                logger.error(error_msg)
+                raise ValueError(error_msg)
 
         duration = (time.time() - start_time) * 1000
         stop_reason = StopReason.STOP
@@ -224,6 +236,9 @@ class OllamaClient(Client):
                 stop_reason = StopReason.LENGTH
             elif finish_reason == "tool_calls":
                 stop_reason = StopReason.TOOL_CALLS
+        # Empty content with a token limit means the model exhausted its budget
+        if not content and not has_tool_calls and payload_dict.get("max_tokens") is not None:
+            stop_reason = StopReason.LENGTH
 
         tool_calls = []
         if stop_reason == StopReason.TOOL_CALLS:
