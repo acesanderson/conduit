@@ -32,6 +32,7 @@ You will be identifying, for each model, whether it supports the following funct
 - **video_analysis**: The capability to analyze, understand, and extract information from video content
 - **video_gen**: The ability to create or generate video content from text descriptions or other inputs
 - **reasoning**: The capability to perform logical reasoning, problem-solving, and complex analytical tasks
+- **heavy**: True if the model has >30B parameters OR requires >24GB VRAM to run locally. Cloud-hosted models (OpenAI, Anthropic, Google, Perplexity, Mistral) are always False. For Ollama models with unknown parameter counts, err on the side of False.
 
 For each model, please return a ModelCapabilities object with boolean values for each capability, indicating whether the model supports (True) or does not support (False) each functionality.
 
@@ -72,6 +73,7 @@ You will be identifying, for the above model, whether it supports the following 
 - **video_analysis**: The capability to analyze, understand, and extract information from video content
 - **video_gen**: The ability to create or generate video content from text descriptions or other inputs
 - **reasoning**: The capability to perform logical reasoning, problem-solving, and complex analytical tasks
+- **heavy**: True if the model has >30B parameters OR requires >24GB VRAM to run locally. Cloud-hosted models (OpenAI, Anthropic, Google, Perplexity, Mistral) are always False. For Ollama models with unknown parameter counts, err on the side of False.
 
 Return a ModelCapabilities object with boolean values for each capability, indicating whether the model supports (True) or does not support (False) each functionality.
 

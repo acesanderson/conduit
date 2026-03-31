@@ -49,9 +49,6 @@ class OllamaClient(Client):
         self._client: Instructor = instructor_client
         self._raw_client: AsyncOpenAI = raw_client
 
-        # 3. Refresh local model list
-        self.update_ollama_models()
-
     def _load_context_sizes(self) -> defaultdict[str, int]:
         """
         Loads the context size mapping from disk.
@@ -145,23 +142,6 @@ class OllamaClient(Client):
             logprobs=client_params.get("logprobs"),
             response_format=response_format,
         )
-
-    def update_ollama_models(self):
-        """
-        Syncs the local models.json with currently pulled Ollama models.
-        """
-        import ollama
-
-        try:
-            settings.paths["OLLAMA_MODELS_PATH"].parent.mkdir(
-                parents=True, exist_ok=True
-            )
-            ollama_models = [m["model"] for m in ollama.list()["models"]]
-            ollama_model_dict = {"ollama": ollama_models}
-            with open(settings.paths["OLLAMA_MODELS_PATH"], "w") as f:
-                json.dump(ollama_model_dict, f)
-        except Exception as e:
-            logger.error(f"Failed to update Ollama model list: {e}")
 
     @override
     async def tokenize(self, model: str, payload: str | Sequence[Message]) -> int:

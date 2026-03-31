@@ -26,7 +26,9 @@
       "Bash(pytest:*)",
       "Bash(python:*)",
       "Bash(git:*)",
-      "Bash(printenv:*)"
+      "Bash(printenv:*)",
+      "Read(//Users/bianders/.dotfiles/conduit/.config/conduit/**)",
+      "Read(//Users/bianders/.local/state/conduit/**)"
     ]
   }
 }

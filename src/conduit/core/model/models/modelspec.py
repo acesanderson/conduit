@@ -65,6 +65,15 @@ class ModelSpec(BaseModel):
         ...,
         description="The capability to perform logical reasoning, problem-solving, and complex analytical tasks, e.g. o1-preview",
     )
+    heavy: bool = Field(
+        default=False,
+        description=(
+            "Whether this model requires high-end hardware to run. "
+            "True if the model has >30B parameters OR requires >24GB VRAM. "
+            "For cloud models, always False. For unknown parameter counts, "
+            "err on the side of False."
+        ),
+    )
 
     def __str__(self):
         return f"{self.model} ({self.provider})"
@@ -154,6 +163,11 @@ class ModelSpec(BaseModel):
             "Reasoning",
             str(self.reasoning),
             "The capability to perform logical reasoning, problem-solving, and complex analytical tasks",
+        )
+        table.add_row(
+            "Heavy",
+            str(self.heavy),
+            "Requires >30B parameters or >24GB VRAM; always False for cloud models",
         )
         description = f"\n[bold green]Description:[/bold green] [yellow]{self.description or 'No description available'}[/yellow]\n"
 

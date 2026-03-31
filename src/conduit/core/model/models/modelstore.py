@@ -43,17 +43,13 @@ class ModelStore:
         """
         with open(MODELS_PATH) as f:
             models_json = json.load(f)
-        if settings.paths["OLLAMA_MODELS_PATH"].exists():
-            with open(settings.paths["OLLAMA_MODELS_PATH"]) as f:
-                ollama_models = json.load(f)
-            models_json["ollama"] = ollama_models["ollama"]
-        if settings.paths["SERVER_MODELS_PATH"].exists():
-            with open(settings.paths["SERVER_MODELS_PATH"]) as f:
-                server_models = json.load(f)
-            models_json["ollama"] += server_models["ollama"]
-        # Remove duplicates in ollama models
-        if "ollama" in models_json:
-            models_json["ollama"] = list(set(models_json["ollama"]))
+
+        ollama_path = settings.paths["OLLAMA_MODELS_PATH"]
+        if ollama_path.exists():
+            from conduit.core.clients.ollama.server_registry import all_cached_models
+
+            models_json["ollama"] = all_cached_models(ollama_path)
+
         return models_json
 
     @classmethod
@@ -174,16 +170,18 @@ class ModelStore:
     @classmethod
     def _generate_renderable_model_list(cls) -> RenderableType:
         """
-        Generate a Rich renderable object displaying the list of models in three columns.
+        Generate a Rich renderable for cloud models in three columns (Ollama excluded).
         """
         from rich.columns import Columns
         from rich.text import Text
 
         models = cls.models()
 
-        # Calculate total items and split points
+        # Build items list, skipping ollama (shown separately as a summary)
         all_items = []
         for provider, model_list in models.items():
+            if provider == "ollama":
+                continue
             all_items.append((provider, None))  # Provider header
             for model in model_list:
                 all_items.append((provider, model))
@@ -193,7 +191,6 @@ class ModelStore:
         col1_end = total_items // 3
         col2_end = 2 * total_items // 3
 
-        # Create three columns
         left_column = Text()
         middle_column = Text()
         right_column = Text()
@@ -206,26 +203,35 @@ class ModelStore:
             else:
                 target_column = right_column
 
-            if model is None:  # Provider header
+            if model is None:
                 target_column.append(f"{provider.upper()}\n", style="bold cyan")
-            else:  # Model name
+            else:
                 target_column.append(f"  {model}\n", style="yellow")
 
-        renderable_columns = Columns(
-            [left_column, middle_column, right_column], equal=True, expand=True
-        )
-        return renderable_columns
+        return Columns([left_column, middle_column, right_column], equal=True, expand=True)
 
     @classmethod
     def display(cls):
         """
-        Display all available models in a formatted three-column layout to the console.
+        Display cloud models in a three-column layout, with an Ollama summary line.
         """
         from rich.console import Console
+        from rich.text import Text
 
         console = Console()
-        renderable_columns = cls._generate_renderable_model_list()
-        console.print(renderable_columns)
+        console.print(cls._generate_renderable_model_list())
+
+        # Ollama summary line
+        ollama_models = cls.models().get("ollama", [])
+        n = len(ollama_models)
+        summary = Text()
+        summary.append("OLLAMA", style="bold cyan")
+        summary.append(
+            f"   {n} model{'s' if n != 1 else ''} across 3 servers"
+            "   (models -p ollama for detail)",
+            style="dim",
+        )
+        console.print(summary)
 
     # Consistency
     @classmethod

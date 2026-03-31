@@ -9,7 +9,6 @@ Configuration hierarchy:
 from __future__ import annotations
 from pathlib import Path
 import tomllib
-import json
 from dataclasses import dataclass
 from conduit.utils.progress.verbosity import Verbosity
 from rich.console import Console
@@ -50,7 +49,6 @@ SYSTEM_PROMPT_PATH = CONFIG_DIR / "system_message.jinja2"
 SETTINGS_TOML_PATH = CONFIG_DIR / "settings.toml"
 SKILLS_DIR = CONFIG_DIR / "skills"
 OLLAMA_CONTEXT_SIZES_PATH = CONFIG_DIR / "ollama_context_sizes.json"
-SERVER_MODELS_PATH = STATE_DIR / "server_models.json"
 OLLAMA_MODELS_PATH = STATE_DIR / "ollama_models.json"
 DEFAULT_HISTORY_FILE = DATA_DIR / "conduit" / "history.json"
 DEFAULT_LOG_FILE = DATA_DIR / "conduit" / "conduit.log"
@@ -63,7 +61,6 @@ class Settings:
     preferred_model: str
     default_verbosity: Verbosity
     default_console: Console
-    server_models: list[str]
     paths: dict[str, Path]
     default_project_name: str
     version: str
@@ -82,7 +79,6 @@ def load_settings() -> Settings:
         "preferred_model": "gpt3",
         "default_verbosity": Verbosity.PROGRESS,
         "default_console": Console(stderr=True),
-        "server_models": [],
         "paths": {},
         "default_project_name": "conduit",
         "version": __version__,
@@ -118,15 +114,6 @@ def load_settings() -> Settings:
         default_project_name = config["default_project_name"]
         verbosity = config["default_verbosity"]
 
-    server_models: list[str] = []
-    if SERVER_MODELS_PATH.exists():
-        with SERVER_MODELS_PATH.open("r") as f:
-            try:
-                server_models_dict = json.load(f)
-                server_models = server_models_dict.get("ollama", [])
-            except json.JSONDecodeError:
-                pass
-
     # Environment variables (highest priority)
     system_prompt = (
         os.getenv("CONDUIT_SYSTEM_PROMPT", system_prompt)
@@ -151,7 +138,6 @@ def load_settings() -> Settings:
         "SKILLS_DIR": SKILLS_DIR,
         "SYSTEM_PROMPT_PATH": SYSTEM_PROMPT_PATH,
         "SETTINGS_TOML_PATH": SETTINGS_TOML_PATH,
-        "SERVER_MODELS_PATH": SERVER_MODELS_PATH,
         "OLLAMA_CONTEXT_SIZES_PATH": OLLAMA_CONTEXT_SIZES_PATH,
         "OLLAMA_MODELS_PATH": OLLAMA_MODELS_PATH,
         "DEFAULT_HISTORY_FILE": DEFAULT_HISTORY_FILE,
@@ -218,7 +204,6 @@ def load_settings() -> Settings:
             "odometer_registry": get_odometer_registry,
             "paths": paths,
             "preferred_model": preferred_model,
-            "server_models": server_models,
             "system_prompt": system_prompt,
             # Lazy loaders
         }
