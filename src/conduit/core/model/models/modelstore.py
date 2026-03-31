@@ -82,13 +82,15 @@ class ModelStore:
     def identify_provider(cls, model: str) -> Provider:
         """
         Identify the provider for a given model.
-        Returns the Provider object if found, raises ValueError otherwise.
+        Returns the Provider object if found. Falls back to "ollama" for unknown
+        models — all cloud providers are always registered, so anything not in the
+        registry is a locally-hosted Ollama model (possibly on a remote server).
         """
         models = cls.models()
         for provider, model_list in models.items():
             if model in model_list:
                 return provider
-        raise ValueError(f"Provider not found for model: {model}")
+        return "ollama"
 
     @classmethod
     def local_models(cls) -> list[str]:

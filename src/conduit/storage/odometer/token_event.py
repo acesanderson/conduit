@@ -64,10 +64,13 @@ class TokenEvent(BaseModel):
             return "unknown"
 
     @staticmethod
-    def _identify_provider(model: str) -> Provider:
+    def _identify_provider(model: str) -> Provider | None:
         from conduit.core.model.models.modelstore import ModelStore
 
-        return ModelStore.identify_provider(model)
+        try:
+            return ModelStore.identify_provider(model)
+        except Exception:
+            return None
 
 
 if __name__ == "__main__":
