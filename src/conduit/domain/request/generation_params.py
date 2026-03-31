@@ -47,11 +47,15 @@ class GenerationParams(BaseModel):
     @field_validator("model")
     def _validate_model(cls, v: str) -> str:
         """
-        Validate that the model is recognized.
+        Resolve aliases (e.g. "haiku" → full model ID). Unknown models are passed
+        through as-is — they may be valid on a remote server not in the local registry.
         """
         from conduit.core.model.models.modelstore import ModelStore
 
-        return ModelStore.validate_model(v)
+        try:
+            return ModelStore.validate_model(v)
+        except ValueError:
+            return v
 
     @model_validator(mode="after")
     def _populate_schema(self) -> GenerationParams:
