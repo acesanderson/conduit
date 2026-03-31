@@ -37,7 +37,11 @@ class ModelBase:
         from conduit.core.model.models.modelstore import ModelStore
 
         # Model identity - the only thing stored
-        self.model_name: str = ModelStore.validate_model(model)
+        # Unknown models pass through — they may be valid on a remote Ollama server
+        try:
+            self.model_name: str = ModelStore.validate_model(model)
+        except ValueError:
+            self.model_name = model
         self.client: Client = client if client is not None else self.get_client(model_name=self.model_name)
         # Plugins
         self._audio: AudioSync | AudioAsync | None = None

@@ -357,7 +357,10 @@ class ModelStore:
         """
         Get the client for a specific model.
         """
-        model_name = cls.validate_model(model_name)
+        try:
+            model_name = cls.validate_model(model_name)
+        except ValueError:
+            pass  # unknown to local registry — fall through to Ollama as default
         from conduit.core.model.models.modelstore import ModelStore
 
         model_list = ModelStore.models()
@@ -393,7 +396,10 @@ class ModelStore:
 
             return OpenAIClient()
         else:
-            raise ValueError(f"Model {model_name} not found in ModelStore")
+            # Model not in any known provider list — assume local Ollama
+            from conduit.core.clients.ollama.client import OllamaClient
+
+            return OllamaClient()
 
     ## Get subsets of models by provider
     @classmethod
