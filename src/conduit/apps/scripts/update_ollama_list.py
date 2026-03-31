@@ -1,14 +1,14 @@
 """
-Update the cached Ollama model list for a specific inference server.
+Update the cached Ollama model list for one or all inference servers.
 
 Usage:
-    update_ollama --server deepwater
-    update_ollama --server bywater
-    update_ollama --server backwater
+    update_ollama_list.py                    # update all servers
+    update_ollama_list.py --server deepwater
+    update_ollama_list.py --server bywater
+    update_ollama_list.py --server backwater
 
-This fetches the live model list from the given server's Ollama HTTP API
-(GET /api/tags) and writes it into the local cache at OLLAMA_MODELS_PATH
-under that server's key. Only the specified server's entry is updated.
+Fetches the live model list from each server's HeadwaterServer /v1/models
+endpoint and writes it into the local cache at OLLAMA_MODELS_PATH.
 """
 
 from __future__ import annotations
@@ -31,31 +31,42 @@ logger = logging.getLogger(__name__)
 console = Console(width=80)
 
 
+async def _update_server(server: str, cache_path) -> bool:
+    console.print(f"Fetching model list from [cyan]{server}[/cyan]...")
+    try:
+        models = await fetch_server_models(server)
+    except Exception as exc:
+        console.print(f"  [red]Failed to reach {server}: {exc}[/red]")
+        return False
+    write_server_to_cache(cache_path, server, models)
+    console.print(f"  [green]{server}:[/green] {len(models)} models cached")
+    return True
+
+
 @click.command()
 @click.option(
     "--server",
     type=click.Choice(list(OLLAMA_SERVERS)),
-    required=True,
-    help="Which inference server to update.",
+    default=None,
+    help="Which inference server to update (default: all).",
 )
-def main(server: str) -> None:
-    """Fetch the live model list from SERVER and update the local cache."""
-    console.print(f"[green]Fetching model list from {server}...[/green]")
-    try:
-        models = asyncio.run(fetch_server_models(server))
-    except Exception as exc:
-        console.print(f"[red]Failed to reach {server}: {exc}[/red]")
+def main(server: str | None) -> None:
+    """Fetch live model lists and update the local cache."""
+    cache_path = settings.paths["OLLAMA_MODELS_PATH"]
+    servers = [server] if server else list(OLLAMA_SERVERS)
+
+    async def run():
+        return await asyncio.gather(*[_update_server(s, cache_path) for s in servers])
+
+    results = asyncio.run(run())
+
+    if not any(results):
         raise SystemExit(1)
 
-    cache_path = settings.paths["OLLAMA_MODELS_PATH"]
-    write_server_to_cache(cache_path, server, models)
-
-    console.print(
-        f"[green]Updated {server}:[/green] [yellow]{len(models)} models cached[/yellow]"
-    )
-    console.print(
-        f"[green]All Ollama models:[/green] [yellow]{ModelStore.models()['ollama']}[/yellow]"
-    )
+    all_models = ModelStore.models().get("ollama", [])
+    console.print(f"\n[green]Total cached Ollama models:[/green] {len(all_models)}")
+    for m in sorted(all_models):
+        console.print(f"  {m}")
 
 
 if __name__ == "__main__":

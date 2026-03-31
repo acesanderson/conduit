@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 # Conduit server name → HeadwaterAsyncTransport host_alias
 OLLAMA_SERVERS: dict[str, str] = {
-    "deepwater": "headwater",   # AlphaBlue
+    "deepwater": "deepwater",   # AlphaBlue
     "bywater": "bywater",       # Caruana
     "backwater": "backwater",   # Cheet
 }
@@ -51,8 +51,8 @@ def _models_url(host_alias: str) -> str:
 
     ctx = get_network_context()
     match host_alias:
-        case "headwater":
-            ip = ctx.headwater_server
+        case "deepwater":
+            ip = ctx.deepwater_server
         case "bywater":
             ip = ctx.bywater_server
         case "backwater":
