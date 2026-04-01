@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from conduit.utils.progress.verbosity import Verbosity
     from conduit.domain.conversation.conversation import Conversation
     from conduit.apps.cli.utils.printer import Printer
-    from conduit.domain.message.message import UserMessage, Message, ImageContent
+    from conduit.domain.message.message import UserMessage, Message, ImageContent, AudioContent
     from conduit.storage.repository.protocol import AsyncSessionRepository
     from uuid import UUID
 
@@ -249,6 +249,10 @@ class BaseHandlers:
         citations: bool = False,
         image_path: str | None = None,
         image_content: ImageContent | None = None,
+        audio_path: str | None = None,
+        audio_content: AudioContent | None = None,
+        save: str | None = None,
+        play: bool = False,
     ) -> None:
         """
         Here we resolve all inputs for flat input to the query function.
@@ -280,6 +284,8 @@ class BaseHandlers:
             client_params=client_params,
             image_path=image_path,
             image_content=image_content,
+            audio_path=audio_path,
+            audio_content=audio_content,
         )
 
         # 3. Execute

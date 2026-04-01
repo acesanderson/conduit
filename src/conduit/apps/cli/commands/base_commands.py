@@ -20,11 +20,12 @@ if TYPE_CHECKING:
     from conduit.domain.conversation.conversation import Conversation
     from conduit.storage.repository.protocol import ConversationRepository
     from conduit.apps.cli.utils.printer import Printer
-    from conduit.domain.message.message import ImageContent
+    from conduit.domain.message.message import ImageContent, AudioContent
 
 logger = logging.getLogger(__name__)
 
 _CLIPBOARD_SENTINEL = "@clipboard"
+_AUDIO_SENTINEL = "@mic"
 
 
 def _resolve_clipboard_image() -> ImageContent:
@@ -66,6 +67,116 @@ def _resolve_clipboard_image() -> ImageContent:
     )
 
     return ImageContent.from_bytes(data, "image/png")
+
+class AudioRecorder:
+    """
+    Minimal mic recorder lifted from tap/scripts/record_cli.py.
+    Uses pyaudio for capture, pydub for WAV→MP3 conversion.
+    """
+
+    def __init__(self):
+        import pyaudio
+        self.chunk = 1024
+        self.format = pyaudio.paInt16
+        self.channels = 1
+        self.rate = 44100
+        self.recording = False
+        self.frames: list[bytes] = []
+        self.audio = pyaudio.PyAudio()
+        self.stream = None
+
+    def start_recording(self):
+        import threading
+        self.frames = []
+        self.recording = True
+        self.stream = self.audio.open(
+            format=self.format,
+            channels=self.channels,
+            rate=self.rate,
+            input=True,
+            frames_per_buffer=self.chunk,
+        )
+
+        def _record():
+            while self.recording:
+                try:
+                    data = self.stream.read(self.chunk, exception_on_overflow=False)
+                    self.frames.append(data)
+                except Exception:
+                    break
+
+        t = threading.Thread(target=_record, daemon=True)
+        t.start()
+
+    def stop_recording(self):
+        self.recording = False
+        if self.stream:
+            self.stream.stop_stream()
+            self.stream.close()
+        self.audio.terminate()
+
+    def get_mp3_bytes(self) -> bytes:
+        """Convert captured frames to MP3 bytes via pydub (in-memory)."""
+        import io
+        import wave
+        from pydub import AudioSegment
+
+        wav_buf = io.BytesIO()
+        wf = wave.open(wav_buf, "wb")
+        wf.setnchannels(self.channels)
+        wf.setsampwidth(self.audio.get_sample_size(self.format))
+        wf.setframerate(self.rate)
+        wf.writeframes(b"".join(self.frames))
+        wf.close()
+        wav_buf.seek(0)
+
+        mp3_buf = io.BytesIO()
+        AudioSegment.from_wav(wav_buf).export(mp3_buf, format="mp3", bitrate="192k")
+        return mp3_buf.getvalue()
+
+
+def _resolve_mic_audio() -> AudioContent:
+    """
+    Records from microphone, stops on Enter, returns AudioContent (mp3).
+    Raises click.UsageError for: SSH, missing deps, portaudio failure, empty recording.
+    """
+    import os
+
+    if "SSH_CLIENT" in os.environ or "SSH_TTY" in os.environ:
+        raise click.UsageError("@mic not available over SSH")
+
+    try:
+        import pyaudio  # noqa: F401
+    except ImportError:
+        raise click.UsageError(
+            "@mic requires pyaudio — brew install portaudio && pip install pyaudio"
+        )
+    try:
+        from pydub import AudioSegment  # noqa: F401
+    except ImportError:
+        raise click.UsageError("@mic requires pydub — pip install pydub")
+
+    from conduit.domain.message.message import AudioContent
+
+    logger.info("@mic recording started")
+    try:
+        recorder = AudioRecorder()
+        recorder.start_recording()
+        click.echo("Recording... Press Enter to stop.")
+        input()
+        recorder.stop_recording()
+    except OSError as e:
+        raise click.UsageError(
+            f"could not open microphone — is portaudio installed? ({e})"
+        )
+
+    data = recorder.get_mp3_bytes()
+    if not data:
+        raise click.UsageError("no audio recorded")
+
+    logger.info("@mic recording stopped, %d bytes captured (mp3)", len(data))
+    return AudioContent.from_bytes(data, format="mp3")
+
 
 handlers = BaseHandlers()
 
@@ -119,6 +230,26 @@ class BaseCommands(CommandCollection):
             default=None,
             help='Path to a local image file, or "@clipboard" to read from clipboard.',
         )
+        @click.option(
+            "-A",
+            "--audio",
+            type=str,
+            default=None,
+            help='Path to a .wav or .mp3 audio file, or "@mic" to record from microphone.',
+        )
+        @click.option(
+            "-s",
+            "--save",
+            type=str,
+            default=None,
+            help="Save response to file. Suppresses stdout output.",
+        )
+        @click.option(
+            "--play",
+            is_flag=True,
+            default=False,
+            help="Play audio response after generation. Requires audio output from model.",
+        )
         @click.argument("query_input", nargs=-1)
         @click.pass_context
         def query(
@@ -132,6 +263,9 @@ class BaseCommands(CommandCollection):
             citations: bool,
             search: bool,
             image: str | None,
+            audio: str | None,
+            save: str | None,
+            play: bool,
             query_input: tuple[str, ...],
         ):
             """
@@ -148,6 +282,12 @@ class BaseCommands(CommandCollection):
                 raise click.UsageError("--image cannot be used with --chat")
             if image and search:
                 raise click.UsageError("--image cannot be used with --search")
+            if audio and chat:
+                raise click.UsageError("--audio cannot be used with --chat")
+            if audio and search:
+                raise click.UsageError("--audio cannot be used with --search")
+            if audio and image:
+                raise click.UsageError("--audio cannot be used with --image")
 
             # 1. Unpack Dependencies from Context
             # The command layer is responsible for knowing WHERE things live (ctx.obj)
@@ -182,6 +322,29 @@ class BaseCommands(CommandCollection):
                         raise click.UsageError(f"--image: not a file: {image}")
                     image_path = image
 
+            # Resolve --audio into audio_path (file) or audio_content (@mic)
+            audio_path: str | None = None
+            audio_content_obj: AudioContent | None = None
+            if audio is not None:
+                if audio == _AUDIO_SENTINEL:
+                    audio_content_obj = _resolve_mic_audio()
+                else:
+                    p = Path(audio)
+                    if not p.exists():
+                        raise click.UsageError(f"--audio: file not found: {audio}")
+                    if not p.is_file():
+                        raise click.UsageError(f"--audio: not a file: {audio}")
+                    ext = p.suffix.lower()
+                    if ext not in {".wav", ".mp3"}:
+                        raise click.UsageError(
+                            f"--audio: unsupported audio format \"{ext}\" — use .wav or .mp3"
+                        )
+                    audio_path = audio
+
+            # Default query for audio with no explicit prompt
+            if audio and not query_input_str:
+                query_input_str = "transcribe this"
+
             # 4. Delegate to Handler
             handlers.handle_query(
                 query_input=query_input_str,
@@ -195,6 +358,10 @@ class BaseCommands(CommandCollection):
                 search=search,
                 image_path=image_path,
                 image_content=image_content,
+                audio_path=audio_path,
+                audio_content=audio_content_obj,
+                save=save,
+                play=play,
                 # Injected Dependencies
                 printer=printer,
                 query_function=query_function,
