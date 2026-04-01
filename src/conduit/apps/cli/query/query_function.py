@@ -21,7 +21,7 @@ import logging
 
 if TYPE_CHECKING:
     from conduit.domain.conversation.conversation import Conversation
-    from conduit.domain.message.message import ImageContent
+    from conduit.domain.message.message import AudioContent, ImageContent
 
 logger = logging.getLogger(__name__)
 
@@ -55,11 +55,23 @@ class CLIQueryFunctionInputs:
     client_params: dict = field(default_factory=dict)
     image_path: str | None = None
     image_content: ImageContent | None = None
+    audio_path: str | None = None
+    audio_content: AudioContent | None = None
 
     def __post_init__(self):
         if self.image_path is not None and self.image_content is not None:
             raise ValueError(
                 "Only one of image_path or image_content may be set, not both."
+            )
+        if self.audio_path is not None and self.audio_content is not None:
+            raise ValueError(
+                "Only one of audio_path or audio_content may be set, not both."
+            )
+        if (self.audio_path is not None or self.audio_content is not None) and (
+            self.image_path is not None or self.image_content is not None
+        ):
+            raise ValueError(
+                "--audio and --image cannot be used together."
             )
 
 

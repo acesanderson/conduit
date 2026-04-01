@@ -225,3 +225,43 @@ def test_default_query_function_omits_client_params_when_empty():
 
     call_kwargs = mock_create.call_args.kwargs
     assert call_kwargs.get("client_params") is None
+
+
+def test_inputs_audio_path_defaults_to_none():
+    """audio_path field exists and defaults to None."""
+    inputs = make_inputs()
+    assert inputs.audio_path is None
+
+
+def test_inputs_audio_content_defaults_to_none():
+    """audio_content field exists and defaults to None."""
+    inputs = make_inputs()
+    assert inputs.audio_content is None
+
+
+def test_inputs_rejects_both_audio_path_and_audio_content():
+    """AC1: both audio_path and audio_content raises ValueError."""
+    import pytest
+    from conduit.domain.message.message import AudioContent
+
+    content = AudioContent.from_bytes(b"data")
+    with pytest.raises(ValueError, match="Only one of audio_path or audio_content"):
+        make_inputs(audio_path="/tmp/clip.mp3", audio_content=content)
+
+
+def test_inputs_rejects_audio_path_with_image_path():
+    """AC2: audio_path + image_path raises ValueError."""
+    import pytest
+    with pytest.raises(ValueError, match="--audio and --image cannot be used together"):
+        make_inputs(audio_path="/tmp/clip.mp3", image_path="/tmp/img.png")
+
+
+def test_inputs_rejects_audio_content_with_image_content():
+    """AC3: audio_content + image_content raises ValueError."""
+    import pytest
+    from conduit.domain.message.message import AudioContent, ImageContent
+
+    audio = AudioContent.from_bytes(b"data")
+    image = ImageContent(url="data:image/png;base64,abc")
+    with pytest.raises(ValueError, match="--audio and --image cannot be used together"):
+        make_inputs(audio_content=audio, image_content=image)
