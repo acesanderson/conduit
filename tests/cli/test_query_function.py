@@ -265,3 +265,45 @@ def test_inputs_rejects_audio_content_with_image_content():
     image = ImageContent(url="data:image/png;base64,abc")
     with pytest.raises(ValueError, match="--audio and --image cannot be used together"):
         make_inputs(audio_content=audio, image_content=image)
+
+
+from conduit.domain.message.message import AudioContent, TextContent
+
+
+def test_audio_query_builds_multimodal_usermessage(tmp_path):
+    """AC11: _audio_query_function builds UserMessage([TextContent, AudioContent]) — text first."""
+    import base64
+    from conduit.apps.cli.query.query_function import default_query_function
+
+    # Create a minimal valid MP3 file (just non-empty bytes; no real decoding happens here)
+    audio_file = tmp_path / "clip.mp3"
+    audio_file.write_bytes(b"\xff\xfb" + b"\x00" * 16)  # minimal MP3-ish bytes
+
+    inputs = make_inputs(query_input="summarize this", audio_path=str(audio_file))
+
+    captured = {}
+
+    def fake_pipe_sync(conversation):
+        captured["conversation"] = conversation
+        return MagicMock()
+
+    mock_conduit = MagicMock()
+    mock_conduit.pipe_sync.side_effect = fake_pipe_sync
+
+    with patch(
+        "conduit.apps.cli.query.query_function.ConduitSync",
+        return_value=mock_conduit,
+    ):
+        default_query_function(inputs)
+
+    assert "conversation" in captured, "_audio_query_function did not call pipe_sync"
+    user_msgs = [
+        m for m in captured["conversation"].messages
+        if hasattr(m, "role") and str(m.role) == "Role.USER"
+    ]
+    assert len(user_msgs) == 1
+    content = user_msgs[0].content
+    assert isinstance(content, list), "content must be a list"
+    assert isinstance(content[0], TextContent), "content[0] must be TextContent"
+    assert isinstance(content[1], AudioContent), "content[1] must be AudioContent"
+    assert content[0].text == "summarize this"

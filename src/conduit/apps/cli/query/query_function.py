@@ -200,6 +200,68 @@ def _image_query_function(inputs: CLIQueryFunctionInputs) -> Conversation:
     return conduit.pipe_sync(conversation)
 
 
+def _audio_query_function(inputs: CLIQueryFunctionInputs) -> Conversation:
+    """
+    Query function variant for audio (audio + text) queries.
+    Builds UserMessage([TextContent, AudioContent]) and routes through pipe_sync.
+    History is disabled — --chat is blocked upstream.
+    combined_query already contains the "transcribe this" default if no query was given.
+    """
+    from conduit.domain.conversation.conversation import Conversation
+    from conduit.domain.message.message import UserMessage, TextContent, AudioContent
+    from conduit.domain.request.generation_params import GenerationParams
+
+    combined_query = "\n\n".join(
+        [inputs.query_input, inputs.context, inputs.append]
+    ).strip()
+
+    if inputs.audio_content is not None:
+        logger.info("Audio query: using pre-resolved AudioContent from caller")
+        resolved_audio = inputs.audio_content
+    else:
+        fmt = inputs.audio_path.rsplit(".", 1)[-1].lower()
+        logger.info("Audio query: loading %s (format: %s)", inputs.audio_path, fmt)
+        resolved_audio = AudioContent.from_file(inputs.audio_path)
+
+    user_message = UserMessage(
+        content=[
+            TextContent(text=combined_query),
+            resolved_audio,
+        ]
+    )
+
+    conversation = Conversation()
+    if inputs.system_message:
+        conversation.ensure_system_message(inputs.system_message)
+    conversation.add(user_message)
+
+    logger.debug(
+        "pipe_sync: entering with conversation length %d", len(conversation.messages)
+    )
+
+    params = GenerationParams(
+        model=inputs.preferred_model,
+        system=inputs.system_message or None,
+        temperature=inputs.temperature,
+    )
+    options = settings.default_conduit_options()
+    opt_updates: dict = {
+        "verbosity": inputs.verbose,
+        "include_history": False,
+    }
+    if inputs.cache:
+        cache_name = inputs.project_name or settings.default_project_name
+        opt_updates["cache"] = settings.default_cache(project_name=cache_name)
+    options = options.model_copy(update=opt_updates)
+
+    conduit = ConduitSync(
+        prompt=Prompt(combined_query or " "),
+        params=params,
+        options=options,
+    )
+    return conduit.pipe_sync(conversation)
+
+
 # Now, our default implementation -- the beauty of LLMs with POSIX philosophy
 def default_query_function(
     inputs: CLIQueryFunctionInputs,
@@ -212,6 +274,9 @@ def default_query_function(
 
     if inputs.image_path or inputs.image_content:
         return _image_query_function(inputs)
+
+    if inputs.audio_path or inputs.audio_content:
+        return _audio_query_function(inputs)
 
     logger.debug("Running default_query_function...")
     # Extract inputs from dict
