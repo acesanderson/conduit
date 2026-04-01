@@ -85,6 +85,15 @@ class AudioContent(BaseModel):
         audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
         return cls(data=audio_b64, format=file_path.suffix.lstrip("."))
 
+    @classmethod
+    def from_bytes(cls, data: bytes, format: Literal["wav", "mp3"] = "mp3") -> AudioContent:
+        """
+        Encode raw bytes as base64. Used for @mic recordings.
+        Mirrors ImageContent.from_bytes().
+        """
+        audio_b64 = base64.b64encode(data).decode("utf-8")
+        return cls(data=audio_b64, format=format)
+
 
 class AudioOutput(BaseModel):
     """Native audio response (e.g. GPT-4o-audio)."""
