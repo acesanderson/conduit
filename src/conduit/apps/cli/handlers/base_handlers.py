@@ -37,7 +37,8 @@ def _save_response(response: object, path: str) -> None:
     from pathlib import Path
 
     last = response.last
-    if getattr(last, "audio", None):
+    _audio = getattr(last, "audio", None)
+    if _audio and isinstance(getattr(_audio, "data", None), str):
         data = base64.b64decode(last.audio.data)
         Path(path).write_bytes(data)
         logger.info("Saved audio response to %s", path)
@@ -344,7 +345,10 @@ class BaseHandlers:
                 printer.print_markdown(response.content)
 
         if play:
-            _play_audio(effective_save)
+            if effective_save:
+                _play_audio(effective_save)
+            else:
+                logger.warning("--play set but no audio response to play")
 
         # 6. Citations
         BaseHandlers.handle_citations(response, citations=citations, raw=raw, printer=printer)

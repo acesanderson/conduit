@@ -57,7 +57,19 @@
       "Bash(exec zsh:*)",
       "Bash(cd /Users/bianders/Brian_Code/conduit-project && conduit batch --help 2>&1)",
       "Bash(.venv/bin/python -c \"import sklearn; print\\(sklearn.__version__\\)\")",
-      "Bash(/Users/bianders/Brian_Code/conduit-project/.venv/bin/python -c \"import sklearn; print\\(sklearn.__version__\\)\")"
+      "Bash(/Users/bianders/Brian_Code/conduit-project/.venv/bin/python -c \"import sklearn; print\\(sklearn.__version__\\)\")",
+      "Skill(sdd-1-kickoff)",
+      "Read(//Users/bianders/Brian_Code/tap-project/**)",
+      "Read(//Users/bianders/Brian_Code/**)",
+      "Bash(/usr/bin/python3:*)",
+      "Bash(bash -c \"cd /Users/bianders/Brian_Code/conduit-project && uv run pytest tests/cli/test_audio_content.py -v\")",
+      "Bash(bash -c \"cd /Users/bianders/Brian_Code/conduit-project && uv run pytest tests/cli/test_audio_content.py -v --no-header --tb=short\")",
+      "Bash(bash -c \"cd /Users/bianders/Brian_Code/conduit-project && git add src/conduit/domain/message/message.py tests/cli/test_audio_content.py && git commit -m 'feat: add AudioContent.from_bytes\\(\\)'\")",
+      "Bash(bash:*)",
+      "Bash(/Users/bianders/.local/bin/uv run:*)",
+      "Bash(pytest /Users/bianders/Brian_Code/conduit-project/tests/cli/ -q)",
+      "Bash(pytest tests/cli/test_audio_command.py::test_save_response_writes_audio_bytes tests/cli/test_audio_command.py::test_save_response_writes_text tests/cli/test_audio_command.py::test_save_flag_suppresses_printer tests/cli/test_audio_command.py::test_play_flag_autosaves_to_tmp -v)",
+      "Bash(/opt/homebrew/bin/uv run:*)"
     ]
   }
 }
