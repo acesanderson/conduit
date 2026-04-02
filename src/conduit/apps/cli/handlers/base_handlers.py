@@ -28,6 +28,38 @@ logger = logging.getLogger(__name__)
 DEFAULT_VERBOSITY = settings.default_verbosity
 
 
+def _save_response(response: object, path: str) -> None:
+    """
+    Write response output to a file. Priority: audio > images > text.
+    response is a Conversation; response.last is the AssistantMessage.
+    """
+    import base64
+    from pathlib import Path
+
+    last = response.last
+    if getattr(last, "audio", None):
+        data = base64.b64decode(last.audio.data)
+        Path(path).write_bytes(data)
+        logger.info("Saved audio response to %s", path)
+    elif getattr(last, "images", None):
+        data = base64.b64decode(last.images[0].b64_json)
+        Path(path).write_bytes(data)
+        logger.info("Saved image response to %s", path)
+    else:
+        Path(path).write_text(str(last))
+        logger.info("Saved text response to %s", path)
+
+
+def _play_audio(path: str) -> None:
+    """Play an audio file via pydub. Requires simpleaudio or pyaudio as pydub backend."""
+    from pydub import AudioSegment
+    from pydub.playback import play
+
+    logger.info("Playing audio from %s", path)
+    audio = AudioSegment.from_file(path)
+    play(audio)
+
+
 class BaseHandlers:
     @staticmethod
     def grab_image_from_clipboard(printer: Printer) -> tuple[str, str] | None:
@@ -291,14 +323,30 @@ class BaseHandlers:
         # 3. Execute
         response = query_function(inputs)
 
-        # 4. Display
-        # TODO Task 5: save and play are accepted but not yet acted on
-        if raw:
-            printer.print_raw(response.content)
-        else:
-            printer.print_markdown(response.content)
+        # 4. Resolve effective save path
+        from datetime import datetime
+        last = response.last
+        effective_save = save
 
-        # 5. Citations
+        _audio = getattr(last, "audio", None)
+        if _audio and isinstance(getattr(_audio, "data", None), str) and not save:
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            effective_save = f"/tmp/conduit_audio_{ts}.{last.audio.format}"
+            logger.info("Auto-saving audio to %s", effective_save)
+
+        # 5. Save, play, or display
+        if effective_save:
+            _save_response(response, effective_save)
+        else:
+            if raw:
+                printer.print_raw(response.content)
+            else:
+                printer.print_markdown(response.content)
+
+        if play:
+            _play_audio(effective_save)
+
+        # 6. Citations
         BaseHandlers.handle_citations(response, citations=citations, raw=raw, printer=printer)
 
     @staticmethod
