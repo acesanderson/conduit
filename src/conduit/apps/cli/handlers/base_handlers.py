@@ -292,6 +292,7 @@ class BaseHandlers:
         response = query_function(inputs)
 
         # 4. Display
+        # TODO Task 5: save and play are accepted but not yet acted on
         if raw:
             printer.print_raw(response.content)
         else:

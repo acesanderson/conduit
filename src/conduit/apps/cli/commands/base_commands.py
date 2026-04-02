@@ -68,6 +68,7 @@ def _resolve_clipboard_image() -> ImageContent:
 
     return ImageContent.from_bytes(data, "image/png")
 
+
 class AudioRecorder:
     """
     Minimal mic recorder lifted from tap/scripts/record_cli.py.
