@@ -13,7 +13,6 @@ from pathlib import Path
 from conduit.apps.cli.commands.commands import CommandCollection
 from conduit.apps.cli.handlers.base_handlers import BaseHandlers
 from typing import override, TYPE_CHECKING
-from PIL import ImageGrab
 
 if TYPE_CHECKING:
     from conduit.utils.progress.verbosity import Verbosity
@@ -33,7 +32,7 @@ def _resolve_clipboard_image() -> ImageContent:
     Grab an image from the system clipboard and return it as an ImageContent object.
     Raises click.UsageError for empty clipboard or non-image clipboard contents.
     """
-    from PIL import Image as PILImage
+    from PIL import Image as PILImage, ImageGrab
     from conduit.domain.message.message import ImageContent
 
     logger.info("--image @clipboard: grabbing image from clipboard")

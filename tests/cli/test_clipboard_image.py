@@ -45,8 +45,8 @@ def test_clipboard_empty_raises_usage_error():
     runner = CliRunner()
     cli = _make_cli()
 
-    with patch("conduit.apps.cli.commands.base_commands.ImageGrab") as mock_grab:
-        mock_grab.grabclipboard.return_value = None
+    with patch("PIL.ImageGrab.grabclipboard") as mock_grab:
+        mock_grab.return_value = None
         result = runner.invoke(cli, ["query", "--image", "@clipboard", "describe"])
 
     assert result.exit_code != 0
@@ -63,8 +63,8 @@ def test_clipboard_non_image_raises_usage_error():
     runner = CliRunner()
     cli = _make_cli()
 
-    with patch("conduit.apps.cli.commands.base_commands.ImageGrab") as mock_grab:
-        mock_grab.grabclipboard.return_value = ["some text"]
+    with patch("PIL.ImageGrab.grabclipboard") as mock_grab:
+        mock_grab.return_value = ["some text"]
         result = runner.invoke(cli, ["query", "--image", "@clipboard", "describe"])
 
     assert result.exit_code != 0
@@ -81,8 +81,8 @@ def test_clipboard_file_list_raises_usage_error():
     runner = CliRunner()
     cli = _make_cli()
 
-    with patch("conduit.apps.cli.commands.base_commands.ImageGrab") as mock_grab:
-        mock_grab.grabclipboard.return_value = ["/Users/user/photo.png"]
+    with patch("PIL.ImageGrab.grabclipboard") as mock_grab:
+        mock_grab.return_value = ["/Users/user/photo.png"]
         result = runner.invoke(cli, ["query", "--image", "@clipboard", "describe"])
 
     assert result.exit_code != 0
@@ -139,9 +139,9 @@ def test_clipboard_with_chat_raises_usage_error():
     runner = CliRunner()
     cli = _make_cli()
 
-    with patch("conduit.apps.cli.commands.base_commands.ImageGrab") as mock_grab:
+    with patch("PIL.ImageGrab.grabclipboard") as mock_grab:
         result = runner.invoke(cli, ["query", "--image", "@clipboard", "--chat", "describe"])
-        mock_grab.grabclipboard.assert_not_called()
+        mock_grab.assert_not_called()
 
     assert result.exit_code != 0
     assert "--image cannot be used with --chat" in result.output
@@ -172,8 +172,8 @@ def test_clipboard_cmyk_image_converted_to_rgb():
     cli2 = ConduitCLI(query_function=fake_query_fn)
     cli2.attach(BaseCommands())
 
-    with patch("conduit.apps.cli.commands.base_commands.ImageGrab") as mock_grab:
-        mock_grab.grabclipboard.return_value = cmyk_image
+    with patch("PIL.ImageGrab.grabclipboard") as mock_grab:
+        mock_grab.return_value = cmyk_image
         result = runner.invoke(cli2.cli, ["query", "--image", "@clipboard", "describe"])
 
     assert result.exit_code == 0, result.output
@@ -207,8 +207,8 @@ def test_clipboard_image_success_path():
     cli = ConduitCLI(query_function=fake_query_fn)
     cli.attach(BaseCommands())
 
-    with patch("conduit.apps.cli.commands.base_commands.ImageGrab") as mock_grab:
-        mock_grab.grabclipboard.return_value = rgb_image
+    with patch("PIL.ImageGrab.grabclipboard") as mock_grab:
+        mock_grab.return_value = rgb_image
         result = runner.invoke(cli.cli, ["query", "--image", "@clipboard", "describe this"])
 
     assert result.exit_code == 0, result.output

@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from conduit.apps.cli.utils.printer import Printer
     from conduit.domain.message.message import UserMessage, Message, ImageContent, AudioContent
     from conduit.storage.repository.protocol import AsyncSessionRepository
+    from conduit.apps.cli.query.query_function import CLIQueryFunctionProtocol
     from uuid import UUID
 
 logger = logging.getLogger(__name__)
@@ -345,7 +346,7 @@ class BaseHandlers:
                 printer.print_markdown(response.content)
 
         if play:
-            if effective_save:
+            if effective_save and getattr(response.last, "audio", None):
                 _play_audio(effective_save)
             else:
                 logger.warning("--play set but no audio response to play")
