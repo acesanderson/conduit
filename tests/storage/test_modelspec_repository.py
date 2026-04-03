@@ -362,3 +362,30 @@ def test_modelstore_get_all_models_uses_repository():
         result = ModelStore.get_all_models()
     assert len(result) == 1
     assert result[0].model == "gpt-4o"
+
+
+def test_modelstore_update_is_idempotent():
+    """
+    AC6: Calling ModelStore._update_models() when all models are already in Postgres
+    results in zero deletes and zero create_modelspec calls.
+    """
+    from unittest.mock import patch
+    from conduit.core.model.models.modelstore import ModelStore
+
+    all_model_names = list(ModelStore.list_models())
+
+    with patch(
+        "conduit.storage.modelspec_repository.ModelSpecRepository.get_all_names",
+        return_value=all_model_names,
+    ), patch(
+        "conduit.storage.modelspec_repository.ModelSpecRepository.delete"
+    ) as mock_delete, patch(
+        "conduit.core.model.models.research_models.create_modelspec"
+    ) as mock_create, patch(
+        "conduit.core.model.models.modelstore.ModelStore._is_consistent",
+        return_value=True,
+    ):
+        ModelStore._update_models()
+
+    mock_delete.assert_not_called()
+    mock_create.assert_not_called()
