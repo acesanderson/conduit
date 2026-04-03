@@ -235,3 +235,101 @@ def test_get_all_sync_calls_async_method():
 
     assert len(result) == 1
     assert result[0].model == "gpt-4o"
+
+
+@pytest.mark.asyncio
+async def test_upsert_executes_insert_on_conflict_update():
+    spec = ModelSpec(
+        model="gpt-4o",
+        description="Test",
+        provider="openai",
+        temperature_range=[0.0, 2.0],
+        context_window=128000,
+        text_completion=True,
+        image_analysis=False,
+        image_gen=False,
+        audio_analysis=False,
+        audio_gen=False,
+        video_analysis=False,
+        video_gen=False,
+        reasoning=False,
+    )
+    conn = AsyncMock()
+    pool = make_mock_pool(conn)
+
+    with patch("conduit.storage.modelspec_repository.db_manager") as mock_dm:
+        mock_dm.get_pool = AsyncMock(return_value=pool)
+        mock_dm._pool = None
+        mock_dm._lock = None
+        from conduit.storage.modelspec_repository import ModelSpecRepository
+        repo = ModelSpecRepository()
+        await repo._upsert(spec)
+
+    sql = conn.execute.call_args[0][0]
+    assert "ON CONFLICT (model) DO UPDATE" in sql
+    assert conn.execute.call_args[0][1] == "gpt-4o"
+
+
+@pytest.mark.asyncio
+async def test_upsert_is_idempotent_on_same_model():
+    spec = ModelSpec(
+        model="gpt-4o",
+        description="Test",
+        provider="openai",
+        temperature_range=[0.0, 2.0],
+        context_window=128000,
+        text_completion=True,
+        image_analysis=False,
+        image_gen=False,
+        audio_analysis=False,
+        audio_gen=False,
+        video_analysis=False,
+        video_gen=False,
+        reasoning=False,
+    )
+    conn = AsyncMock()
+    pool = make_mock_pool(conn)
+
+    with patch("conduit.storage.modelspec_repository.db_manager") as mock_dm:
+        mock_dm.get_pool = AsyncMock(return_value=pool)
+        mock_dm._pool = None
+        mock_dm._lock = None
+        from conduit.storage.modelspec_repository import ModelSpecRepository
+        repo = ModelSpecRepository()
+        await repo._upsert(spec)
+        await repo._upsert(spec)
+
+    assert conn.execute.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_delete_executes_correct_sql():
+    conn = AsyncMock()
+    pool = make_mock_pool(conn)
+
+    with patch("conduit.storage.modelspec_repository.db_manager") as mock_dm:
+        mock_dm.get_pool = AsyncMock(return_value=pool)
+        mock_dm._pool = None
+        mock_dm._lock = None
+        from conduit.storage.modelspec_repository import ModelSpecRepository
+        repo = ModelSpecRepository()
+        await repo._delete("gpt-4o")
+
+    sql = conn.execute.call_args[0][0]
+    assert "DELETE FROM model_specs WHERE model = $1" in sql
+    assert conn.execute.call_args[0][1] == "gpt-4o"
+
+
+@pytest.mark.asyncio
+async def test_delete_nonexistent_model_does_not_raise():
+    conn = AsyncMock()
+    conn.execute.return_value = None
+    pool = make_mock_pool(conn)
+
+    with patch("conduit.storage.modelspec_repository.db_manager") as mock_dm:
+        mock_dm.get_pool = AsyncMock(return_value=pool)
+        mock_dm._pool = None
+        mock_dm._lock = None
+        from conduit.storage.modelspec_repository import ModelSpecRepository
+        repo = ModelSpecRepository()
+        await repo._delete("nonexistent")

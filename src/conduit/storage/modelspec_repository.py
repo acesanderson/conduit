@@ -65,6 +65,29 @@ class ModelSpecRepository:
             rows = await conn.fetch("SELECT model FROM model_specs ORDER BY model")
         return [r["model"] for r in rows]
 
+    async def _upsert(self, spec: ModelSpec) -> None:
+        pool = await db_manager.get_pool(_DB_NAME)
+        data_json = json.dumps(spec.model_dump())
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO model_specs (model, data, created_at, updated_at)
+                VALUES ($1, $2::jsonb, NOW(), NOW())
+                ON CONFLICT (model) DO UPDATE SET
+                    data       = EXCLUDED.data,
+                    updated_at = NOW()
+                """,
+                spec.model,
+                data_json,
+            )
+
+    async def _delete(self, model: str) -> None:
+        pool = await db_manager.get_pool(_DB_NAME)
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "DELETE FROM model_specs WHERE model = $1", model
+            )
+
     def _run(self, coro):
         """
         Run an async coroutine from sync code.
@@ -100,3 +123,11 @@ class ModelSpecRepository:
     def get_all_names(self) -> list[str]:
         """Return all model names stored in Postgres."""
         return self._run(self._get_all_names())
+
+    def upsert(self, spec: ModelSpec) -> None:
+        """Insert or update a ModelSpec in Postgres."""
+        self._run(self._upsert(spec))
+
+    def delete(self, model: str) -> None:
+        """Remove a ModelSpec from Postgres. No-op if the model is not present."""
+        self._run(self._delete(model))
