@@ -333,15 +333,17 @@ class ModelStore:
     @classmethod
     def get_model(cls, model: str) -> ModelSpec:
         """
-        Get the model name, validating against aliases and supported models.
+        Get the ModelSpec for a model name.
+        Raises ValueError if not found, ModelSpecRepositoryError if Postgres is down.
         """
-        from conduit.core.model.models.modelspecs_CRUD import get_modelspec_by_name
+        from conduit.storage.modelspec_repository import ModelSpecRepository
 
         model = cls.validate_model(model)
-        try:
-            return get_modelspec_by_name(model)
-        except ValueError:
+        repo = ModelSpecRepository()
+        result = repo.get_by_name(model)
+        if result is None:
             raise ValueError(f"Model '{model}' not found in the database.")
+        return result
 
     @classmethod
     def get_all_models(cls) -> list[ModelSpec]:
