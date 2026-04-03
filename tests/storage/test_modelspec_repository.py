@@ -333,3 +333,32 @@ async def test_delete_nonexistent_model_does_not_raise():
         from conduit.storage.modelspec_repository import ModelSpecRepository
         repo = ModelSpecRepository()
         await repo._delete("nonexistent")
+
+
+def test_modelstore_get_all_models_uses_repository():
+    """ModelStore.get_all_models() calls ModelSpecRepository.get_all(), not TinyDB."""
+    from conduit.core.model.models.modelstore import ModelStore
+    from conduit.core.model.models.modelspec import ModelSpec
+
+    mock_spec = ModelSpec(
+        model="gpt-4o",
+        description="Test",
+        provider="openai",
+        temperature_range=[0.0, 2.0],
+        context_window=128000,
+        text_completion=True,
+        image_analysis=False,
+        image_gen=False,
+        audio_analysis=False,
+        audio_gen=False,
+        video_analysis=False,
+        video_gen=False,
+        reasoning=False,
+    )
+    with patch(
+        "conduit.storage.modelspec_repository.ModelSpecRepository.get_all",
+        return_value=[mock_spec],
+    ):
+        result = ModelStore.get_all_models()
+    assert len(result) == 1
+    assert result[0].model == "gpt-4o"

@@ -18,9 +18,6 @@ from rich.console import RenderableType
 
 if TYPE_CHECKING:
     from conduit.core.model.models.modelspec import ModelSpec
-    from conduit.core.model.models.modelspecs_CRUD import (
-        get_all_modelspecs,
-    )
 
 logger = logging.getLogger(__name__)
 
@@ -347,12 +344,10 @@ class ModelStore:
 
     @classmethod
     def get_all_models(cls) -> list[ModelSpec]:
-        """
-        Get all models as ModelSpec objects.
-        """
-        from conduit.core.model.models.modelspecs_CRUD import get_all_modelspecs
+        """Get all models as ModelSpec objects."""
+        from conduit.storage.modelspec_repository import ModelSpecRepository
 
-        return get_all_modelspecs()
+        return ModelSpecRepository().get_all()
 
     @classmethod
     def get_client(
@@ -408,13 +403,12 @@ class ModelStore:
     ## Get subsets of models by provider
     @classmethod
     def by_provider(cls, provider: Provider) -> list[ModelSpec]:
-        """
-        Get a list of models for a specific provider.
-        """
+        """Get a list of models for a specific provider."""
+        from conduit.storage.modelspec_repository import ModelSpecRepository
+
         return [
-            modelspec
-            for modelspec in cls.get_all_models()
-            if modelspec.provider == provider
+            spec for spec in ModelSpecRepository().get_all()
+            if spec.provider == provider
         ]
 
     ## Get subsets of models by type
