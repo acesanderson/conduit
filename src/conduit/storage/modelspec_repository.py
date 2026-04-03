@@ -69,10 +69,12 @@ class ModelSpecRepository:
         """
         Run an async coroutine from sync code.
 
-        Resets DatabaseManager singleton after each call so the next invocation
-        gets a fresh asyncpg pool in a fresh event loop.
+        Resets the db_manager pool and lock after each asyncio.run() call so the
+        next invocation gets a fresh asyncpg pool in a fresh event loop. asyncpg
+        pools are bound to the event loop they were created in — without this
+        reset, the next asyncio.run() call would try to reuse a pool from the
+        closed event loop.
         """
-        from conduit.storage.db_manager import DatabaseManager
         try:
             return asyncio.run(coro)
         except Exception as exc:
@@ -80,7 +82,8 @@ class ModelSpecRepository:
                 f"Postgres unavailable or operation failed: {exc}"
             ) from exc
         finally:
-            DatabaseManager._instance = None
+            db_manager._pool = None
+            db_manager._lock = None
 
     def initialize(self) -> None:
         """Create the model_specs table if it does not exist."""
