@@ -427,3 +427,59 @@ def test_create_modelspec_uses_repo_upsert():
     mock_upsert.assert_called_once()
     called_spec = mock_upsert.call_args[0][0]
     assert called_spec.model == "qwen3:30b"
+
+
+def test_export_heavy_models_uses_repository(capsys):
+    """export_heavy_models.main() must use ModelSpecRepository, not modelspecs_CRUD."""
+    from unittest.mock import patch
+    from conduit.core.model.models.modelspec import ModelSpec
+
+    heavy_spec = ModelSpec(
+        model="qwq:latest",
+        description="Heavy model",
+        provider="ollama",
+        temperature_range=[0.0, 1.0],
+        context_window=32768,
+        heavy=True,
+        text_completion=True,
+        image_analysis=False,
+        image_gen=False,
+        audio_analysis=False,
+        audio_gen=False,
+        video_analysis=False,
+        video_gen=False,
+        reasoning=True,
+    )
+    light_spec = ModelSpec(
+        model="llama3.2:3b",
+        description="Light model",
+        provider="ollama",
+        temperature_range=[0.0, 1.0],
+        context_window=8192,
+        heavy=False,
+        text_completion=True,
+        image_analysis=False,
+        image_gen=False,
+        audio_analysis=False,
+        audio_gen=False,
+        video_analysis=False,
+        video_gen=False,
+        reasoning=False,
+    )
+    with patch(
+        "conduit.storage.modelspec_repository.ModelSpecRepository.get_all",
+        return_value=[heavy_spec, light_spec],
+    ):
+        import sys
+        import io
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            from conduit.apps.scripts.export_heavy_models import main
+            main()
+        finally:
+            sys.stdout = old_stdout
+    output = captured.getvalue()
+    assert "qwq:latest" in output
+    assert "llama3.2:3b" not in output  # light model excluded
