@@ -287,6 +287,7 @@ class BaseHandlers:
         audio_content: AudioContent | None = None,
         save: str | None = None,
         play: bool = False,
+        persist: bool = False,
     ) -> None:
         """
         Here we resolve all inputs for flat input to the query function.
@@ -320,6 +321,7 @@ class BaseHandlers:
             image_content=image_content,
             audio_path=audio_path,
             audio_content=audio_content,
+            ephemeral=not persist,
         )
 
         # 3. Execute

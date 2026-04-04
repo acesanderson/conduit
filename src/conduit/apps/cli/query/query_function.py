@@ -288,7 +288,7 @@ def default_query_function(
     preferred_model: str = inputs.preferred_model
     verbose: Verbosity = inputs.verbose
     include_history: bool = inputs.include_history
-    ephemeral: bool = False
+    ephemeral: bool = inputs.ephemeral
     cache = inputs.cache
     system = inputs.system_message
 

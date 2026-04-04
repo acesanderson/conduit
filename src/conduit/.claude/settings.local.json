@@ -69,7 +69,8 @@
       "Bash(/Users/bianders/.local/bin/uv run:*)",
       "Bash(pytest /Users/bianders/Brian_Code/conduit-project/tests/cli/ -q)",
       "Bash(pytest tests/cli/test_audio_command.py::test_save_response_writes_audio_bytes tests/cli/test_audio_command.py::test_save_response_writes_text tests/cli/test_audio_command.py::test_save_flag_suppresses_printer tests/cli/test_audio_command.py::test_play_flag_autosaves_to_tmp -v)",
-      "Bash(/opt/homebrew/bin/uv run:*)"
+      "Bash(/opt/homebrew/bin/uv run:*)",
+      "Bash(wait)"
     ]
   }
 }

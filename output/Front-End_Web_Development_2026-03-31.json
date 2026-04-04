@@ -1,0 +1,409 @@
+{
+  "scores": [
+    {
+      "course_id": "2729156",
+      "title": "Micro Front-End Architecture with React",
+      "in_degree": 10,
+      "out_degree": 0,
+      "centrality": 0.9090909090909091
+    },
+    {
+      "course_id": "5911404",
+      "title": "Build a Lightweight Full-Stack Headless CMS Using Next.js, Contentful, and GraphQL",
+      "in_degree": 9,
+      "out_degree": 0,
+      "centrality": 0.9
+    },
+    {
+      "course_id": "5917160",
+      "title": "Angular: Building Large Applications",
+      "in_degree": 7,
+      "out_degree": 0,
+      "centrality": 0.875
+    },
+    {
+      "course_id": "4565165",
+      "title": "Integrating AI Image Generation into Web Apps",
+      "in_degree": 7,
+      "out_degree": 0,
+      "centrality": 0.875
+    },
+    {
+      "course_id": "5965174",
+      "title": "Building Full-Stack Applications with HTMX",
+      "in_degree": 6,
+      "out_degree": 0,
+      "centrality": 0.8571428571428571
+    },
+    {
+      "course_id": "5982118",
+      "title": "Using AI in the Design to Full-Stack Development Life Cycle",
+      "in_degree": 5,
+      "out_degree": 0,
+      "centrality": 0.8333333333333334
+    },
+    {
+      "course_id": "6046244",
+      "title": "Testing in React: Beyond Unit Tests",
+      "in_degree": 5,
+      "out_degree": 0,
+      "centrality": 0.8333333333333334
+    },
+    {
+      "course_id": "2128097",
+      "title": "Advanced React Router Techniques with TypeScript",
+      "in_degree": 9,
+      "out_degree": 1,
+      "centrality": 0.8181818181818182
+    },
+    {
+      "course_id": "5945075",
+      "title": "CSS: Advanced Layouts with Grid",
+      "in_degree": 4,
+      "out_degree": 0,
+      "centrality": 0.8
+    },
+    {
+      "course_id": "2126130",
+      "title": "Building TypeScript Applications with JSDoc",
+      "in_degree": 4,
+      "out_degree": 0,
+      "centrality": 0.8
+    },
+    {
+      "course_id": "6037007",
+      "title": "Building Scalable React UI Component Libraries with Storybook",
+      "in_degree": 8,
+      "out_degree": 1,
+      "centrality": 0.8
+    },
+    {
+      "course_id": "2719145",
+      "title": "React: Web Workers",
+      "in_degree": 3,
+      "out_degree": 0,
+      "centrality": 0.75
+    },
+    {
+      "course_id": "5914399",
+      "title": "Advanced State Management with SolidJS",
+      "in_degree": 3,
+      "out_degree": 0,
+      "centrality": 0.75
+    },
+    {
+      "course_id": "6050004",
+      "title": "React: Advanced Code Challenges",
+      "in_degree": 7,
+      "out_degree": 2,
+      "centrality": 0.7
+    },
+    {
+      "course_id": "5952443",
+      "title": "Next.js: Creating and Hosting a Full-Stack Site",
+      "in_degree": 9,
+      "out_degree": 3,
+      "centrality": 0.6923076923076923
+    },
+    {
+      "course_id": "5915453",
+      "title": "jQuery Essential Training",
+      "in_degree": 2,
+      "out_degree": 0,
+      "centrality": 0.6666666666666666
+    },
+    {
+      "course_id": "5902449",
+      "title": "Front-End Web Development with .NET",
+      "in_degree": 2,
+      "out_degree": 0,
+      "centrality": 0.6666666666666666
+    },
+    {
+      "course_id": "2711093",
+      "title": "Creating a Chat Tool Using OpenAI Models and Pinecone",
+      "in_degree": 2,
+      "out_degree": 0,
+      "centrality": 0.6666666666666666
+    },
+    {
+      "course_id": "5910097",
+      "title": "JavaScript: Security Essentials",
+      "in_degree": 2,
+      "out_degree": 0,
+      "centrality": 0.6666666666666666
+    },
+    {
+      "course_id": "2711092",
+      "title": "React: Using TypeScript",
+      "in_degree": 11,
+      "out_degree": 7,
+      "centrality": 0.5789473684210527
+    },
+    {
+      "course_id": "5914414",
+      "title": "Advanced TypeScript Concepts",
+      "in_degree": 5,
+      "out_degree": 3,
+      "centrality": 0.5555555555555556
+    },
+    {
+      "course_id": "2711094",
+      "title": "Create Your Own Code Assistant with Llama 2, Node.js, and React.js",
+      "in_degree": 6,
+      "out_degree": 4,
+      "centrality": 0.5454545454545454
+    },
+    {
+      "course_id": "5948186",
+      "title": "React: Creating and Hosting a Full-Stack Site",
+      "in_degree": 7,
+      "out_degree": 5,
+      "centrality": 0.5384615384615384
+    },
+    {
+      "course_id": "4588164",
+      "title": "TypeScript Design Patterns",
+      "in_degree": 1,
+      "out_degree": 0,
+      "centrality": 0.5
+    },
+    {
+      "course_id": "3810071",
+      "title": "AI Programming for JavaScript Developers",
+      "in_degree": 1,
+      "out_degree": 0,
+      "centrality": 0.5
+    },
+    {
+      "course_id": "4565174",
+      "title": "JavaScript: Hashmaps",
+      "in_degree": 1,
+      "out_degree": 0,
+      "centrality": 0.5
+    },
+    {
+      "course_id": "4566099",
+      "title": "WordPress: Mastering Full Site Editing",
+      "in_degree": 1,
+      "out_degree": 0,
+      "centrality": 0.5
+    },
+    {
+      "course_id": "3813070",
+      "title": "Integrating Generative AI into JavaScript Web Projects",
+      "in_degree": 3,
+      "out_degree": 2,
+      "centrality": 0.5
+    },
+    {
+      "course_id": "4488047",
+      "title": "Accessible Layout for the Web",
+      "in_degree": 5,
+      "out_degree": 4,
+      "centrality": 0.5
+    },
+    {
+      "course_id": "5979164",
+      "title": "Build with AI: Beyond Pair Programming with AI",
+      "in_degree": 1,
+      "out_degree": 0,
+      "centrality": 0.5
+    },
+    {
+      "course_id": "4256011",
+      "title": "HTMX Essential Training",
+      "in_degree": 2,
+      "out_degree": 1,
+      "centrality": 0.5
+    },
+    {
+      "course_id": "4252164",
+      "title": "Learning Functional Programming with JavaScript ES6+",
+      "in_degree": 2,
+      "out_degree": 1,
+      "centrality": 0.5
+    },
+    {
+      "course_id": "6075000",
+      "title": "Vibe Code Your Way to a Full Stack App with Bolt",
+      "in_degree": 1,
+      "out_degree": 0,
+      "centrality": 0.5
+    },
+    {
+      "course_id": "4567087",
+      "title": "Building Website Interactivity with JavaScript",
+      "in_degree": 5,
+      "out_degree": 5,
+      "centrality": 0.45454545454545453
+    },
+    {
+      "course_id": "4401994",
+      "title": "Web Accessibility for Developers",
+      "in_degree": 3,
+      "out_degree": 3,
+      "centrality": 0.42857142857142855
+    },
+    {
+      "course_id": "6056237",
+      "title": "A Standalone Project: Create a Website for Online Burger Orders Using React.js",
+      "in_degree": 3,
+      "out_degree": 3,
+      "centrality": 0.42857142857142855
+    },
+    {
+      "course_id": "4254233",
+      "title": "Building Modern Projects with React",
+      "in_degree": 8,
+      "out_degree": 10,
+      "centrality": 0.42105263157894735
+    },
+    {
+      "course_id": "5914444",
+      "title": "Learning Next.js",
+      "in_degree": 2,
+      "out_degree": 2,
+      "centrality": 0.4
+    },
+    {
+      "course_id": "2719409",
+      "title": "Scaling TypeScript for Enterprise Developers",
+      "in_degree": 2,
+      "out_degree": 3,
+      "centrality": 0.3333333333333333
+    },
+    {
+      "course_id": "3961268",
+      "title": "LangChain.js: An AI ToolChain for JavaScript Developers",
+      "in_degree": 1,
+      "out_degree": 1,
+      "centrality": 0.3333333333333333
+    },
+    {
+      "course_id": "5978020",
+      "title": "Databases for Node.js Developers",
+      "in_degree": 1,
+      "out_degree": 1,
+      "centrality": 0.3333333333333333
+    },
+    {
+      "course_id": "3807101",
+      "title": "JavaScript: Enhancing the DOM",
+      "in_degree": 3,
+      "out_degree": 6,
+      "centrality": 0.3
+    },
+    {
+      "course_id": "5972102",
+      "title": "React in Action: From Setup to Deployment",
+      "in_degree": 5,
+      "out_degree": 11,
+      "centrality": 0.29411764705882354
+    },
+    {
+      "course_id": "3809063",
+      "title": "JavaScript: Ajax and Fetch",
+      "in_degree": 3,
+      "out_degree": 7,
+      "centrality": 0.2727272727272727
+    },
+    {
+      "course_id": "4253048",
+      "title": "CSS for Developers",
+      "in_degree": 2,
+      "out_degree": 6,
+      "centrality": 0.2222222222222222
+    },
+    {
+      "course_id": "5982171",
+      "title": "HTML and CSS: Creating Forms",
+      "in_degree": 2,
+      "out_degree": 6,
+      "centrality": 0.2222222222222222
+    },
+    {
+      "course_id": "5916143",
+      "title": "TypeScript for JavaScript Developers",
+      "in_degree": 2,
+      "out_degree": 7,
+      "centrality": 0.2
+    },
+    {
+      "course_id": "3811066",
+      "title": "React with Styled Components",
+      "in_degree": 3,
+      "out_degree": 12,
+      "centrality": 0.1875
+    },
+    {
+      "course_id": "6050114",
+      "title": "Conquer Complex JavaScript Concepts through Hands-On Practice",
+      "in_degree": 1,
+      "out_degree": 12,
+      "centrality": 0.07142857142857142
+    },
+    {
+      "course_id": "5949338",
+      "title": "React Essential Training",
+      "in_degree": 1,
+      "out_degree": 15,
+      "centrality": 0.058823529411764705
+    },
+    {
+      "course_id": "4479542",
+      "title": "HTML, CSS, and JavaScript: Building the Web",
+      "in_degree": 1,
+      "out_degree": 32,
+      "centrality": 0.029411764705882353
+    },
+    {
+      "course_id": "5948474",
+      "title": "Data Structures in JavaScript: BSTs, Queues, and Stacks",
+      "in_degree": 0,
+      "out_degree": 0,
+      "centrality": 0.0
+    },
+    {
+      "course_id": "3812081",
+      "title": "Building a Server with TypeScript and GraphQL",
+      "in_degree": 0,
+      "out_degree": 3,
+      "centrality": 0.0
+    },
+    {
+      "course_id": "5967303",
+      "title": "Routing Techniques in SolidJS",
+      "in_degree": 0,
+      "out_degree": 0,
+      "centrality": 0.0
+    },
+    {
+      "course_id": "5959194",
+      "title": "HTML Essential Training",
+      "in_degree": 0,
+      "out_degree": 20,
+      "centrality": 0.0
+    },
+    {
+      "course_id": "6036113",
+      "title": "Learning GraphQL",
+      "in_degree": 0,
+      "out_degree": 0,
+      "centrality": 0.0
+    }
+  ],
+  "summary": {
+    "subject": "Front-End Web Development",
+    "courses_in": 56,
+    "pairs_evaluated": 2211,
+    "pairs_cached": 0,
+    "edges_found": 199,
+    "unclear_count": 14,
+    "unclear_rate": 0.006331976481230212,
+    "runtime_seconds": 16693.319884958008,
+    "model_id": "qwen3:8b",
+    "host_alias": "deepwater+bywater",
+    "output_path": "/Users/bianders/Brian_Code/conduit-project/output/Front-End_Web_Development_2026-03-31.json"
+  }
+}

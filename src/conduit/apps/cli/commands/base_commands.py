@@ -250,6 +250,12 @@ class BaseCommands(CommandCollection):
             default=False,
             help="Play audio response after generation. Requires audio output from model.",
         )
+        @click.option(
+            "--persist",
+            is_flag=True,
+            default=False,
+            help="Persist this query to the message store.",
+        )
         @click.argument("query_input", nargs=-1)
         @click.pass_context
         def query(
@@ -266,6 +272,7 @@ class BaseCommands(CommandCollection):
             audio: str | None,
             save: str | None,
             play: bool,
+            persist: bool,
             query_input: tuple[str, ...],
         ):
             """
@@ -362,6 +369,7 @@ class BaseCommands(CommandCollection):
                 audio_content=audio_content_obj,
                 save=save,
                 play=play,
+                persist=persist,
                 # Injected Dependencies
                 printer=printer,
                 query_function=query_function,
@@ -442,10 +450,38 @@ class BaseCommands(CommandCollection):
             handlers.handle_status(printer)
 
         @click.command()
-        @click.pass_context
-        def shell(ctx: click.Context):
-            """Enter interactive shell mode."""
-            raise NotImplementedError
+        @click.option(
+            "-i",
+            "--input-mode",
+            type=click.Choice(["enhanced", "basic"]),
+            default="enhanced",
+            help="Input mode for the chat application.",
+        )
+        def chat(input_mode: str):
+            """Enter interactive chat mode."""
+            import asyncio
+            from conduit.apps.chat.create_app import create_chat_app
+            from conduit.config import settings
+            from conduit.domain.config.conduit_options import ConduitOptions
+            from rich.console import Console
+
+            console = Console()
+            options = ConduitOptions(
+                project_name="conduit-chat",
+                verbosity=settings.default_verbosity,
+                console=console,
+            )
+            app = create_chat_app(
+                input_mode=input_mode,
+                preferred_model=settings.preferred_model,
+                welcome_message="[bold cyan]Conduit Chat. Type /exit to exit.[/bold cyan]",
+                system_message=settings.system_prompt,
+                options=options,
+            )
+            try:
+                asyncio.run(app.run())
+            except KeyboardInterrupt:
+                pass
 
         @click.command()
         @click.pass_context
@@ -484,16 +520,112 @@ class BaseCommands(CommandCollection):
                 verbosity,
             )
 
+        @click.command()
+        def tokens():
+            """Show token usage statistics from the odometer."""
+            import asyncio
+            import sys
+            from datetime import date
+            from rich.console import Console
+            from rich.table import Table
+            from conduit.storage.odometer.pgres.postgres_backend_async import AsyncPostgresOdometer
+
+            def _fmt(num):
+                return "0" if num is None else f"{num:,}"
+
+            async def _run():
+                console = Console()
+                try:
+                    with console.status("Connecting...", spinner="dots"):
+                        backend = AsyncPostgresOdometer()
+                        today = date.today()
+                        stats, provider_stats, all_time_stats, daily_stats = await asyncio.gather(
+                            backend.get_overall_stats(),
+                            backend.get_aggregates("provider"),
+                            backend.get_aggregates("model"),
+                            backend.get_aggregates("model", start_date=today, end_date=today),
+                        )
+
+                    if stats and stats.get("requests", 0):
+                        console.print("[bold gold3]Usage Statistics[/bold gold3]")
+                        console.print(
+                            f"[cyan]Requests:[/cyan] {_fmt(stats['requests'])}    "
+                            f"[cyan]Tokens:[/cyan] {_fmt(stats['total_tokens'])}    "
+                            f"[cyan]Input:[/cyan] [green]{_fmt(stats['input'])}[/green]    "
+                            f"[cyan]Output:[/cyan] [yellow]{_fmt(stats['output'])}[/yellow]    "
+                            f"[cyan]Providers:[/cyan] {stats['providers']}    "
+                            f"[cyan]Models:[/cyan] {stats['models']}"
+                        )
+                    else:
+                        console.print("[red]No usage data found[/red]")
+                        return
+
+                    if provider_stats:
+                        console.print("\n[bold gold3]Usage by Provider[/bold gold3]")
+                        t = Table(show_header=True, header_style="bold", box=None, padding=(0, 1))
+                        t.add_column("Provider", style="cyan")
+                        t.add_column("Requests", justify="right")
+                        t.add_column("Input", justify="right", style="green")
+                        t.add_column("Output", justify="right", style="yellow")
+                        t.add_column("Total", justify="right", style="bold")
+                        for provider, s in sorted(provider_stats.items(), key=lambda x: x[1]["total"], reverse=True):
+                            t.add_row(provider, _fmt(s["events"]), _fmt(s["input"]), _fmt(s["output"]), _fmt(s["total"]))
+                        console.print(t)
+
+                    for title, model_stats in [("Top 10 Models", all_time_stats), ("Top 10 Models (Today)", daily_stats)]:
+                        if not model_stats:
+                            continue
+                        console.print(f"\n[bold gold3]{title}[/bold gold3]")
+                        t = Table(show_header=True, header_style="bold", box=None, padding=(0, 1))
+                        t.add_column("Rank", justify="center", width=4)
+                        t.add_column("Model", style="cyan")
+                        t.add_column("Requests", justify="right")
+                        t.add_column("Total Tokens", justify="right", style="bold")
+                        for i, (model, s) in enumerate(
+                            sorted(model_stats.items(), key=lambda x: x[1]["total"], reverse=True)[:10], 1
+                        ):
+                            display = model[:35] + "..." if len(model) > 38 else model
+                            rank = ["", "1.", "2.", "3."][i] if i <= 3 else str(i)
+                            t.add_row(rank, display, _fmt(s["events"]), _fmt(s["total"]))
+                        console.print(t)
+
+                except KeyboardInterrupt:
+                    pass
+                except Exception as e:
+                    console.print(f"[red]Error: {e}[/red]")
+                    sys.exit(1)
+
+            asyncio.run(_run())
+
+        @click.command()
+        @click.argument("text", required=False)
+        @click.option("-m", "--model", default="gemini", help="Model to use for tokenization.")
+        def tokenize(text: str | None, model: str):
+            """Count tokens for TEXT or stdin input."""
+            import sys
+            from conduit.sync import Model
+
+            if text is None:
+                if sys.stdin.isatty():
+                    raise click.UsageError("Provide TEXT argument or pipe input via stdin.")
+                text = sys.stdin.read()
+
+            m = Model(model)
+            count: int = m.tokenize(text)
+            click.echo(f"Number of tokens: {count}")
+
         self._commands = [
             query,
             history,
             wipe,
             ping,
             status,
-            shell,
+            chat,
             last,
             get,
             config,
+            tokens,
+            tokenize,
         ]
 
     @override

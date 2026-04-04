@@ -1,0 +1,283 @@
+{
+  "scores": [
+    {
+      "course_id": "3900103",
+      "title": "Nano Tips for Dealing with a Difficult Customer with Richard Moore",
+      "in_degree": 8,
+      "out_degree": 0,
+      "centrality": 0.8888888888888888
+    },
+    {
+      "course_id": "3809159",
+      "title": "Serving Customers Using Social Media",
+      "in_degree": 9,
+      "out_degree": 1,
+      "centrality": 0.8181818181818182
+    },
+    {
+      "course_id": "3806201",
+      "title": "Customer Service Strategy",
+      "in_degree": 4,
+      "out_degree": 0,
+      "centrality": 0.8
+    },
+    {
+      "course_id": "5914186",
+      "title": "Customer Service: How to Adapt to Changing Customer Needs",
+      "in_degree": 9,
+      "out_degree": 2,
+      "centrality": 0.75
+    },
+    {
+      "course_id": "3895064",
+      "title": "The CX Value Chain: Linking Customer Experience to Business Outcomes",
+      "in_degree": 8,
+      "out_degree": 3,
+      "centrality": 0.6666666666666666
+    },
+    {
+      "course_id": "3898066",
+      "title": "CX Operations: Developing a Customer-Centric Operating Model",
+      "in_degree": 8,
+      "out_degree": 3,
+      "centrality": 0.6666666666666666
+    },
+    {
+      "course_id": "3808142",
+      "title": "Nano Tips for Intentional Engagement Online with Richard Moore",
+      "in_degree": 2,
+      "out_degree": 0,
+      "centrality": 0.6666666666666666
+    },
+    {
+      "course_id": "3873000",
+      "title": "Delivering Exceptional Live Chat Support: Drive Results and Loyalty",
+      "in_degree": 7,
+      "out_degree": 3,
+      "centrality": 0.6363636363636364
+    },
+    {
+      "course_id": "3894086",
+      "title": "Tackling Intense Customer Service Moments",
+      "in_degree": 12,
+      "out_degree": 6,
+      "centrality": 0.631578947368421
+    },
+    {
+      "course_id": "3848035",
+      "title": "Balancing AI and the Human Touch in Customer Service",
+      "in_degree": 3,
+      "out_degree": 1,
+      "centrality": 0.6
+    },
+    {
+      "course_id": "3898080",
+      "title": "Connecting with Customers Across Channels: Build Loyalty and Stand Out in the AI Era",
+      "in_degree": 6,
+      "out_degree": 3,
+      "centrality": 0.6
+    },
+    {
+      "course_id": "6053157",
+      "title": "Generative AI for Customer Service Professionals",
+      "in_degree": 3,
+      "out_degree": 1,
+      "centrality": 0.6
+    },
+    {
+      "course_id": "3893088",
+      "title": "Nano Tips for Managing Customer Expectations with Richard Moore",
+      "in_degree": 4,
+      "out_degree": 2,
+      "centrality": 0.5714285714285714
+    },
+    {
+      "course_id": "3936889",
+      "title": "Responding to Unreasonable Customer Demands",
+      "in_degree": 4,
+      "out_degree": 2,
+      "centrality": 0.5714285714285714
+    },
+    {
+      "course_id": "3847037",
+      "title": "Customer Service: Handling Abusive Customers",
+      "in_degree": 6,
+      "out_degree": 4,
+      "centrality": 0.5454545454545454
+    },
+    {
+      "course_id": "2728118",
+      "title": "How to Quickly Find the Root Cause of a Customer Issue",
+      "in_degree": 1,
+      "out_degree": 0,
+      "centrality": 0.5
+    },
+    {
+      "course_id": "4563458",
+      "title": "Build Your CX Technology Stack",
+      "in_degree": 4,
+      "out_degree": 3,
+      "centrality": 0.5
+    },
+    {
+      "course_id": "3385102",
+      "title": "Driving Business Growth Through Customer-Centricity",
+      "in_degree": 5,
+      "out_degree": 4,
+      "centrality": 0.5
+    },
+    {
+      "course_id": "3910311",
+      "title": "The 8 Laws of Customer-Focused Leadership",
+      "in_degree": 2,
+      "out_degree": 2,
+      "centrality": 0.4
+    },
+    {
+      "course_id": "3894087",
+      "title": "Tips for Documenting Complex Customer Interactions",
+      "in_degree": 2,
+      "out_degree": 2,
+      "centrality": 0.4
+    },
+    {
+      "course_id": "5931011",
+      "title": "Tips for Managing Stress While Working with Upset Customers",
+      "in_degree": 1,
+      "out_degree": 1,
+      "centrality": 0.3333333333333333
+    },
+    {
+      "course_id": "3907150",
+      "title": "Leveraging AI in Contact Centers: Overcoming Volume and Improving Customer Experience",
+      "in_degree": 1,
+      "out_degree": 1,
+      "centrality": 0.3333333333333333
+    },
+    {
+      "course_id": "3887267",
+      "title": "Service Excellence: How to Exceed Expectations Every Time",
+      "in_degree": 4,
+      "out_degree": 8,
+      "centrality": 0.3076923076923077
+    },
+    {
+      "course_id": "2023169",
+      "title": "Handling Customer Complaints with Empathy",
+      "in_degree": 3,
+      "out_degree": 8,
+      "centrality": 0.25
+    },
+    {
+      "course_id": "2114108",
+      "title": "Earn Customer Trust and Cultivate Lasting Relationships",
+      "in_degree": 1,
+      "out_degree": 3,
+      "centrality": 0.2
+    },
+    {
+      "course_id": "3939370",
+      "title": "Customer Service Skills: Communicating Complex Products with Confidence",
+      "in_degree": 1,
+      "out_degree": 3,
+      "centrality": 0.2
+    },
+    {
+      "course_id": "3821147",
+      "title": "Championing the Customer in Everything You Do",
+      "in_degree": 2,
+      "out_degree": 8,
+      "centrality": 0.18181818181818182
+    },
+    {
+      "course_id": "3895111",
+      "title": "Using Data to Create a Better Customer Experience",
+      "in_degree": 1,
+      "out_degree": 4,
+      "centrality": 0.16666666666666666
+    },
+    {
+      "course_id": "3871046",
+      "title": "Customer Service in the Field",
+      "in_degree": 2,
+      "out_degree": 14,
+      "centrality": 0.11764705882352941
+    },
+    {
+      "course_id": "3900120",
+      "title": "Nano Tips for Customer Centric Communication with Richard Moore",
+      "in_degree": 1,
+      "out_degree": 8,
+      "centrality": 0.1
+    },
+    {
+      "course_id": "4515400",
+      "title": "The Service Mindset: Enhancing Your Customer-Centric Skills",
+      "in_degree": 1,
+      "out_degree": 8,
+      "centrality": 0.1
+    },
+    {
+      "course_id": "3859062",
+      "title": "Building Rapport with Customers",
+      "in_degree": 1,
+      "out_degree": 9,
+      "centrality": 0.09090909090909091
+    },
+    {
+      "course_id": "5964085",
+      "title": "Customer Experience: 6 Essential Foundations for Lasting Loyalty",
+      "in_degree": 1,
+      "out_degree": 9,
+      "centrality": 0.09090909090909091
+    },
+    {
+      "course_id": "3818217",
+      "title": "Customer Journey Mapping with Generative AI",
+      "in_degree": 0,
+      "out_degree": 1,
+      "centrality": 0.0
+    },
+    {
+      "course_id": "5901059",
+      "title": "Nano Tips for a Pitch That Persuades without Pressure with Alex James",
+      "in_degree": 0,
+      "out_degree": 0,
+      "centrality": 0.0
+    },
+    {
+      "course_id": "5983073",
+      "title": "Surviving Burnout in Customer Service",
+      "in_degree": 0,
+      "out_degree": 0,
+      "centrality": 0.0
+    },
+    {
+      "course_id": "3809065",
+      "title": "Nano Tips for Developing a Simplification Mindset with Lisa Bodell",
+      "in_degree": 0,
+      "out_degree": 0,
+      "centrality": 0.0
+    },
+    {
+      "course_id": "3982001",
+      "title": "Time Management for Customer Service Professionals",
+      "in_degree": 0,
+      "out_degree": 0,
+      "centrality": 0.0
+    }
+  ],
+  "summary": {
+    "subject": "Customer Service",
+    "courses_in": 38,
+    "pairs_evaluated": 1301,
+    "pairs_cached": 0,
+    "edges_found": 127,
+    "unclear_count": 3,
+    "unclear_rate": 0.0023059185242121443,
+    "runtime_seconds": 9839.807265458992,
+    "model_id": "qwen3:8b",
+    "host_alias": "deepwater+bywater",
+    "output_path": "/Users/bianders/Brian_Code/conduit-project/output/Customer_Service_2026-03-31.json"
+  }
+}
