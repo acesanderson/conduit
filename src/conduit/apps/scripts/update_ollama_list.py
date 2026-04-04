@@ -68,6 +68,25 @@ def main(server: str | None) -> None:
     for m in sorted(all_models):
         console.print(f"  {m}")
 
+    # Report ModelSpec coverage — does NOT write to Postgres.
+    try:
+        from conduit.storage.modelspec_repository import ModelSpecRepository
+        from conduit.storage.modelspec_repository import ModelSpecRepositoryError
+
+        repo = ModelSpecRepository()
+        spec_names = set(repo.get_all_names())
+        ollama_models = set(all_models)
+        missing = ollama_models - spec_names
+        if missing:
+            console.print(
+                f"\n[yellow]{len(missing)} ollama model(s) have no ModelSpec[/yellow]"
+                " — run [cyan]update[/cyan] to generate"
+            )
+        else:
+            console.print("\n[green]All ollama models have ModelSpecs.[/green]")
+    except ModelSpecRepositoryError:
+        console.print("[dim]Could not reach Postgres to check ModelSpec coverage.[/dim]")
+
 
 if __name__ == "__main__":
     main()
