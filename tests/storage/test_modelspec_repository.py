@@ -389,3 +389,41 @@ def test_modelstore_update_is_idempotent():
 
     mock_delete.assert_not_called()
     mock_create.assert_not_called()
+
+
+def test_create_modelspec_uses_repo_upsert():
+    """research_models.create_modelspec() must call ModelSpecRepository.upsert()."""
+    from unittest.mock import patch, MagicMock
+    from conduit.core.model.models.modelspec import ModelSpec
+
+    mock_spec = ModelSpec(
+        model="qwen3:30b",
+        description="Test",
+        provider="ollama",
+        temperature_range=[0.0, 1.0],
+        context_window=32768,
+        text_completion=True,
+        image_analysis=False,
+        image_gen=False,
+        audio_analysis=False,
+        audio_gen=False,
+        video_analysis=False,
+        video_gen=False,
+        reasoning=False,
+    )
+
+    with patch(
+        "conduit.core.model.models.research_models.get_capabilities_by_model",
+        return_value=mock_spec,
+    ), patch(
+        "conduit.core.model.models.modelstore.ModelStore.identify_provider",
+        return_value="ollama",
+    ), patch(
+        "conduit.storage.modelspec_repository.ModelSpecRepository.upsert"
+    ) as mock_upsert:
+        from conduit.core.model.models.research_models import create_modelspec
+        create_modelspec("qwen3:30b")
+
+    mock_upsert.assert_called_once()
+    called_spec = mock_upsert.call_args[0][0]
+    assert called_spec.model == "qwen3:30b"

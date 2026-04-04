@@ -1,10 +1,6 @@
+from __future__ import annotations
+
 from conduit.core.model.models.modelspec import ModelSpecList, ModelSpec
-from conduit.core.model.models.modelspecs_CRUD import (
-    create_modelspecs_from_scratch,
-    add_modelspec,
-    get_all_modelspecs,
-    in_db,
-)
 from conduit.core.model.model_sync import ModelSync as Model
 from conduit.sync import Conduit, GenerationParams, ConduitOptions, Verbosity
 from conduit.core.prompt.prompt import Prompt
@@ -129,15 +125,20 @@ def get_all_capabilities() -> list[ModelSpec]:
 
 def create_from_scratch() -> None:
     """
-    Create a new empty database for ModelSpecs and populate it with capabilities from all providers.
-    This will overwrite any existing data in modelspecs.json.
+    Rebuild the entire ModelSpec table in Postgres from scratch.
+    Deletes all existing rows, then regenerates via Perplexity.
     """
+    from conduit.storage.modelspec_repository import ModelSpecRepository
+
+    repo = ModelSpecRepository()
     all_specs = get_all_capabilities()
-    create_modelspecs_from_scratch(all_specs)
-    print(f"Populated ModelSpecs database with {len(all_specs)} entries.")
-    # Test retrieval of all specs
-    retrieved_specs = get_all_modelspecs()
-    assert len(retrieved_specs) == len(all_specs), (
+    for name in repo.get_all_names():
+        repo.delete(name)
+    for spec in all_specs:
+        repo.upsert(spec)
+    print(f"Populated ModelSpecs table with {len(all_specs)} entries.")
+    retrieved = repo.get_all()
+    assert len(retrieved) == len(all_specs), (
         "Retrieved specs do not match created specs."
     )
 
@@ -160,23 +161,22 @@ def get_capabilities_by_model(provider: str, model: str) -> ModelSpec:
 
 def create_modelspec(model: str) -> None:
     """
-    Create a new ModelSpec in the database.
+    Generate and persist a ModelSpec for a single model via Perplexity.
+    Uses upsert — safe to call more than once for the same model.
     """
     from conduit.core.model.models.modelstore import ModelStore
+    from conduit.storage.modelspec_repository import ModelSpecRepository
 
     provider = ModelStore.identify_provider(model)
     model_spec = get_capabilities_by_model(provider, model)
-    if isinstance(model_spec, ModelSpec):
-        model_spec.model = model
-    else:
+    if not isinstance(model_spec, ModelSpec):
         raise ValueError(
             f"Expected ModelSpec, got {type(model_spec)} for model {model}"
         )
-    if not in_db(model_spec):
-        add_modelspec(model_spec)
-        print(f"Added ModelSpec for {model_spec.model} to the database.")
-    else:
-        print(f"ModelSpec for {model_spec.model} already exists in the database.")
+    model_spec.model = model
+    repo = ModelSpecRepository()
+    repo.upsert(model_spec)
+    print(f"Upserted ModelSpec for {model_spec.model} to Postgres.")
 
 
 if __name__ == "__main__":
