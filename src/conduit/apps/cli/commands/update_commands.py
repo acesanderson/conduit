@@ -73,7 +73,7 @@ def ollama(server: str | None) -> None:
 
 @update.command()
 def both() -> None:
-    """Run both modelstore and ollama updates."""
+    """Refresh Ollama cache then sync modelstore DB."""
     ctx = click.get_current_context()
-    ctx.invoke(modelstore)
     ctx.invoke(ollama)
+    ctx.invoke(modelstore)
