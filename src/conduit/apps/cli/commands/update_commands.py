@@ -60,7 +60,10 @@ def ollama(server: str | None) -> None:
         console.print(f"  [green]{s}:[/green] {len(models)} models cached")
         return True
 
-    results = asyncio.run(asyncio.gather(*[_update_server(s) for s in servers]))
+    async def _run():
+        return await asyncio.gather(*[_update_server(s) for s in servers])
+
+    results = asyncio.run(_run())
 
     if not any(results):
         raise SystemExit(1)
