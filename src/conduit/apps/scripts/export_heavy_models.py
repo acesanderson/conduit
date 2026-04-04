@@ -19,11 +19,12 @@ import sys
 
 import yaml
 
-from conduit.core.model.models.modelspecs_CRUD import get_all_modelspecs
+from conduit.storage.modelspec_repository import ModelSpecRepository
 
 
 def main() -> None:
-    all_specs = get_all_modelspecs()
+    repo = ModelSpecRepository()
+    all_specs = repo.get_all()
     heavy = sorted(
         spec.model for spec in all_specs if getattr(spec, "heavy", False)
     )

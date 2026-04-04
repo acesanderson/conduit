@@ -202,3 +202,35 @@ def test_models_entrypoint_guard_against_double_injection(monkeypatch):
         # argv must not have a third 'models' prepended
         assert sys.argv == ["models", "models", "-e"]
         mock_main.assert_called_once()
+
+
+def test_model_flag_shows_error_on_db_unavailable(runner, cli):
+    """AC4: if Postgres is unreachable, models -m prints a clear error and exits non-zero."""
+    from conduit.storage.modelspec_repository import ModelSpecRepositoryError
+    with patch(
+        "conduit.core.model.models.modelstore.ModelStore.get_model",
+        side_effect=ModelSpecRepositoryError("Connection refused"),
+    ):
+        result = runner.invoke(cli, ["models", "-m", "gpt-4o"])
+    assert result.exit_code != 0
+    assert "Database unavailable" in result.output or "Postgres" in result.output
+
+
+def test_model_flag_fuzzy_on_unknown_model_no_traceback(runner, cli):
+    """AC3: models -m with an unknown model shows fuzzy suggestions and exits 0."""
+    with patch(
+        "conduit.core.model.models.modelstore.ModelStore.get_model",
+        side_effect=ValueError("not found"),
+    ):
+        with patch(
+            "conduit.core.model.models.modelstore.ModelStore.list_models",
+            return_value=["gpt-4o", "claude-sonnet-4-6"],
+        ):
+            with patch(
+                "rapidfuzz.process.extract",
+                return_value=[("gpt-4o", 85, 0)],
+            ):
+                result = runner.invoke(cli, ["models", "-m", "gpt4"])
+    assert result.exit_code == 0
+    assert "Did you mean" in result.output
+    assert "Traceback" not in result.output

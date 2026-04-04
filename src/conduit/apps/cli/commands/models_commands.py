@@ -65,15 +65,20 @@ def models_command(
 
     if model:
         from conduit.core.model.models.modelstore import ModelStore
+        from conduit.storage.modelspec_repository import ModelSpecRepositoryError
+        from rich.console import Console
 
+        console = Console()
         try:
             modelspec = ModelStore.get_model(model)
             modelspec.card
+        except ModelSpecRepositoryError as exc:
+            console.print(f"[red]Database unavailable: {exc}[/red]")
+            raise SystemExit(1)
         except ValueError:
             from rapidfuzz import process
             from rapidfuzz import fuzz
             from collections import namedtuple
-            from rich.console import Console
 
             Match = namedtuple("Match", ["title", "score", "rank"])
             models_list = ModelStore.list_models()
@@ -82,7 +87,6 @@ def models_command(
                 Match(title=title, score=score, rank=rank + 1)
                 for rank, (title, score, _) in enumerate(results)
             ]
-            console = Console()
             console.print(f"[red]Model '{model}' not found. Did you mean:[/red]")
             for match in matches:
                 console.print(f"  {match.rank}. {match.title}")

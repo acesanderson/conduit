@@ -18,9 +18,6 @@ from rich.console import RenderableType
 
 if TYPE_CHECKING:
     from conduit.core.model.models.modelspec import ModelSpec
-    from conduit.core.model.models.modelspecs_CRUD import (
-        get_all_modelspecs,
-    )
 
 logger = logging.getLogger(__name__)
 
@@ -261,96 +258,62 @@ class ModelStore:
     @classmethod
     def _update_models(cls):
         from conduit.core.model.models.research_models import create_modelspec
-        from conduit.core.model.models.modelspecs_CRUD import (
-            delete_modelspec,
-            get_all_model_names,
-        )
+        from conduit.storage.modelspec_repository import ModelSpecRepository
 
-        # Get all ModelSpec objects from the database
-        modelspec_db_names = set(get_all_model_names())
-        # Create a set of model names from the models.json file
+        repo = ModelSpecRepository()
+        modelspec_db_names = set(repo.get_all_names())
         models = cls.models()
         models_json_names = set(itertools.chain.from_iterable(models.values()))
-        # Find models that are in models.json but not in the database
-        models_not_in_modelspec_db = models_json_names - modelspec_db_names
-        # Find models that are in the database but not in models.json
-        models_not_in_model_list = modelspec_db_names - models_json_names
-        logger.info(
-            f"Found {len(models_not_in_modelspec_db)} models not in the database."
-        )
-        logger.info(f"Found {len(models_not_in_model_list)} models not in models.json.")
-        # Delete all ModelSpec objects that are not in models.json
-        logger.info(
-            f"Deleting {len(models_not_in_model_list)} models not in models.json."
-        )
-        [delete_modelspec(model) for model in models_not_in_model_list]
-        # Create all Modelspec objects that are in models.json but not in the database
-        logger.info(
-            f"Creating {len(models_not_in_modelspec_db)} models not in the database."
-        )
-        [create_modelspec(model) for model in models_not_in_modelspec_db]
+        models_not_in_db = models_json_names - modelspec_db_names
+        models_not_in_list = modelspec_db_names - models_json_names
+        logger.info(f"Found {len(models_not_in_db)} models not in Postgres.")
+        logger.info(f"Found {len(models_not_in_list)} stale models to remove from Postgres.")
+        for model in models_not_in_list:
+            repo.delete(model)
+            logger.info(f"Deleted stale ModelSpec for {model}")
+        for model in models_not_in_db:
+            create_modelspec(model)
+            logger.info(f"Created ModelSpec for {model}")
         if cls._is_consistent():
-            logger.info(
-                "Model specifications are now consistent with models.json. Update complete."
-            )
+            logger.info("ModelSpecs are now consistent. Update complete.")
             return
-        else:
-            raise ValueError(
-                "Model specifications are not consistent with models.json, after running .update()."
-            )
+        raise ValueError(
+            "ModelSpecs not consistent after update — check Postgres and logs."
+        )
 
     @classmethod
     def _is_consistent(cls) -> bool:
-        """
-        Check if the model specifications in the database are consistent with the models.json file.
-        Returns True if consistent, False otherwise.
-        """
-        from conduit.core.model.models.modelspecs_CRUD import get_all_modelspecs
+        """Check if every model in models.json and the ollama cache has a ModelSpec in Postgres."""
+        from conduit.storage.modelspec_repository import ModelSpecRepository
 
-        # Get list of models from models.json
+        repo = ModelSpecRepository()
+        db_names = set(repo.get_all_names())
         models = cls.models()
-
-        # Get all ModelSpec objects from the database
-        model_specs = get_all_modelspecs()
-
-        # Create a set of model names from the models.json file
         model_names = set(itertools.chain.from_iterable(models.values()))
-
-        consistent = True
-        # Check if all ModelSpec names are in the models.json file
-        for model_spec in model_specs:
-            if model_spec.model not in model_names:
-                consistent = False
-        # Check if all models in models.json have a corresponding ModelSpec object
-        for model_list in models.values():
-            for model in model_list:
-                if not any(model_spec.model == model for model_spec in model_specs):
-                    consistent = False
-
-        return consistent
+        return model_names == db_names
 
     # Getters
     @classmethod
     def get_model(cls, model: str) -> ModelSpec:
         """
-        Get the model name, validating against aliases and supported models.
+        Get the ModelSpec for a model name.
+        Raises ValueError if not found, ModelSpecRepositoryError if Postgres is down.
         """
-        from conduit.core.model.models.modelspecs_CRUD import get_modelspec_by_name
+        from conduit.storage.modelspec_repository import ModelSpecRepository
 
         model = cls.validate_model(model)
-        try:
-            return get_modelspec_by_name(model)
-        except ValueError:
+        repo = ModelSpecRepository()
+        result = repo.get_by_name(model)
+        if result is None:
             raise ValueError(f"Model '{model}' not found in the database.")
+        return result
 
     @classmethod
     def get_all_models(cls) -> list[ModelSpec]:
-        """
-        Get all models as ModelSpec objects.
-        """
-        from conduit.core.model.models.modelspecs_CRUD import get_all_modelspecs
+        """Get all models as ModelSpec objects."""
+        from conduit.storage.modelspec_repository import ModelSpecRepository
 
-        return get_all_modelspecs()
+        return ModelSpecRepository().get_all()
 
     @classmethod
     def get_client(
@@ -406,13 +369,12 @@ class ModelStore:
     ## Get subsets of models by provider
     @classmethod
     def by_provider(cls, provider: Provider) -> list[ModelSpec]:
-        """
-        Get a list of models for a specific provider.
-        """
+        """Get a list of models for a specific provider."""
+        from conduit.storage.modelspec_repository import ModelSpecRepository
+
         return [
-            modelspec
-            for modelspec in cls.get_all_models()
-            if modelspec.provider == provider
+            spec for spec in ModelSpecRepository().get_all()
+            if spec.provider == provider
         ]
 
     ## Get subsets of models by type
