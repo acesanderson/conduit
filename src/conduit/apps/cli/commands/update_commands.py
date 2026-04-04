@@ -18,8 +18,10 @@ def update(ctx: click.Context) -> None:
 @update.command()
 def modelstore() -> None:
     """Sync ModelSpec database records with models.json."""
+    from conduit.storage.modelspec_repository import ModelSpecRepository
     from conduit.core.model.models.modelstore import ModelStore
 
+    ModelSpecRepository().initialize()
     ModelStore.update()
 
 

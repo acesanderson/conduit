@@ -259,6 +259,13 @@ class ConduitSync:
         _warn_if_loop_exists()
         try:
             loop = asyncio.get_event_loop()
+            if loop.is_closed():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        try:
             return loop.run_until_complete(coroutine)
         except KeyboardInterrupt:
             logger.warning("Operation cancelled by user.")
