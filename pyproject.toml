@@ -145,15 +145,9 @@ siphon_api = { path = "../siphon/siphon-api", editable = true }
 siphon_server = { path = "../siphon/siphon-server", editable = true }
 
 [project.scripts]
-chat = "conduit.apps.scripts.chat_cli:main"
 imagegen = "conduit.apps.scripts.imagegen_cli:main"
 models = "conduit.apps.scripts.conduit_cli:models_entrypoint"
-tokens = "conduit.apps.scripts.tokens_cli:main"
-update = "conduit.apps.scripts.update_modelstore:main"
-update_ollama = "conduit.apps.scripts.update_ollama_list:main"
-tokenize="conduit.apps.scripts.tokenize_cli:main"
 conduit = "conduit.apps.scripts.conduit_cli:main"
 ask = "conduit.apps.scripts.conduit_cli:query_entrypoint"
-conduit_cache = "conduit.apps.scripts.cache_cli:main"
 conduit-dataset = "conduit.apps.scripts.datasets_cli:main"
 export_heavy_models = "conduit.apps.scripts.export_heavy_models:main"
