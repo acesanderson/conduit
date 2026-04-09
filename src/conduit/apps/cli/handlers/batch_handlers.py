@@ -29,9 +29,12 @@ class BatchHandlers:
         if temperature is not None:
             param_kwargs["temperature"] = temperature
 
+        from conduit.core.model.models.modelstore import ModelStore
+        is_ollama = ModelStore.identify_provider(model) == "ollama"
         batch = ConduitBatchSync.create(
             model=model,
             verbosity=settings.default_verbosity,
+            use_remote=is_ollama,
             **param_kwargs,
         )
 

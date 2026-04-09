@@ -27,7 +27,11 @@ async def generate(
         messages=working_conversation.messages, params=params, options=options
     )
 
-    model = ModelAsync(params.model)
+    if options.use_remote:
+        from conduit.core.model.model_remote import RemoteModelAsync
+        model: ModelAsync = RemoteModelAsync(params.model)
+    else:
+        model = ModelAsync(params.model)
     response = await model.pipe(request)
 
     assert isinstance(response, GenerationResponse), (

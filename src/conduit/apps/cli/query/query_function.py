@@ -119,8 +119,9 @@ def _search_query_function(inputs: CLIQueryFunctionInputs) -> Conversation:
         "include_history": inputs.include_history,
     }
 
-    if inputs.local:
-        opt_updates["use_remote"] = True  # --local routes through HeadwaterServer (remote from API perspective)
+    from conduit.core.model.models.modelstore import ModelStore
+    if inputs.local or ModelStore.identify_provider(inputs.preferred_model) == "ollama":
+        opt_updates["use_remote"] = True  # Ollama models always route through Headwater
 
     if inputs.cache:
         cache_name = inputs.project_name or settings.default_project_name
@@ -298,6 +299,10 @@ def default_query_function(
 
     client_params = inputs.client_params or None  # normalize empty dict -> None
 
+    # Ollama models must always route through Headwater, never local
+    from conduit.core.model.models.modelstore import ModelStore
+    is_ollama = ModelStore.identify_provider(preferred_model) == "ollama"
+
     prompt = Prompt(combined_query)
     conduit = ConduitSync.create(
         project_name=project_name,
@@ -309,7 +314,7 @@ def default_query_function(
         verbose=verbose,
         debug_payload=False,  # Change to True to debug payloads
         include_history=include_history,
-        use_remote=local,
+        use_remote=local or is_ollama,
         client_params=client_params,
     )
     logger.info(f"Using model: {preferred_model}")

@@ -84,12 +84,12 @@ class RemoteClient(Client):
             logger.info(f"Available models on server: {available_models}")
             # Update server models file
             if available_models:
-                with open(settings.paths["SERVER_MODELS_PATH"], "w") as f:
-                    json_dict = {"ollama": available_models}
-                    _ = f.write(json.dumps(json_dict, indent=4))
-                logger.debug(
-                    f"Updated server models file at {settings.paths['SERVER_MODELS_PATH']}"
-                )
+                server_models_path = settings.paths.get("SERVER_MODELS_PATH")
+                if server_models_path:
+                    with open(server_models_path, "w") as f:
+                        json_dict = {"ollama": available_models}
+                        _ = f.write(json.dumps(json_dict, indent=4))
+                    logger.debug(f"Updated server models file at {server_models_path}")
             else:
                 raise ValueError("No models available on server.")
 
