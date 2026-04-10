@@ -1,12 +1,10 @@
 # Conduit
 
-Conduit is a lightweight, unified framework for building multimodal LLM applications in Python. It provides a standardized interface for interacting with multiple providers, managing conversation state via a Directed Acyclic Graph (DAG) architecture, and orchestrating complex workflows with built-in telemetry and caching.
+Conduit is a unified framework for building multi-modal LLM applications. It provides a consistent interface across major providers (OpenAI, Anthropic, Google, Mistral, Perplexity, and Ollama) while handles the heavy lifting of persistence, caching, and structured data extraction.
 
 ## Quick Start
 
 ### Installation
-
-Conduit requires Python 3.12 or higher.
 
 ```bash
 pip install .
@@ -14,131 +12,117 @@ pip install .
 
 ### Minimal Example
 
-Generate a response from any supported provider using the synchronous interface.
+Execute a simple query using the synchronous interface:
 
 ```python
-from conduit.sync import Model
+from conduit.sync import Conduit
 
-# Initialize a model (OpenAI, Anthropic, Gemini, Ollama, etc.)
-model = Model("gpt-4o")
+# Initialize with a model and a prompt template
+conduit = Conduit.create(
+    model="gpt-4o",
+    prompt="Tell me a fact about {{ topic }}."
+)
 
-# Simple text query
-response = model.query("Explain quantum entanglement in one sentence.")
+# Run with template variables
+response = conduit(topic="PostgreSQL")
 print(response.content)
 ```
 
 ## Core Value Demonstration
 
-This example demonstrates multimodal input, structured data extraction using Pydantic, and persistent caching in a single workflow.
+Conduit excels at complex orchestration, such as extracting structured data using Pydantic models while enabling automatic caching and session persistence.
 
 ```python
 from pydantic import BaseModel
-from conduit.sync import Conduit, Prompt, ConduitOptions
+from conduit.sync import Conduit
+from conduit.utils.progress.verbosity import Verbosity
 
-class Analysis(BaseModel):
-    summary: str
-    key_entities: list[str]
-    sentiment: float
+class ResearchSummary(BaseModel):
+    key_findings: list[str]
+    confidence_score: float
 
-# Define a prompt template with Jinja2 syntax
-prompt = Prompt("""
-Analyze the following document and return a structured response.
-<document>
-{{ text }}
-</document>
-""")
-
-# Configure orchestration options
-options = ConduitOptions(
-    project_name="document_audit",
-    use_cache=True,  # Enable Postgres-backed caching
-)
-
-# Execute the conduit with structured output
+# Create a project-scoped conduit with persistence and caching enabled
 conduit = Conduit.create(
+    project_name="market-research",
     model="claude-3-5-sonnet",
-    prompt=prompt,
-    options=options,
-    response_model=Analysis,
-    output_type="structured_response"
+    prompt="Analyze the following data: {{ data }}",
+    output_type="structured_response",
+    response_model=ResearchSummary,
+    persist=True,  # Saves to Postgres session store
+    cached=True,   # Uses Postgres cache to avoid redundant API calls
+    verbosity=Verbosity.DETAILED
 )
 
-result = conduit.run(input_variables={"text": "Large corpus of text..."})
-print(result.message.parsed.summary)
+result = conduit(data="Recent trends in vector database adoption...")
+print(f"Findings: {result.last.parsed.key_findings}")
 ```
 
-## Architecture Overview
-
-Conduit is organized into four logical layers:
-
-| Layer | Component | Responsibility |
-| :--- | :--- | :--- |
-| **Primitives** | `Message`, `Conversation` | State management and message threading using a DAG structure. |
-| **Execution** | `Model` | Stateless interface for model interaction (Text, Image, Audio). |
-| **Orchestration** | `Conduit` | Ties a `Prompt` to a `Model` with specific `Options` (caching, tools). |
-| **Pipeline** | `Workflow` | Telemetry-aware execution tree using the `@step` decorator. |
+## Functional Overview
 
 ### Supported Providers
-The framework abstracts provider-specific SDKs into a unified payload format.
-*   **Cloud:** OpenAI, Anthropic, Google Gemini, Perplexity, Mistral.
-*   **Local:** Ollama.
-*   **Remote:** Headwater/Siphon server clusters.
+Conduit unifies the following backends into a single API:
+*   **Cloud**: OpenAI, Anthropic, Google Gemini, Mistral, Perplexity.
+*   **Local**: Ollama (supports automated context window management and remote inference server routing).
 
-## Basic Usage
+### Key Components
+*   **Models**: Stateless interfaces for generation. Use `ModelSync` or `ModelAsync` for direct interaction.
+*   **Conduits**: High-level orchestrators that bind a Prompt, Model, and Options (caching/persistence) into a single callable.
+*   **Conversations & Sessions**: A Directed Acyclic Graph (DAG) architecture for message history. Sessions allow for branching and resuming conversations across different execution runs.
+*   **Strategies**: Pre-built complex workflows, such as Recursive Summarization, Map-Reduce, and Schema Extraction.
 
-### Batch Processing
-Process multiple inputs concurrently with built-in rate limiting and progress tracking.
-
-```python
-from conduit.batch import ConduitBatchSync
-
-batch = ConduitBatchSync.create(
-    model="gpt-4o-mini",
-    prompt="Translate this to French: {{text}}",
-    max_concurrent=10
-)
-
-inputs = [{"text": "Hello"}, {"text": "Goodbye"}]
-results = batch.run(input_variables_list=inputs)
-```
-
-### Multimodal Operations
-Models support native image and audio modalities through specialized namespaces.
+### Multi-Modal Support
+Conduit handles images and audio through specialized namespaces:
 
 ```python
 from conduit.sync import Model
 
 model = Model("gpt-4o")
 
-# Image Analysis
-analysis = model.image.analyze(
+# Image analysis
+response = model.image.analyze(
     prompt_str="What is in this image?",
-    image="path/to/image.png"
+    image="path/to/image.jpg"
 )
 
-# Text-to-Speech
-audio = model.audio.generate(
-    prompt_str="This is a test of the emergency broadcast system."
+# Audio generation (TTS)
+audio_response = model.audio.generate(
+    prompt_str="The quick brown fox jumps over the lazy dog."
 )
-audio.save_image("output.mp3") # Saves generated binary
+audio_response.play()
 ```
 
-### Telemetry and Caching
-Conduit includes a persistent "Odometer" to track token usage across models and providers, stored in a local Postgres instance.
+## CLI Usage
 
-| Feature | Description |
-| :--- | :--- |
-| **Postgres Cache** | Semantic and exact-match caching for LLM responses to reduce latency and cost. |
-| **Odometer** | Real-time tracking of input/output tokens per model, provider, and project. |
-| **Trace Logging** | Complete execution logs for every `@step` in a workflow, including durations and metadata. |
+Conduit includes a suite of command-line tools for interactive use and system administration.
 
-## Command Line Interface
+| Command | Description |
+| --- | --- |
+| `ask "query"` | Quick persistent query to the default LLM. |
+| `conduit chat` | Start an interactive REPL with tab-completion and multiline support. |
+| `conduit batch` | Run multiple prompts in parallel from a file or stdin. |
+| `conduit-dataset` | Manage and inspect evaluation datasets and gold standards. |
+| `models` | List available models, providers, and their specific capabilities. |
 
-Conduit provides several CLI entry points for interaction and system management:
+## Persistence & Infrastructure
 
-*   `conduit query "prompt"`: Quick one-off queries.
-*   `ask "prompt"`: Shortcut for piped LLM operations.
-*   `chat`: Enter an interactive REPL session with persistent history.
-*   `tokens`: View aggregate token usage and costs.
-*   `models`: List and fuzzy-search available model specifications.
-*   `imagegen`: CLI for DALL-E and Gemini image generation.
+Conduit is designed to use PostgreSQL for enterprise-grade features:
+
+1.  **Request Cache**: Deterministic caching based on a hash of the prompt, parameters, and message history.
+2.  **Session Store**: Stores every turn of every conversation, scoped by project name.
+3.  **Odometer**: A telemetry system that tracks token usage per model, provider, and host, including automatic rescue of unsaved events if the application crashes.
+
+### Environment Configuration
+Ensure your API keys are set in your environment:
+```bash
+export OPENAI_API_KEY="..."
+export ANTHROPIC_API_KEY="..."
+export GOOGLE_API_KEY="..."
+# For persistence/caching:
+export POSTGRES_HOST="localhost"
+```
+
+## Advanced Summarization
+Conduit includes specialized strategies for long-document processing:
+*   **RecursiveSummarizer**: Automatically switches between one-shot and map-reduce based on the model's context window.
+*   **HierarchicalTree**: Implements a bottom-up tree summarization (RAPTOR-lite) for massive corpora.
+*   **ChainOfDensity**: Iteratively densifies summaries to increase information entropy.
