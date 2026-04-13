@@ -317,7 +317,7 @@ class ModelStore:
 
     @classmethod
     def get_client(
-        cls, model_name: str, execution_mode: Literal["sdk", "remote"]
+        cls, model_name: str, execution_mode: Literal["sdk", "remote"], enterprise: bool = False
     ) -> Client:
         """
         Get the client for a specific model.
@@ -339,7 +339,7 @@ class ModelStore:
         if model_name in model_list["anthropic"]:
             from conduit.core.clients.anthropic.client import AnthropicClient
 
-            return AnthropicClient()
+            return AnthropicClient(enterprise=enterprise)
         elif model_name in model_list["google"]:
             from conduit.core.clients.google.client import GoogleClient
 

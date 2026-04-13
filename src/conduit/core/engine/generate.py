@@ -31,7 +31,9 @@ async def generate(
         from conduit.core.model.model_remote import RemoteModelAsync
         model: ModelAsync = RemoteModelAsync(params.model)
     else:
-        model = ModelAsync(params.model)
+        from conduit.core.model.models.modelstore import ModelStore
+        client = ModelStore.get_client(params.model, "sdk", enterprise=options.anthropic_enterprise)
+        model = ModelAsync(params.model, client=client)
     response = await model.pipe(request)
 
     assert isinstance(response, GenerationResponse), (

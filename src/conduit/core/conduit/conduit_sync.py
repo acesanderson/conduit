@@ -123,6 +123,7 @@ class ConduitSync:
         system: str | None = None,  # placeholder for future system-message wiring
         debug_payload: bool = False,
         use_remote: bool = False,
+        anthropic_enterprise: bool = False,
         **param_kwargs: Any,
     ) -> ConduitSync:
         """
@@ -173,6 +174,10 @@ class ConduitSync:
         # Remote execution
         if use_remote:
             opt_updates["use_remote"] = True
+
+        # Enterprise Anthropic key
+        if anthropic_enterprise:
+            opt_updates["anthropic_enterprise"] = True
 
         # Apply updates (Pydantic v2)
         options = options.model_copy(update=opt_updates)

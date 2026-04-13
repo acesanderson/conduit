@@ -54,6 +54,7 @@ class ConduitOptions(BaseModel):
     # Dev options
     debug_payload: bool = False  # Log full request/response payloads for debugging
     use_remote: bool = False  # Whether to use remote server for model execution
+    anthropic_enterprise: bool = False  # Use ANTHROPIC_ENTERPRISE_API_KEY instead of ANTHROPIC_API_KEY
 
     @field_validator("verbosity")
     @classmethod

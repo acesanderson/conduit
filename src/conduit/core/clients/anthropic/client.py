@@ -28,6 +28,9 @@ class AnthropicClient(Client):
     Async only.
     """
 
+    def __init__(self, enterprise: bool = False):
+        self._enterprise = enterprise
+
     @cached_property
     def async_client(self) -> AsyncAnthropic:
         """
@@ -59,11 +62,11 @@ class AnthropicClient(Client):
         return instructor_client
 
     def _get_api_key(self) -> str:
-        api_key = os.getenv("ANTHROPIC_API_KEY")
+        env_var = "ANTHROPIC_ENTERPRISE_API_KEY" if self._enterprise else "ANTHROPIC_API_KEY"
+        api_key = os.getenv(env_var)
         if api_key is None:
-            raise ValueError("No ANTHROPIC_API_KEY found in environment variables")
-        else:
-            return api_key
+            raise ValueError(f"No {env_var} found in environment variables")
+        return api_key
 
     @override
     def _convert_message(self, message: Message) -> dict[str, Any]:
