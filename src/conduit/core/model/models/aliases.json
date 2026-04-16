@@ -21,7 +21,7 @@
   "mistral-medium": "mistral-medium-2508",
   "mistral-small": "mistral-small-latest",
   "ollama": "mistral:latest",
-  "opus": "claude-opus-4-6",
+  "opus": "claude-opus-4-7",
   "qwen": "qwen3:14b",
   "sonnet": "claude-sonnet-4-6",
   "tts": "gemini-2.5-flash-preview-tts",
