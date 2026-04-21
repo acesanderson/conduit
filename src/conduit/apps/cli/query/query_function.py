@@ -299,9 +299,13 @@ def default_query_function(
 
     client_params = inputs.client_params or None  # normalize empty dict -> None
 
-    # Ollama models must always route through Headwater, never local
+    # Ollama models must always route through Headwater, never local.
+    # Deep research must never route through Headwater — it takes up to 20 min,
+    # far exceeding the 300s backend timeout.
     from conduit.core.model.models.modelstore import ModelStore
     is_ollama = ModelStore.identify_provider(preferred_model) == "ollama"
+    is_deep_research = bool(client_params and client_params.get("deep_research"))
+    use_remote = (local or is_ollama) and not is_deep_research
 
     prompt = Prompt(combined_query)
     conduit = ConduitSync.create(
@@ -314,7 +318,7 @@ def default_query_function(
         verbose=verbose,
         debug_payload=False,  # Change to True to debug payloads
         include_history=include_history,
-        use_remote=local or is_ollama,
+        use_remote=use_remote,
         client_params=client_params,
     )
     logger.info(f"Using model: {preferred_model}")
