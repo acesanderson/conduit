@@ -220,6 +220,13 @@ class BaseCommands(CommandCollection):
             help="Print citations (Perplexity sonar models; Google Gemini models via grounding).",
         )
         @click.option(
+            "-D",
+            "--deep-research",
+            is_flag=True,
+            default=False,
+            help="Run Gemini Deep Research (async, takes several minutes). Implies --citations.",
+        )
+        @click.option(
             "-S", "--search", is_flag=True,
             help="Use web search and URL fetch to inform the answer (multi-turn agent).",
         )
@@ -267,6 +274,7 @@ class BaseCommands(CommandCollection):
             chat: bool,
             append: str | None,
             citations: bool,
+            deep_research: bool,
             search: bool,
             image: str | None,
             audio: str | None,
@@ -362,6 +370,7 @@ class BaseCommands(CommandCollection):
                 chat=chat,
                 append=append,
                 citations=citations,
+                deep_research=deep_research,
                 search=search,
                 image_path=image_path,
                 image_content=image_content,

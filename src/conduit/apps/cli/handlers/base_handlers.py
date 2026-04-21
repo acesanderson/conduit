@@ -281,6 +281,7 @@ class BaseHandlers:
         project_name: str = "",
         search: bool = False,
         citations: bool = False,
+        deep_research: bool = False,
         image_path: str | None = None,
         image_content: ImageContent | None = None,
         audio_path: str | None = None,
@@ -300,7 +301,13 @@ class BaseHandlers:
         context_text = stdin if isinstance(stdin, str) and stdin.strip() else ""
 
         # 2. Build Inputs
-        client_params = {"return_citations": True} if citations else {}
+        if deep_research:
+            client_params: dict = {"deep_research": True}
+            citations = True  # deep research always returns citations
+        elif citations:
+            client_params = {"return_citations": True}
+        else:
+            client_params = {}
 
         inputs = CLIQueryFunctionInputs(
             query_input=query_input,
@@ -325,6 +332,8 @@ class BaseHandlers:
         )
 
         # 3. Execute
+        if deep_research:
+            printer.print_err("[yellow]Deep research started — this takes 5-20 minutes...[/yellow]")
         response = query_function(inputs)
 
         # 4. Resolve effective save path

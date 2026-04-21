@@ -170,6 +170,8 @@ class GoogleClient(Client):
         client_params = request.params.client_params or {}
         match request.params.output_type:
             case "text":
+                if client_params.get("deep_research"):
+                    return await self._generate_deep_research(request)
                 if client_params.get("return_citations"):
                     return await self._generate_grounded_text(request)
                 return await self._generate_text(request)
@@ -407,6 +409,108 @@ class GoogleClient(Client):
             model_slug=model_name,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
+            stop_reason=StopReason.STOP,
+        )
+        return GenerationResponse(
+            message=assistant_message,
+            request=request,
+            metadata=metadata,
+        )
+
+    async def _generate_deep_research(self, request: GenerationRequest) -> GenerationResponse:
+        """
+        Run Gemini Deep Research via the Interactions API (async polling).
+        Takes several minutes. Citations in AssistantMessage.metadata["citations"].
+        Triggered when client_params contains deep_research=True.
+        """
+        import asyncio
+        import warnings
+        from google import genai
+
+        start_time = time.time()
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            native_client = genai.Client(api_key=self._get_api_key())
+
+        query_text = ""
+        system_instruction = None
+        for msg in request.messages:
+            if msg.role == Role.SYSTEM:
+                system_instruction = msg.content if isinstance(msg.content, str) else str(msg.content)
+                continue
+            if msg.role == Role.USER:
+                query_text = msg.content if isinstance(msg.content, str) else str(msg.content)
+
+        create_kwargs: dict[str, Any] = {
+            "input": query_text,
+            "agent": "deep-research-pro-preview-12-2025",
+            "background": True,
+            "store": True,
+        }
+        if system_instruction:
+            create_kwargs["system_instruction"] = system_instruction
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            interaction = await native_client.aio.interactions.create(**create_kwargs)
+
+        interaction_id = interaction.id
+        max_polls = 180  # 30 minutes at 10s intervals
+        for _ in range(max_polls):
+            await asyncio.sleep(10)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                interaction = await native_client.aio.interactions.get(interaction_id)
+            if interaction.status in ("completed", "failed", "cancelled", "incomplete"):
+                break
+
+        if interaction.status != "completed":
+            raise RuntimeError(f"Deep research ended with status {interaction.status!r}")
+
+        duration = (time.time() - start_time) * 1000
+
+        text_parts: list[str] = []
+        citations: list[dict[str, str]] = []
+        seen_urls: set[str] = set()
+
+        for block in interaction.outputs or []:
+            block_type = getattr(block, "type", None)
+            if block_type == "text":
+                text = getattr(block, "text", None)
+                if text:
+                    text_parts.append(text)
+            elif block_type == "google_search_result":
+                for result in getattr(block, "result", []) or []:
+                    url = getattr(result, "url", None)
+                    if url and url not in seen_urls:
+                        seen_urls.add(url)
+                        citations.append({
+                            "title": getattr(result, "title", "") or "",
+                            "url": url,
+                            "source": "",
+                            "date": "",
+                        })
+
+        if not citations:
+            for block in interaction.outputs or []:
+                if getattr(block, "type", None) == "text":
+                    for ann in getattr(block, "annotations", []) or []:
+                        src = getattr(ann, "source", None)
+                        if src and src not in seen_urls:
+                            seen_urls.add(src)
+                            citations.append({"title": "", "url": src, "source": "", "date": ""})
+
+        text_content = "\n\n".join(text_parts)
+        assistant_message = AssistantMessage(
+            content=text_content,
+            metadata={"citations": citations, "provider": "google"},
+        )
+        metadata = ResponseMetadata(
+            duration=duration,
+            model_slug=request.params.model,
+            input_tokens=0,
+            output_tokens=0,
             stop_reason=StopReason.STOP,
         )
         return GenerationResponse(
