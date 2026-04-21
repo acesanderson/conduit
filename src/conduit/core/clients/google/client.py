@@ -442,14 +442,16 @@ class GoogleClient(Client):
             if msg.role == Role.USER:
                 query_text = msg.content if isinstance(msg.content, str) else str(msg.content)
 
+        # Prepend system instruction to query — agent doesn't accept system_instruction param
+        if system_instruction:
+            query_text = f"{system_instruction}\n\n{query_text}"
+
         create_kwargs: dict[str, Any] = {
             "input": query_text,
             "agent": "deep-research-pro-preview-12-2025",
             "background": True,
             "store": True,
         }
-        if system_instruction:
-            create_kwargs["system_instruction"] = system_instruction
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
