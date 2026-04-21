@@ -25,6 +25,13 @@ logger = logging.getLogger(__name__)
 @click.option("-a", "--append", type=str, default=None, help="Suffix appended to every prompt.")
 @click.option("-r", "--raw", is_flag=True, default=False, help="Plain text output, separated by ---.")
 @click.option("--json", "as_json", is_flag=True, default=False, help="Output as JSON array.")
+@click.option(
+    "-C",
+    "--citations",
+    is_flag=True,
+    default=False,
+    help="Enable web grounding and include citations (Perplexity sonar models; Google Gemini models).",
+)
 @click.argument("prompts", nargs=-1)
 @click.pass_context
 def batch_command(
@@ -36,6 +43,7 @@ def batch_command(
     append: str | None,
     raw: bool,
     as_json: bool,
+    citations: bool,
     prompts: tuple[str, ...],
 ) -> None:
     """Run multiple prompts in parallel against an LLM.
@@ -92,5 +100,6 @@ def batch_command(
         max_concurrent=max_concurrent,
         raw=raw,
         as_json=as_json,
+        citations=citations,
         printer=printer,
     )

@@ -22,12 +22,15 @@ class BatchHandlers:
         max_concurrent: int | None,
         raw: bool,
         as_json: bool,
+        citations: bool,
         printer: Printer,
     ) -> None:
         """Run prompts in parallel and display results."""
         param_kwargs: dict[str, object] = {}
         if temperature is not None:
             param_kwargs["temperature"] = temperature
+        if citations:
+            param_kwargs["client_params"] = {"return_citations": True}
 
         from conduit.core.model.models.modelstore import ModelStore
         is_ollama = ModelStore.identify_provider(model) == "ollama"
@@ -43,8 +46,18 @@ class BatchHandlers:
             max_concurrent=max_concurrent,
         )
 
+        def _extract_citations(conv: object) -> list[dict]:
+            last = getattr(conv, "last", None)
+            meta: dict = getattr(last, "metadata", {}) or {}
+            return meta.get("citations", [])
+
         results = [
-            {"index": i, "prompt": p, "response": str(conv.content)}
+            {
+                "index": i,
+                "prompt": p,
+                "response": str(conv.content),
+                "citations": _extract_citations(conv) if citations else [],
+            }
             for i, (p, conv) in enumerate(zip(prompts, conversations))
         ]
 
@@ -55,6 +68,8 @@ class BatchHandlers:
         if raw:
             for i, item in enumerate(results):
                 click.echo(item["response"])
+                if citations and item["citations"]:
+                    click.echo(json.dumps(item["citations"]))
                 if i < len(results) - 1:
                     click.echo("---")
             return
@@ -69,3 +84,5 @@ class BatchHandlers:
             header = f"[{idx}/{total}] {truncated}"
             printer.print_pretty(header, style="bold cyan")
             printer.print_markdown(item["response"])
+            if citations and item["citations"]:
+                printer.print_citations(item["citations"])
