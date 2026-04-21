@@ -14,6 +14,7 @@ from conduit.core.clients.google.audio_params import GoogleAudioParams
 from conduit.domain.result.response import GenerationResponse
 from conduit.domain.result.response_metadata import ResponseMetadata, StopReason
 from conduit.domain.message.message import AssistantMessage, ImageOutput, ToolCall
+from conduit.domain.message.role import Role
 from typing import TYPE_CHECKING, override, Any
 import json
 import os
@@ -166,8 +167,11 @@ class GoogleClient(Client):
         self,
         request: GenerationRequest,
     ) -> GenerationResult:
+        client_params = request.params.client_params or {}
         match request.params.output_type:
             case "text":
+                if client_params.get("return_citations"):
+                    return await self._generate_grounded_text(request)
                 return await self._generate_text(request)
             case "image":
                 return await self._generate_image(request)
@@ -318,6 +322,93 @@ class GoogleClient(Client):
         )
 
         # Create and return Response
+        return GenerationResponse(
+            message=assistant_message,
+            request=request,
+            metadata=metadata,
+        )
+
+    async def _generate_grounded_text(self, request: GenerationRequest) -> GenerationResponse:
+        """
+        Generate text with Google Search grounding via the native google.genai SDK.
+        Citations are stored in AssistantMessage.metadata["citations"] (same shape as Perplexity).
+        Triggered when client_params contains return_citations=True.
+        """
+        from google import genai
+        from google.genai import types
+
+        start_time = time.time()
+
+        native_client = genai.Client(api_key=self._get_api_key())
+        model_name = request.params.model
+
+        contents = []
+        system_instruction = None
+        for msg in request.messages:
+            if msg.role == Role.SYSTEM:
+                system_instruction = (
+                    msg.content if isinstance(msg.content, str) else str(msg.content)
+                )
+                continue
+            role = "model" if msg.role == Role.ASSISTANT else "user"
+            text = msg.content if isinstance(msg.content, str) else str(msg.content)
+            contents.append(types.Content(role=role, parts=[types.Part(text=text)]))
+
+        config_kwargs: dict[str, Any] = {
+            "tools": [types.Tool(google_search=types.GoogleSearch())],
+        }
+        if system_instruction:
+            config_kwargs["system_instruction"] = system_instruction
+        if request.params.temperature is not None:
+            config_kwargs["temperature"] = request.params.temperature
+        if request.params.max_tokens is not None:
+            config_kwargs["max_output_tokens"] = request.params.max_tokens
+
+        response = await native_client.aio.models.generate_content(
+            model=model_name,
+            contents=contents,
+            config=types.GenerateContentConfig(**config_kwargs),
+        )
+
+        duration = (time.time() - start_time) * 1000
+
+        text_content = ""
+        if response.candidates and response.candidates[0].content:
+            text_content = "".join(
+                part.text
+                for part in response.candidates[0].content.parts
+                if hasattr(part, "text") and part.text
+            )
+
+        citations: list[dict[str, str]] = []
+        if response.candidates:
+            grounding = getattr(response.candidates[0], "grounding_metadata", None)
+            if grounding:
+                for chunk in getattr(grounding, "grounding_chunks", []):
+                    web = getattr(chunk, "web", None)
+                    if web:
+                        citations.append({
+                            "title": getattr(web, "title", ""),
+                            "url": getattr(web, "uri", ""),
+                            "source": "",
+                            "date": "",
+                        })
+
+        usage = getattr(response, "usage_metadata", None)
+        input_tokens = getattr(usage, "prompt_token_count", 0) or 0
+        output_tokens = getattr(usage, "candidates_token_count", 0) or 0
+
+        assistant_message = AssistantMessage(
+            content=text_content,
+            metadata={"citations": citations, "provider": "google"},
+        )
+        metadata = ResponseMetadata(
+            duration=duration,
+            model_slug=model_name,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            stop_reason=StopReason.STOP,
+        )
         return GenerationResponse(
             message=assistant_message,
             request=request,

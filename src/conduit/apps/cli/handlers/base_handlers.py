@@ -377,13 +377,13 @@ class BaseHandlers:
         metadata: dict = getattr(message, "metadata", {}) or {}
         provider: str | None = metadata.get("provider")
 
-        if provider != "perplexity":
+        if provider not in {"perplexity", "google"}:
             logger.warning(
-                "--citations requested but provider is %r, not 'perplexity'", provider
+                "--citations requested but provider is %r, not perplexity or google", provider
             )
             printer.print_err(
                 "[red]--citations is only supported for Perplexity models "
-                "(sonar, sonar-pro). No citations available.[/red]"
+                "(sonar, sonar-pro) and Google Gemini models. No citations available.[/red]"
             )
             return
 

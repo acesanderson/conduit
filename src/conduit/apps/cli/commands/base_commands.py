@@ -217,7 +217,7 @@ class BaseCommands(CommandCollection):
             "--citations",
             is_flag=True,
             default=False,
-            help="Print citations (Perplexity models only).",
+            help="Print citations (Perplexity sonar models; Google Gemini models via grounding).",
         )
         @click.option(
             "-S", "--search", is_flag=True,
