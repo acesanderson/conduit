@@ -71,7 +71,8 @@
       "Bash(pytest tests/cli/test_audio_command.py::test_save_response_writes_audio_bytes tests/cli/test_audio_command.py::test_save_response_writes_text tests/cli/test_audio_command.py::test_save_flag_suppresses_printer tests/cli/test_audio_command.py::test_play_flag_autosaves_to_tmp -v)",
       "Bash(/opt/homebrew/bin/uv run:*)",
       "Bash(wait)",
-      "Bash(/Users/bianders/Brian_Code/conduit-project/.venv/bin/python -m conduit.apps.scripts.conduit_cli query \"say hello\" -m claude-opus-4-7 --raw)"
+      "Bash(/Users/bianders/Brian_Code/conduit-project/.venv/bin/python -m conduit.apps.scripts.conduit_cli query \"say hello\" -m claude-opus-4-7 --raw)",
+      "Bash(wg show *)"
     ]
   }
 }

@@ -78,15 +78,15 @@ class ConduitCLI:
         """
         Load the last conversation or create a new one.
         """
-        # This relies on self.repository being "open" (via run's context management)
-        last_conversation = self.loop.run_until_complete(self.repository.last)
+        from conduit.domain.conversation.conversation import Conversation
 
-        if last_conversation is not None:
-            return last_conversation
-        else:
-            from conduit.domain.conversation.conversation import Conversation
-
+        try:
+            last_conversation = self.loop.run_until_complete(self.repository.last)
+        except Exception as e:
+            logger.warning("Could not load conversation from database (%s); starting fresh.", repr(e))
             return Conversation()
+
+        return last_conversation if last_conversation is not None else Conversation()
 
     def _build_cli(self) -> click.Group:
         stdin = self._get_stdin()
@@ -149,8 +149,14 @@ class ConduitCLI:
         finally:
             if not self.loop.is_closed():
                 from conduit.config import settings
-                self.loop.run_until_complete(settings.odometer_registry().flush())
-                self.loop.run_until_complete(db_manager.shutdown())
+                try:
+                    self.loop.run_until_complete(settings.odometer_registry().flush())
+                except Exception as e:
+                    logger.warning("Odometer flush failed during shutdown: %s", e)
+                try:
+                    self.loop.run_until_complete(db_manager.shutdown())
+                except Exception as e:
+                    logger.warning("DB shutdown failed: %s", e)
                 self.loop.close()
 
     def _get_stdin(self) -> str:

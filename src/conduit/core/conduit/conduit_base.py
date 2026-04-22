@@ -65,8 +65,10 @@ class ConduitBase:
 
         # Load from repository if persistence is enabled
         if options.repository:
-            # We await the property once.
-            conversation = await options.repository.last
+            try:
+                conversation = await options.repository.last
+            except Exception as e:
+                logger.warning("Could not load conversation from repository (%s); starting fresh.", repr(e))
 
             if conversation:
                 logger.info("Loading last conversation from repository.")

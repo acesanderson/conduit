@@ -304,6 +304,12 @@ class BaseHandlers:
         if deep_research:
             client_params: dict = {"deep_research": True}
             citations = True  # deep research always returns citations
+            persist = True    # always save — a 20-min job shouldn't be lost
+            # Deep research requires a Google model — auto-select if the user didn't specify one
+            from conduit.core.model.models.modelstore import ModelStore
+            if ModelStore.identify_provider(model) != "google":
+                model = "gemini-2.5-flash"
+                printer.print_err("[yellow]--deep-research requires a Gemini model; using gemini-2.5-flash[/yellow]")
         elif citations:
             client_params = {"return_citations": True}
         else:

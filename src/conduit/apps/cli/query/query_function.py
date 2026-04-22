@@ -306,6 +306,9 @@ def default_query_function(
     is_ollama = ModelStore.identify_provider(preferred_model) == "ollama"
     is_deep_research = bool(client_params and client_params.get("deep_research"))
     use_remote = (local or is_ollama) and not is_deep_research
+    # Deep research results are time-sensitive; skip the cache to avoid a
+    # postgres connection attempt that can timeout during the long poll.
+    effective_cache = False if is_deep_research else cache
 
     prompt = Prompt(combined_query)
     conduit = ConduitSync.create(
@@ -313,7 +316,7 @@ def default_query_function(
         model=preferred_model,
         prompt=prompt,
         system=system,
-        cache=cache,
+        cache=effective_cache,
         persist=not ephemeral,
         verbose=verbose,
         debug_payload=False,  # Change to True to debug payloads

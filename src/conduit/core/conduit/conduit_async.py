@@ -49,9 +49,12 @@ class ConduitAsync(ConduitBase):
         if options.repository:
             logger.info("Saving conversation to repository.")
             if updated_conversation.session:
-                await options.repository.save_session(
-                    updated_conversation.session, name=updated_conversation.topic
-                )
+                try:
+                    await options.repository.save_session(
+                        updated_conversation.session, name=updated_conversation.topic
+                    )
+                except Exception as e:
+                    logger.warning("Could not save conversation to repository (%s).", repr(e))
             else:
                 logger.warning(
                     "Conversation has no session initialized; skipping persistence."

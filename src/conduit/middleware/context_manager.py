@@ -88,19 +88,22 @@ async def middleware_context_manager(request: GenerationRequest):
 
     # --- 3. CACHE READ (Async) ---
     if request.options.cache is not None and request.options.use_cache:
-        cached_result = await request.options.cache.get(request)
-        if isinstance(cached_result, GenerationResponse):
-            cached_result.metadata.cache_hit = True
-            ctx["cache_hit"] = True
-            ctx["result"] = cached_result
-            # Reconstruct parsed field for structured responses
-            if request.params.response_model and cached_result.message.content:
-                cached_result.message.parsed = (
-                    request.params.response_model.model_validate_json(
-                        cached_result.message.content
+        try:
+            cached_result = await request.options.cache.get(request)
+            if isinstance(cached_result, GenerationResponse):
+                cached_result.metadata.cache_hit = True
+                ctx["cache_hit"] = True
+                ctx["result"] = cached_result
+                # Reconstruct parsed field for structured responses
+                if request.params.response_model and cached_result.message.content:
+                    cached_result.message.parsed = (
+                        request.params.response_model.model_validate_json(
+                            cached_result.message.content
+                        )
                     )
-                )
-            logger.info("Cache hit.")
+                logger.info("Cache hit.")
+        except Exception as exc:
+            logger.warning("Cache read failed (proceeding without cache): %s", exc)
 
     # --- 4. EXECUTION (YIELD) ---
     yield ctx
@@ -131,7 +134,10 @@ async def middleware_context_manager(request: GenerationRequest):
         # A. Cache Write (Async)
         if not ctx["cache_hit"] and request.options.cache is not None:
             logger.debug("Persisting result to cache.")
-            await request.options.cache.set(request, result)
+            try:
+                await request.options.cache.set(request, result)
+            except Exception as exc:
+                logger.warning("Cache write failed: %s", exc)
 
         # B. Odometer Telemetry (Async Flush)
         if not ctx["cache_hit"] and result.metadata.output_tokens > 0:
