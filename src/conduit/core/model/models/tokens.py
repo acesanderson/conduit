@@ -136,7 +136,7 @@ class GeminiTokenizer(BaseTokenizer):
             except ImportError:
                 raise ImportError(
                     "transformers is not installed. "
-                    "Please run: pip install transformers sentencepiece"
+                    "Install the HuggingFace extra: pip install conduit[hf]"
                 )
         return self._tokenizer
 
@@ -187,7 +187,7 @@ class HuggingFaceTokenizer(BaseTokenizer):
             except ImportError:
                 raise ImportError(
                     "transformers is not installed. "
-                    "Please run: pip install transformers"
+                    "Install the HuggingFace extra: pip install conduit[hf]"
                 )
         return self._tokenizer
 

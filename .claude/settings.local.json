@@ -67,7 +67,18 @@
       "Bash(conduit update:*)",
       "Bash(conduit chat:*)",
       "Bash(conduit tokens:*)",
-      "Bash(conduit tokenize:*)"
+      "Bash(conduit tokenize:*)",
+      "Bash(conduit batch *)",
+      "Bash(conduit query *)",
+      "Bash(conduit ping *)",
+      "Bash(.venv/bin/python3 *)",
+      "Bash(cp /tmp/pv_note.md \"/Users/bianders/morphy/Perplexity vs Gemini Grounding Comparison.md\")",
+      "Bash(open \"obsidian://open?vault=morphy&file=Perplexity%20vs%20Gemini%20Grounding%20Comparison\")",
+      "Bash(awk '{print \"PID \"$2\" started \"$9\" cpu=\"$3}')",
+      "Bash(.venv/bin/pip show *)",
+      "Bash(kill 46701 66946)",
+      "Bash(awk '{print \"Running — PID \"$2\", CPU \"$3\"%\", \"MEM \"$4\"%\"}')",
+      "Bash(open *)"
     ]
   }
 }
