@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(conduit batch *)",
+      "Read(//Users/bianders/Brian_Code/conduit-project/**)",
+      "Bash(python -c ' *)"
+    ]
+  }
+}

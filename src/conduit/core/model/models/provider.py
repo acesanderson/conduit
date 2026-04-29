@@ -1,4 +1,4 @@
 from typing import Literal
 
-Provider = Literal["openai", "ollama", "anthropic", "google", "perplexity", "mistral"]
+Provider = Literal["openai", "ollama", "anthropic", "google", "perplexity", "mistral", "llamacpp"]
 

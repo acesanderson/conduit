@@ -344,6 +344,10 @@ class ModelStore:
             from conduit.core.clients.google.client import GoogleClient
 
             return GoogleClient()
+        elif model_name in model_list["llamacpp"]:
+            from conduit.core.clients.llamacpp.client import LlamaCppClient
+
+            return LlamaCppClient()
         elif model_name in model_list["ollama"]:
             from conduit.core.clients.ollama.client import OllamaClient
 
