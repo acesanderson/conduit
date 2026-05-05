@@ -54,6 +54,9 @@ class RollingRefineSummarizer(SummarizationStrategy):
         temperature: float | None = None
         top_p: float | None = None
         project_name: str = "conduit"
+        use_remote: bool = False
+        host_alias: str = "headwater"
+        use_cache: bool = True
 
     config_model = Config
 
@@ -93,9 +96,14 @@ class RollingRefineSummarizer(SummarizationStrategy):
         options = ConduitOptions(
             project_name=cfg.project_name,
             verbosity=Verbosity.SILENT,
-            debug_payload=True,
+            use_remote=cfg.use_remote,
+            use_cache=cfg.use_cache,
         )
-        model_instance = ModelAsync(model=cfg.model)
+        if cfg.use_remote:
+            from conduit.core.model.model_remote import RemoteModelAsync
+            model_instance = RemoteModelAsync(model=cfg.model, host_alias=cfg.host_alias)
+        else:
+            model_instance = ModelAsync(model=cfg.model)
 
         total_input_tokens = 0
         total_output_tokens = 0

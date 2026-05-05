@@ -36,6 +36,10 @@ class HierarchicalTreeSummarizer(SummarizationStrategy):
         group_size: int = 4
         chunk_size: int = 12000
         overlap: int = 500
+        project_name: str = "conduit"
+        use_remote: bool = False
+        host_alias: str = "headwater"
+        use_cache: bool = True
 
     config_model = Config
 
