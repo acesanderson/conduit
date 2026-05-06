@@ -24,7 +24,10 @@ import asyncio
 import hashlib
 import json
 import logging
+import subprocess
 import sys
+import traceback
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -341,6 +344,18 @@ async def print_results(ds: ConduitDatasetAsync, doc_meta: dict) -> None:
     print(speed.round(1).to_string())
 
 
+STATUS_PATH = Path(__file__).parent / "run2_status.json"
+
+
+def _write_status(status: dict) -> None:
+    STATUS_PATH.write_text(json.dumps(status, indent=2, default=str))
+
+
+def _notify(title: str, message: str) -> None:
+    script = f'display notification "{message}" with title "{title}"'
+    subprocess.run(["osascript", "-e", script], capture_output=True)
+
+
 async def main() -> None:
     args = parse_args()
     setup_logging()
@@ -376,27 +391,48 @@ async def main() -> None:
 
     smoke_tested: set[tuple[str, str]] = set()
     all_results: list[RunResult] = []
+    started_at = datetime.now()
 
-    async def run_bywater() -> list[RunResult]:
-        results = []
-        for entry in bywater_entries:
+    try:
+        async def run_bywater() -> list[RunResult]:
+            results = []
+            for entry in bywater_entries:
+                batch = await run_entry(ds, entry, docs, judge, smoke_tested)
+                results.extend(batch)
+            return results
+
+        print("\nRunning summarizations:")
+        bywater_task = asyncio.create_task(run_bywater())
+
+        for entry in deepwater_entries:
             batch = await run_entry(ds, entry, docs, judge, smoke_tested)
-            results.extend(batch)
-        return results
+            all_results.extend(batch)
 
-    print("\nRunning summarizations:")
-    bywater_task = asyncio.create_task(run_bywater())
+        bywater_results = await bywater_task
+        all_results.extend(bywater_results)
 
-    for entry in deepwater_entries:
-        batch = await run_entry(ds, entry, docs, judge, smoke_tested)
-        all_results.extend(batch)
+        print(f"\nTotal new results this run: {len(all_results)}")
 
-    bywater_results = await bywater_task
-    all_results.extend(bywater_results)
+        await print_results(ds, doc_meta)
 
-    print(f"\nTotal new results this run: {len(all_results)}")
+        _write_status({
+            "result": "ok",
+            "started_at": started_at.isoformat(),
+            "completed_at": datetime.now().isoformat(),
+            "new_results": len(all_results),
+        })
+        _notify("run2 complete", f"{len(all_results)} new results")
 
-    await print_results(ds, doc_meta)
+    except Exception as exc:
+        _write_status({
+            "result": "failed",
+            "started_at": started_at.isoformat(),
+            "failed_at": datetime.now().isoformat(),
+            "error": str(exc),
+            "traceback": traceback.format_exc(),
+        })
+        _notify("run2 FAILED", str(exc)[:100])
+        raise
 
 
 if __name__ == "__main__":

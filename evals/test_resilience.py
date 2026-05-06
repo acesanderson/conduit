@@ -260,3 +260,28 @@ async def test_warmup_server_returns_false_on_exception():
         result = await warmup_server("deepwater")
 
     assert result is False
+
+
+def test_write_status_creates_json_file(tmp_path):
+    from run2 import _write_status
+
+    status_path = tmp_path / "run2_status.json"
+    with patch("run2.STATUS_PATH", status_path):
+        _write_status({"result": "ok", "new_results": 42})
+
+    written = json.loads(status_path.read_text())
+    assert written["result"] == "ok"
+    assert written["new_results"] == 42
+
+
+def test_notify_calls_osascript():
+    from run2 import _notify
+
+    with patch("run2.subprocess.run") as mock_run:
+        _notify("run2 complete", "200 new results")
+
+    mock_run.assert_called_once()
+    args = mock_run.call_args[0][0]
+    assert args[0] == "osascript"
+    assert "run2 complete" in args[2]
+    assert "200 new results" in args[2]
