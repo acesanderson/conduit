@@ -229,3 +229,34 @@ async def test_score_missing_handles_judge_failure():
 
     assert len(results) == 1
     assert results[0].run_result.source_id == "d2"
+
+
+@pytest.mark.asyncio
+async def test_warmup_server_returns_true_on_success():
+    from run2 import warmup_server
+
+    mock_resp = MagicMock()
+    mock_resp.results = ["result"]
+    mock_client = AsyncMock()
+    mock_client.conduit.query_batch = AsyncMock(return_value=mock_resp)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("run2.HeadwaterAsyncClient", return_value=mock_client):
+        result = await warmup_server("bywater")
+
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_warmup_server_returns_false_on_exception():
+    from run2 import warmup_server
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(side_effect=ConnectionRefusedError("no server"))
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("run2.HeadwaterAsyncClient", return_value=mock_client):
+        result = await warmup_server("deepwater")
+
+    assert result is False

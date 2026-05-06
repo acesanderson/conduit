@@ -42,6 +42,7 @@ from evals import (
 )
 from load_datasets import load_golden_dataset
 from scorer import make_gemini_judge
+from headwater_client.client.headwater_client_async import HeadwaterAsyncClient
 from conduit.strategies.summarize.summarizers.recursive import RecursiveSummarizer
 from conduit.strategies.summarize.summarizers.rolling_refine import RollingRefineSummarizer
 from conduit.strategies.summarize.summarizers.map_dedupe_reduce import MapDedupeReduceSummarizer
@@ -97,8 +98,36 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-async def ping_servers() -> bool:
-    from headwater_client.client.headwater_client_async import HeadwaterAsyncClient
+async def warmup_server(alias: str) -> bool:
+    from headwater_api.classes import BatchRequest
+    from conduit.domain.request.generation_params import GenerationParams
+    from conduit.domain.config.conduit_options import ConduitOptions
+    from conduit.utils.progress.verbosity import Verbosity
+
+    model = "qwen3.6:latest" if alias == "deepwater" else "gpt-oss:latest"
+    try:
+        params = GenerationParams(model=model, temperature=0.0)
+        options = ConduitOptions(
+            project_name="warmup",
+            include_history=False,
+            verbosity=Verbosity.SILENT,
+        )
+        batch_req = BatchRequest(
+            prompt_strings_list=["Hi"],
+            params=params,
+            options=options,
+        )
+        async with HeadwaterAsyncClient(host_alias=alias) as client:
+            resp = await asyncio.wait_for(
+                client.conduit.query_batch(batch_req), timeout=30.0
+            )
+        return bool(resp and resp.results)
+    except Exception as exc:
+        print(f"[cron] {alias} warmup failed: {exc}")
+        return False
+
+
+async def health_check() -> bool:
     for alias in ("deepwater", "bywater"):
         try:
             async with HeadwaterAsyncClient(host_alias=alias) as client:
@@ -109,6 +138,11 @@ async def ping_servers() -> bool:
         except Exception as exc:
             print(f"[cron] {alias} unreachable: {exc} — aborting")
             return False
+
+        if not await warmup_server(alias):
+            print(f"[cron] {alias} warmup failed — aborting")
+            return False
+
     return True
 
 
@@ -312,7 +346,7 @@ async def main() -> None:
     setup_logging()
 
     if args.cron:
-        if not await ping_servers():
+        if not await health_check():
             sys.exit(0)
 
     docs = load_golden_dataset()
