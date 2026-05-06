@@ -50,16 +50,16 @@ _QWEN_RECURSIVE = {**_QWEN, "map_model": "gpt-oss:latest", "map_host_alias": "by
 _GPT = {"model": "gpt-oss:latest", "use_remote": True, "host_alias": "bywater", "use_cache": True}
 
 RUN_MATRIX = [
-    # Deepwater (qwen3.6) — run sequentially
-    {"strategy_cls": RecursiveSummarizer,       "config": _QWEN_RECURSIVE, "server": "deepwater"},
-    {"strategy_cls": RollingRefineSummarizer,   "config": _QWEN,           "server": "deepwater"},
-    {"strategy_cls": MapDedupeReduceSummarizer, "config": _QWEN,           "server": "deepwater"},
-    {"strategy_cls": HierarchicalTreeSummarizer,"config": _QWEN,           "server": "deepwater"},
-    # Bywater (gpt-oss) — run sequentially in background
-    {"strategy_cls": RecursiveSummarizer,       "config": _GPT,            "server": "bywater"},
-    {"strategy_cls": RollingRefineSummarizer,   "config": _GPT,            "server": "bywater"},
-    {"strategy_cls": MapDedupeReduceSummarizer, "config": _GPT,            "server": "bywater"},
-    {"strategy_cls": HierarchicalTreeSummarizer,"config": _GPT,            "server": "bywater"},
+    # Deepwater (qwen3.6)
+    {"strategy_cls": RecursiveSummarizer,        "config": _QWEN_RECURSIVE, "server": "deepwater", "timeout_s": 600},
+    {"strategy_cls": RollingRefineSummarizer,    "config": _QWEN,           "server": "deepwater", "timeout_s": 1800},
+    {"strategy_cls": MapDedupeReduceSummarizer,  "config": _QWEN,           "server": "deepwater", "timeout_s": 900},
+    {"strategy_cls": HierarchicalTreeSummarizer, "config": _QWEN,           "server": "deepwater", "timeout_s": 900},
+    # Bywater (gpt-oss)
+    {"strategy_cls": RecursiveSummarizer,        "config": _GPT,            "server": "bywater",   "timeout_s": 600},
+    {"strategy_cls": RollingRefineSummarizer,    "config": _GPT,            "server": "bywater",   "timeout_s": 1800},
+    {"strategy_cls": MapDedupeReduceSummarizer,  "config": _GPT,            "server": "bywater",   "timeout_s": 900},
+    {"strategy_cls": HierarchicalTreeSummarizer, "config": _GPT,            "server": "bywater",   "timeout_s": 900},
 ]
 
 logger = logging.getLogger(__name__)
@@ -126,7 +126,20 @@ async def run_entry(
 
     done_ids = await get_done_ids(ds, strategy_name, cid)
     if len(done_ids) >= n_total:
-        print(f"  SKIP  {strategy_name}/{cid} — already complete ({len(done_ids)}/{n_total})")
+        # Runs complete — check whether evals were also saved
+        existing_evals = await ds.evals.list(strategy=strategy_name, config_id=cid)
+        scored_ids = {er.run_result.source_id for er in existing_evals}
+        unscored = [r for r in await ds.runs.list(strategy=strategy_name, config_id=cid)
+                    if r.source_id not in scored_ids]
+        if not unscored:
+            print(f"  SKIP  {strategy_name}/{cid} — complete ({len(done_ids)} runs, {len(existing_evals)} evals)")
+            return []
+        print(f"  RESCORE {strategy_name}/{cid} — {len(unscored)} evals missing")
+        eval_results = await evaluate(unscored, eval_function=judge)
+        try:
+            await ds.evals.save(eval_results, eval_function=EVAL_FUNCTION)
+        except BatchSaveError as exc:
+            print(f"  Warning: partial eval save — {exc}")
         return []
 
     remaining = [d for d in docs if d.source_id not in done_ids]
@@ -194,26 +207,35 @@ async def print_results(ds: ConduitDatasetAsync, doc_meta: dict) -> None:
     df.to_csv(RESULTS_PATH, index=False)
     print(f"\nResults saved to {RESULTS_PATH}")
 
+    # Analysis excludes single-chunk docs — all strategies produce identical output
+    # for docs that fit in one chunk, so they add noise without signal.
+    CHUNK_SIZE = 12000
+    df_multi = df[df["token_count"] > CHUNK_SIZE].copy()
+    n_one_shot = len(df) - len(df_multi)
+    n_strategies = df["strategy"].nunique()
+    print(f"\nAnalysis: excluding {n_one_shot // n_strategies} one-shot docs (token_count ≤ {CHUNK_SIZE}), "
+          f"using {len(df_multi) // n_strategies} multi-chunk docs")
+
     summary = (
-        df.groupby(["strategy", "model"])["score"]
+        df_multi.groupby(["strategy", "model"])["score"]
         .agg(["mean", "median", "std", "count"])
         .rename(columns={"count": "n"})
         .sort_values("mean", ascending=False)
     )
-    print("\n=== Scores by strategy × model ===")
+    print("\n=== Scores by strategy × model (multi-chunk docs only) ===")
     print(summary.round(3).to_string())
 
-    by_category = df.groupby(["strategy", "category"])["score"].mean().unstack("category")
-    print("\n=== Scores by strategy × category ===")
+    by_category = df_multi.groupby(["strategy", "category"])["score"].mean().unstack("category")
+    print("\n=== Scores by strategy × category (multi-chunk docs only) ===")
     print(by_category.round(3).to_string())
 
     speed = (
-        df.dropna(subset=["duration_s"])
+        df_multi.dropna(subset=["duration_s"])
         .groupby(["strategy", "model"])["duration_s"]
         .agg(["mean", "median", "max"])
         .sort_values("mean")
     )
-    print("\n=== Duration (s) by strategy × model ===")
+    print("\n=== Duration (s) by strategy × model (multi-chunk docs only) ===")
     print(speed.round(1).to_string())
 
 

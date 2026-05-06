@@ -57,3 +57,14 @@ async def test_retry_applies_per_call_timeout():
         with patch("scorer._JUDGE_TIMEOUT", 0.0):
             with pytest.raises(asyncio.TimeoutError):
                 await _call_with_retry(slow)
+
+
+def test_run_matrix_has_timeout_s():
+    """Every RUN_MATRIX entry must declare an explicit timeout_s."""
+    from run2 import RUN_MATRIX
+
+    for entry in RUN_MATRIX:
+        name = entry["strategy_cls"].__name__
+        assert "timeout_s" in entry, f"Missing timeout_s: {name}"
+        assert isinstance(entry["timeout_s"], int), f"timeout_s must be int: {name}"
+        assert entry["timeout_s"] > 0, f"timeout_s must be positive: {name}"
