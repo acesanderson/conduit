@@ -55,5 +55,5 @@ async def test_retry_applies_per_call_timeout():
 
     with patch("scorer.asyncio.sleep", new_callable=AsyncMock):
         with patch("scorer._JUDGE_TIMEOUT", 0.0):
-            with pytest.raises(Exception):
+            with pytest.raises(asyncio.TimeoutError):
                 await _call_with_retry(slow)
