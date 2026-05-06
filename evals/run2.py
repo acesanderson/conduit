@@ -31,13 +31,12 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from dataset import BatchSaveError, ConduitDatasetAsync
+from dataset import ConduitDatasetAsync
 from evals import (
     CONCURRENCY_LIMIT,
     EvalResult,
     RunInput,
     RunResult,
-    evaluate,
     generate_runs,
     run_eval,
 )
@@ -154,6 +153,44 @@ async def _run_inference_incremental(
     return [r for r in raw if r is not None]
 
 
+async def score_missing(
+    ds: ConduitDatasetAsync,
+    strategy_name: str,
+    cid: str,
+    judge,
+) -> list[EvalResult]:
+    all_runs = await ds.runs.list(strategy=strategy_name, config_id=cid)
+    existing_evals = await ds.evals.list(strategy=strategy_name, config_id=cid)
+    scored_ids = {er.run_result.source_id for er in existing_evals}
+    unscored = [r for r in all_runs if r.source_id not in scored_ids]
+
+    if not unscored:
+        return []
+
+    print(f"  Scoring {len(unscored)} unscored results ...")
+    sem = asyncio.Semaphore(CONCURRENCY_LIMIT)
+
+    async def score_and_save(run_result: RunResult) -> EvalResult | None:
+        async with sem:
+            try:
+                score = await judge(run_result)
+                er = EvalResult(run_result=run_result, score=score)
+                await ds.evals.save([er], eval_function=EVAL_FUNCTION)
+                return er
+            except Exception as exc:
+                logger.error(
+                    "scoring failed source_id=%s: %s: %s",
+                    run_result.source_id,
+                    type(exc).__name__,
+                    exc,
+                )
+                return None
+
+    tasks = [asyncio.create_task(score_and_save(r)) for r in unscored]
+    raw = await asyncio.gather(*tasks)
+    return [r for r in raw if r is not None]
+
+
 async def run_entry(
     ds: ConduitDatasetAsync,
     entry: dict,
@@ -170,20 +207,7 @@ async def run_entry(
 
     done_ids = await get_done_ids(ds, strategy_name, cid)
     if len(done_ids) >= n_total:
-        # Runs complete — check whether evals were also saved
-        existing_evals = await ds.evals.list(strategy=strategy_name, config_id=cid)
-        scored_ids = {er.run_result.source_id for er in existing_evals}
-        unscored = [r for r in await ds.runs.list(strategy=strategy_name, config_id=cid)
-                    if r.source_id not in scored_ids]
-        if not unscored:
-            print(f"  SKIP  {strategy_name}/{cid} — complete ({len(done_ids)} runs, {len(existing_evals)} evals)")
-            return []
-        print(f"  RESCORE {strategy_name}/{cid} — {len(unscored)} evals missing")
-        eval_results = await evaluate(unscored, eval_function=judge)
-        try:
-            await ds.evals.save(eval_results, eval_function=EVAL_FUNCTION)
-        except BatchSaveError as exc:
-            print(f"  Warning: partial eval save — {exc}")
+        await score_missing(ds, strategy_name, cid, judge)
         return []
 
     remaining = [d for d in docs if d.source_id not in done_ids]
@@ -208,16 +232,16 @@ async def run_entry(
             logger.exception("smoke test error strategy=%s server=%s", strategy_name, server)
             return []
 
-    run_results = await generate_runs(inputs=remaining, configs=[config], strategy=strategy)
+    run_results = await _run_inference_incremental(
+        docs=remaining,
+        config=config,
+        strategy=strategy,
+        ds=ds,
+        timeout_s=entry["timeout_s"],
+    )
     print(f"  Done.  {strategy_name}/{cid}: {len(run_results)}/{len(remaining)} succeeded.")
 
-    if run_results:
-        await ds.runs.save(run_results)
-        eval_results = await evaluate(run_results, eval_function=judge)
-        try:
-            await ds.evals.save(eval_results, eval_function=EVAL_FUNCTION)
-        except BatchSaveError as exc:
-            print(f"  Warning: partial eval save failure — {exc}")
+    await score_missing(ds, strategy_name, cid, judge)
 
     return run_results
 

@@ -317,7 +317,7 @@ class RunsNamespace:
                     r.source_id,
                     r.reference_id,
                     r.output.output,
-                    json.dumps(r.output.metadata) if r.output.metadata else None,
+                    json.dumps(r.output.metadata, default=str) if r.output.metadata else None,
                 )
         logger.debug("runs.save project=%s count=%d", self._project, len(results))
 
@@ -457,7 +457,7 @@ class EvalsNamespace:
                             r.source_id,
                             r.reference_id,
                             r.output.output,
-                            json.dumps(r.output.metadata) if r.output.metadata else None,
+                            json.dumps(r.output.metadata, default=str) if r.output.metadata else None,
                         )
                         await conn.execute(
                             """
@@ -505,6 +505,7 @@ class EvalsNamespace:
         self,
         eval_function: str | None = None,
         strategy: str | None = None,
+        config_id: str | None = None,
     ) -> list[EvalResult]:
         pool = await self._pool_fn()
         async with pool.acquire() as conn:
@@ -518,6 +519,10 @@ class EvalsNamespace:
             if strategy is not None:
                 conditions.append(f"e.strategy = ${idx}")
                 params.append(strategy)
+                idx += 1
+            if config_id is not None:
+                conditions.append(f"e.config_id = ${idx}")
+                params.append(config_id)
                 idx += 1
             where = " AND ".join(conditions)
             rows = await conn.fetch(

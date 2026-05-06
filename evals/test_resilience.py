@@ -146,3 +146,86 @@ async def test_timeout_skips_doc_not_crash():
     assert len(results) == 1
     assert results[0].source_id == "fast"
     assert mock_ds.runs.save.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_score_missing_skips_already_scored():
+    """Docs with existing eval_results are not re-scored."""
+    from run2 import score_missing
+    from evals import RunResult, RunOutput, EvalResult
+
+    def make_run(sid):
+        return RunResult(
+            strategy="S", config_id="c1", source_id=sid,
+            config={}, output=RunOutput(output="x", metadata={})
+        )
+
+    mock_ds = MagicMock()
+    mock_ds.runs.list = AsyncMock(
+        return_value=[make_run("d1"), make_run("d2"), make_run("d3")]
+    )
+    mock_ds.evals.list = AsyncMock(
+        return_value=[
+            EvalResult(run_result=make_run("d1"), score=0.8),
+            EvalResult(run_result=make_run("d2"), score=0.8),
+        ]
+    )
+    mock_ds.evals.save = AsyncMock()
+    judge = AsyncMock(return_value=0.7)
+
+    results = await score_missing(mock_ds, "S", "c1", judge)
+
+    assert len(results) == 1
+    assert results[0].run_result.source_id == "d3"
+    assert judge.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_score_missing_saves_per_doc():
+    """ds.evals.save is called once per doc, not batched."""
+    from run2 import score_missing
+    from evals import RunResult, RunOutput
+
+    def make_run(sid):
+        return RunResult(
+            strategy="S", config_id="c1", source_id=sid,
+            config={}, output=RunOutput(output="x", metadata={})
+        )
+
+    mock_ds = MagicMock()
+    mock_ds.runs.list = AsyncMock(return_value=[make_run("d1"), make_run("d2")])
+    mock_ds.evals.list = AsyncMock(return_value=[])
+    mock_ds.evals.save = AsyncMock()
+    judge = AsyncMock(return_value=0.6)
+
+    await score_missing(mock_ds, "S", "c1", judge)
+
+    assert mock_ds.evals.save.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_score_missing_handles_judge_failure():
+    """A judge failure on one doc does not prevent others from scoring."""
+    from run2 import score_missing
+    from evals import RunResult, RunOutput
+
+    def make_run(sid):
+        return RunResult(
+            strategy="S", config_id="c1", source_id=sid,
+            config={}, output=RunOutput(output="x", metadata={})
+        )
+
+    mock_ds = MagicMock()
+    mock_ds.runs.list = AsyncMock(return_value=[make_run("d1"), make_run("d2")])
+    mock_ds.evals.list = AsyncMock(return_value=[])
+    mock_ds.evals.save = AsyncMock()
+
+    async def flaky_judge(run_result):
+        if run_result.source_id == "d1":
+            raise RuntimeError("gemini down")
+        return 0.8
+
+    results = await score_missing(mock_ds, "S", "c1", flaky_judge)
+
+    assert len(results) == 1
+    assert results[0].run_result.source_id == "d2"
