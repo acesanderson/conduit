@@ -32,7 +32,15 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).parent))
 
 from dataset import BatchSaveError, ConduitDatasetAsync
-from evals import RunInput, RunResult, generate_runs, evaluate
+from evals import (
+    CONCURRENCY_LIMIT,
+    EvalResult,
+    RunInput,
+    RunResult,
+    evaluate,
+    generate_runs,
+    run_eval,
+)
 from load_datasets import load_golden_dataset
 from scorer import make_gemini_judge
 from conduit.strategies.summarize.summarizers.recursive import RecursiveSummarizer
@@ -108,6 +116,42 @@ async def ping_servers() -> bool:
 async def get_done_ids(ds: ConduitDatasetAsync, strategy_name: str, cid: str) -> set[str]:
     results = await ds.runs.list(strategy=strategy_name, config_id=cid)
     return {r.source_id for r in results}
+
+
+async def _run_inference_incremental(
+    docs: list[RunInput],
+    config: dict,
+    strategy,
+    ds: ConduitDatasetAsync,
+    timeout_s: int,
+) -> list[RunResult]:
+    sem = asyncio.Semaphore(CONCURRENCY_LIMIT)
+
+    async def run_and_save(doc: RunInput) -> RunResult | None:
+        async with sem:
+            try:
+                result = await asyncio.wait_for(
+                    run_eval(doc, config, strategy), timeout=timeout_s
+                )
+                await ds.runs.save([result])
+                return result
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "timeout source_id=%s after %ds", doc.source_id, timeout_s
+                )
+                return None
+            except Exception as exc:
+                logger.error(
+                    "run_eval failed source_id=%s: %s: %s",
+                    doc.source_id,
+                    type(exc).__name__,
+                    exc,
+                )
+                return None
+
+    tasks = [asyncio.create_task(run_and_save(doc)) for doc in docs]
+    raw = await asyncio.gather(*tasks)
+    return [r for r in raw if r is not None]
 
 
 async def run_entry(
