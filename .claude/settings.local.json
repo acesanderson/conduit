@@ -78,7 +78,17 @@
       "Bash(.venv/bin/pip show *)",
       "Bash(kill 46701 66946)",
       "Bash(awk '{print \"Running — PID \"$2\", CPU \"$3\"%\", \"MEM \"$4\"%\"}')",
-      "Bash(open *)"
+      "Bash(open *)",
+      "Bash(tee evals/run.log)",
+      "Bash(tee run.log)",
+      "Bash(tmux split-window *)",
+      "Bash(pkill -f \"python evals/run.py\")",
+      "Bash(pkill -f bywater_qwen_test.py)",
+      "Bash(tee evals/run_hybrid.log)",
+      "Bash(tmux list-windows *)",
+      "Bash(tmux new-window *)",
+      "Bash(tmux send-keys *)",
+      "Bash(tmux capture-pane *)"
     ]
   }
 }

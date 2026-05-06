@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 
 
 class RemoteClient(Client):
-    def __init__(self):
+    def __init__(self, host_alias: str = "headwater"):
+        self.host_alias = host_alias
         self.is_healthy: None | bool = None
         self.status: None | StatusResponse = None
         # Internal cache storage
@@ -60,7 +61,7 @@ class RemoteClient(Client):
 
     def _initialize_client(self) -> HeadwaterAsyncClient:
         """Initialize SiphonClient connection"""
-        client = HeadwaterAsyncClient()
+        client = HeadwaterAsyncClient(host_alias=self.host_alias)
         return client
 
     async def _ping_server(self) -> bool:

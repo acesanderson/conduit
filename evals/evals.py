@@ -21,6 +21,9 @@ from conduit.core.workflow.context import context
 import asyncio
 import hashlib
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 CONCURRENCY_LIMIT = 10
 
@@ -148,9 +151,15 @@ async def generate_runs(
 
     async def bounded(coro):
         async with sem:
-            return await coro
+            return await asyncio.wait_for(coro, timeout=600)
 
-    run_results = await asyncio.gather(*[bounded(c) for c in coroutines])
+    raw = await asyncio.gather(*[bounded(c) for c in coroutines], return_exceptions=True)
+    run_results = []
+    for item in raw:
+        if isinstance(item, BaseException):
+            logger.error(f"run_eval failed: {type(item).__name__}: {item}")
+        else:
+            run_results.append(item)
 
     return run_results
 
@@ -169,19 +178,27 @@ async def evaluate(
         list[RunResult]: A list of RunResult objects with updated scores based on the evaluation.
     """
     coroutines = [eval_function(run_result) for run_result in run_results]
-    # Run all evaluations concurrently and gather scores
     sem = asyncio.Semaphore(CONCURRENCY_LIMIT)
 
     async def bounded(coro):
         async with sem:
             return await coro
 
-    scores = await asyncio.gather(*[bounded(c) for c in coroutines])
+    raw = await asyncio.gather(*[bounded(c) for c in coroutines], return_exceptions=True)
 
-    eval_results = [
-        EvalResult(run_result=run_result, score=score)
-        for run_result, score in zip(run_results, scores)
-    ]
+    eval_results = []
+    for run_result, outcome in zip(run_results, raw):
+        if isinstance(outcome, BaseException):
+            logger.error(
+                "eval_function failed source_id=%s: %s: %s",
+                run_result.source_id,
+                type(outcome).__name__,
+                outcome,
+            )
+            score = 0.0
+        else:
+            score = outcome
+        eval_results.append(EvalResult(run_result=run_result, score=score))
     return eval_results
 
 

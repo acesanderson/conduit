@@ -17,6 +17,8 @@ class RecursiveSummarizer(SummarizationStrategy):
     class Config(BaseModel):
         model_config = ConfigDict(extra="ignore")
         model: str = "gpt-oss:latest"
+        map_model: str | None = None       # chunk summarization model; None = same as model
+        map_host_alias: str | None = None  # chunk summarization host; None = same as host_alias
         effective_context_window_ratio: float = 0.8
         chunk_size: int = 12000
         overlap: int = 500
@@ -54,9 +56,14 @@ class RecursiveSummarizer(SummarizationStrategy):
             logger.info(
                 f"Input ({text_token_size}) exceeds threshold. Running Map-Reduce."
             )
+            map_model = cfg.map_model or cfg.model
+            map_allocated_window = ModelStore.get_num_ctx(map_model)
+            map_chunk_size = int(map_allocated_window * cfg.effective_context_window_ratio)
+            map_config = {**config, "model": map_model, "chunk_size": map_chunk_size}
+            if cfg.map_host_alias is not None:
+                map_config["host_alias"] = cfg.map_host_alias
             intermediate_summary = await MapReduceSummarizer()(
-                _TextInput(text),
-                {**config, "chunk_size": effective_threshold},
+                _TextInput(text), map_config,
             )
             logger.info("Intermediate summary complete. Recursing to check size.")
             return await self(_TextInput(intermediate_summary), config)

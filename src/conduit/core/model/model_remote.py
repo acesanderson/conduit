@@ -105,15 +105,15 @@ class RemoteModelAsync(ModelAsync):
     like ping(), get_status(), and batch() operations.
     """
 
-    def __init__(self, model: str):
+    def __init__(self, model: str, host_alias: str = "headwater"):
         """
         Initialize the asynchronous remote model.
 
         Args:
             model: Model name/alias (e.g., "claude-3-sonnet", "gpt-4o")
+            host_alias: Headwater server to route to ("headwater" or "bywater")
         """
-        # Create RemoteClient and inject it
-        remote_client = RemoteClient()
+        remote_client = RemoteClient(host_alias=host_alias)
         super().__init__(model=model, client=remote_client)
 
     async def ping(self) -> bool:

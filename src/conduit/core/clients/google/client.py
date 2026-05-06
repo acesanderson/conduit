@@ -376,9 +376,10 @@ class GoogleClient(Client):
 
         text_content = ""
         if response.candidates and response.candidates[0].content:
+            parts = response.candidates[0].content.parts or []
             text_content = "".join(
                 part.text
-                for part in response.candidates[0].content.parts
+                for part in parts
                 if hasattr(part, "text") and part.text
             )
 
@@ -401,7 +402,7 @@ class GoogleClient(Client):
         output_tokens = getattr(usage, "candidates_token_count", 0) or 0
 
         assistant_message = AssistantMessage(
-            content=text_content,
+            content=text_content or None,
             metadata={"citations": citations, "provider": "google"},
         )
         metadata = ResponseMetadata(

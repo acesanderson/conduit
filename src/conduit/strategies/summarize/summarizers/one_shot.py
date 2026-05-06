@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import tiktoken
 from typing import override, Any
 from pydantic import BaseModel, ConfigDict
 from conduit.strategies.summarize.strategy import SummarizationStrategy
 from conduit.domain.result.response import GenerationResponse
 from conduit.core.workflow.step import step, add_metadata
+
+_tokenizer = tiktoken.get_encoding("cl100k_base")
 
 
 class OneShotSummarizer(SummarizationStrategy):
@@ -16,6 +19,9 @@ class OneShotSummarizer(SummarizationStrategy):
         temperature: float | None = None
         top_p: float | None = None
         project_name: str = "conduit"
+        use_remote: bool = False
+        host_alias: str = "headwater"
+        use_cache: bool = True
 
     config_model = Config
 
@@ -28,8 +34,7 @@ class OneShotSummarizer(SummarizationStrategy):
         from conduit.core.model.model_async import ModelAsync
         from conduit.strategies.summarize.compression import get_target_summary_length
 
-        tokenizer = ModelAsync(model=cfg.model).tokenize
-        text_token_size: int = await tokenizer(text)
+        text_token_size: int = len(_tokenizer.encode(text))
         target_tokens = get_target_summary_length(text_token_size)
 
         from conduit.core.prompt.prompt import Prompt
@@ -44,9 +49,14 @@ class OneShotSummarizer(SummarizationStrategy):
         )
         options = ConduitOptions(
             project_name=cfg.project_name,
-            debug_payload=True,
+            use_remote=cfg.use_remote,
+            use_cache=cfg.use_cache,
         )
-        model = ModelAsync(model=cfg.model)
+        if cfg.use_remote:
+            from conduit.core.model.model_remote import RemoteModelAsync
+            model = RemoteModelAsync(model=cfg.model, host_alias=cfg.host_alias)
+        else:
+            model = ModelAsync(model=cfg.model)
         rendered = Prompt(cfg.prompt).render(
             {"text": text, "target_tokens": str(target_tokens)}
         )
