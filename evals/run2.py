@@ -16,6 +16,16 @@ Usage:
 
 Cron schedule:
     0 2 * * * cd /Users/bianders/Brian_Code/conduit-project && python evals/run2.py --cron >> evals/run2_cron.log 2>&1
+
+Diagnostics (all in this file):
+    - run_failures table: persists every failure with error_type, token_count, traceback
+    - ServerCircuitBreaker: per-server open/reset logic to stop hammering crashed Ollama
+    - Enriched logging: source_id, token_count, inflight count, full traceback on error
+
+Query failures after a run:
+    SELECT error_type, COUNT(*), AVG(token_count)
+    FROM run_failures WHERE project = 'run2_strategy_comparison'
+    GROUP BY error_type ORDER BY count DESC;
 """
 from __future__ import annotations
 
@@ -74,6 +84,132 @@ RUN_MATRIX = [
 ]
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Failure persistence
+# ---------------------------------------------------------------------------
+
+_FAILURES_DDL = """
+CREATE TABLE IF NOT EXISTS run_failures (
+    project       TEXT        NOT NULL,
+    strategy      TEXT        NOT NULL,
+    config_id     TEXT        NOT NULL,
+    source_id     TEXT        NOT NULL,
+    error_type    TEXT        NOT NULL,
+    error_message TEXT,
+    token_count   INTEGER,
+    traceback     TEXT,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_run_failures_project  ON run_failures (project);
+CREATE INDEX IF NOT EXISTS idx_run_failures_error    ON run_failures (error_type);
+CREATE INDEX IF NOT EXISTS idx_run_failures_source   ON run_failures (source_id);
+"""
+
+
+async def _ensure_failures_table() -> None:
+    from persist import _get_pool
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(_FAILURES_DDL)
+
+
+async def _save_failure(
+    project: str,
+    strategy: str,
+    config_id: str,
+    source_id: str,
+    error_type: str,
+    error_message: str,
+    token_count: int | None,
+    tb_str: str,
+) -> None:
+    from persist import _get_pool
+    pool = await _get_pool()
+    try:
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO run_failures
+                    (project, strategy, config_id, source_id, error_type,
+                     error_message, token_count, traceback)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                """,
+                project, strategy, config_id, source_id,
+                error_type, error_message[:500], token_count, tb_str[:4000],
+            )
+    except Exception as db_exc:
+        logger.warning("failed to persist failure record: %s", db_exc)
+
+
+def _classify_error(exc: BaseException) -> str:
+    msg = str(exc)
+    if isinstance(exc, asyncio.TimeoutError):
+        return "timeout"
+    if "NETWORK_ERROR" in msg:
+        return "network_error"
+    if "INTERNAL_ERROR" in msg:
+        if "empty response" in msg.lower() or "num_ctx" in msg.lower():
+            return "context_overflow"
+        return "internal_error"
+    if isinstance(exc, ConnectionError) or "Cannot connect" in msg:
+        return "connection_error"
+    return type(exc).__name__
+
+
+# ---------------------------------------------------------------------------
+# Circuit breaker
+# ---------------------------------------------------------------------------
+
+class ServerCircuitBreaker:
+    """
+    Opens after `threshold` consecutive failures; blocks new dispatches until
+    `cooldown_s` has elapsed. All tasks call wait_if_open() before each request.
+
+    Distinguishes sustained server-down (OOM/crash cascade) from transient blips:
+    a blip recovers on its own; a crash produces threshold+ consecutive failures.
+    """
+
+    def __init__(self, server: str, threshold: int = 5, cooldown_s: float = 60.0):
+        self.server = server
+        self.threshold = threshold
+        self.cooldown_s = cooldown_s
+        self._consecutive = 0
+        self._opened_at: float | None = None
+        self._lock = asyncio.Lock()
+
+    async def record_success(self) -> None:
+        async with self._lock:
+            self._consecutive = 0
+            if self._opened_at is not None:
+                logger.info("circuit %s: CLOSED on success", self.server)
+                self._opened_at = None
+
+    async def record_failure(self) -> None:
+        async with self._lock:
+            self._consecutive += 1
+            if self._consecutive >= self.threshold and self._opened_at is None:
+                self._opened_at = asyncio.get_event_loop().time()
+                logger.warning(
+                    "circuit %s: OPEN after %d consecutive failures — %.0fs cooldown",
+                    self.server, self._consecutive, self.cooldown_s,
+                )
+
+    async def wait_if_open(self) -> None:
+        while True:
+            async with self._lock:
+                if self._opened_at is None:
+                    return
+                elapsed = asyncio.get_event_loop().time() - self._opened_at
+                if elapsed >= self.cooldown_s:
+                    logger.info("circuit %s: RESET after %.0fs cooldown", self.server, elapsed)
+                    self._opened_at = None
+                    self._consecutive = 0
+                    return
+                remaining = self.cooldown_s - elapsed
+            logger.info("circuit %s: open, waiting %.0fs", self.server, remaining)
+            await asyncio.sleep(min(remaining, 5.0))
 
 
 def _config_id(config: dict) -> str:
@@ -160,30 +296,51 @@ async def _run_inference_incremental(
     strategy,
     ds: ConduitDatasetAsync,
     timeout_s: int,
+    circuit_breaker: ServerCircuitBreaker,
+    project: str,
 ) -> list[RunResult]:
     sem = asyncio.Semaphore(CONCURRENCY_LIMIT)
+    strategy_name = strategy.__class__.__name__
+    cid = _config_id(config)
+    inflight: list[int] = [0]  # mutable cell; asyncio is single-threaded so no lock needed
 
     async def run_and_save(doc: RunInput) -> RunResult | None:
+        await circuit_breaker.wait_if_open()
         async with sem:
+            inflight[0] += 1
+            token_count: int | None = (doc.metadata or {}).get("token_count")
             try:
                 result = await asyncio.wait_for(
                     run_eval(doc, config, strategy), timeout=timeout_s
                 )
                 await ds.runs.save([result])
+                await circuit_breaker.record_success()
                 return result
-            except asyncio.TimeoutError:
+            except asyncio.TimeoutError as exc:
+                tb_str = traceback.format_exc()
                 logger.warning(
-                    "timeout source_id=%s after %ds", doc.source_id, timeout_s
+                    "timeout source_id=%s tokens=%s inflight=%d after %ds\n%s",
+                    doc.source_id, token_count, inflight[0], timeout_s, tb_str,
                 )
+                await circuit_breaker.record_failure()
+                await _save_failure(project, strategy_name, cid, doc.source_id,
+                                    "timeout", str(exc), token_count, tb_str)
                 return None
             except Exception as exc:
+                error_type = _classify_error(exc)
+                tb_str = traceback.format_exc()
                 logger.error(
-                    "run_eval failed source_id=%s: %s: %s",
-                    doc.source_id,
-                    type(exc).__name__,
-                    exc,
+                    "run_eval failed source_id=%s tokens=%s inflight=%d "
+                    "strategy=%s error=%s: %s\n%s",
+                    doc.source_id, token_count, inflight[0],
+                    strategy_name, error_type, exc, tb_str,
                 )
+                await circuit_breaker.record_failure()
+                await _save_failure(project, strategy_name, cid, doc.source_id,
+                                    error_type, str(exc), token_count, tb_str)
                 return None
+            finally:
+                inflight[0] -= 1
 
     tasks = [asyncio.create_task(run_and_save(doc)) for doc in docs]
     raw = await asyncio.gather(*tasks)
@@ -234,6 +391,8 @@ async def run_entry(
     docs: list[RunInput],
     judge,
     smoke_tested: set[tuple[str, str]],
+    circuit_breaker: ServerCircuitBreaker,
+    project: str,
 ) -> list[RunResult]:
     strategy = entry["strategy_cls"]()
     config = entry["config"]
@@ -275,6 +434,8 @@ async def run_entry(
         strategy=strategy,
         ds=ds,
         timeout_s=entry["timeout_s"],
+        circuit_breaker=circuit_breaker,
+        project=project,
     )
     print(f"  Done.  {strategy_name}/{cid}: {len(run_results)}/{len(remaining)} succeeded.")
 
@@ -384,6 +545,7 @@ async def main() -> None:
 
     print("\nSeeding documents to DB...")
     await ds.documents.save(docs)
+    await _ensure_failures_table()
 
     references = {doc.source_id: doc.reference for doc in docs}
     judge = make_gemini_judge(references)
@@ -393,11 +555,20 @@ async def main() -> None:
     all_results: list[RunResult] = []
     started_at = datetime.now()
 
+    circuit_breakers = {
+        "deepwater": ServerCircuitBreaker("deepwater", threshold=5, cooldown_s=60.0),
+        "bywater":   ServerCircuitBreaker("bywater",   threshold=5, cooldown_s=60.0),
+    }
+
     try:
         async def run_bywater() -> list[RunResult]:
             results = []
             for entry in bywater_entries:
-                batch = await run_entry(ds, entry, docs, judge, smoke_tested)
+                batch = await run_entry(
+                    ds, entry, docs, judge, smoke_tested,
+                    circuit_breaker=circuit_breakers["bywater"],
+                    project=args.project,
+                )
                 results.extend(batch)
             return results
 
@@ -405,7 +576,11 @@ async def main() -> None:
         bywater_task = asyncio.create_task(run_bywater())
 
         for entry in deepwater_entries:
-            batch = await run_entry(ds, entry, docs, judge, smoke_tested)
+            batch = await run_entry(
+                ds, entry, docs, judge, smoke_tested,
+                circuit_breaker=circuit_breakers["deepwater"],
+                project=args.project,
+            )
             all_results.extend(batch)
 
         bywater_results = await bywater_task
