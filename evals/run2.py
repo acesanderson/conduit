@@ -2,7 +2,8 @@
 Run 2: Strategy comparison runner.
 
 Tests RollingRefineSummarizer, MapDedupeReduceSummarizer, HierarchicalTreeSummarizer
-against the RecursiveSummarizer baseline × qwen3.6 (deepwater) and gpt-oss (bywater).
+against the RecursiveSummarizer baseline × qwen3.6 (deepwater), gpt-oss (bywater),
+and gemma4 (deepwater).
 
 Resumable: skips (strategy, config) pairs that are already fully complete in DB.
 Smoke gate: runs 2 docs before each new (strategy, server) combination.
@@ -69,6 +70,8 @@ LOG_PATH = Path(__file__).parent / "run2.log"
 _QWEN = {"model": "qwen3.6:latest", "use_remote": True, "host_alias": "deepwater", "use_cache": True}
 _QWEN_RECURSIVE = {**_QWEN, "map_model": "gpt-oss:latest", "map_host_alias": "bywater"}
 _GPT = {"model": "gpt-oss:latest", "use_remote": True, "host_alias": "bywater", "use_cache": True}
+_GEMMA = {"model": "gemma4:latest", "use_remote": True, "host_alias": "deepwater", "use_cache": True}
+_GEMMA_RECURSIVE = {**_GEMMA, "map_model": "gpt-oss:latest", "map_host_alias": "bywater"}
 
 RUN_MATRIX = [
     # Deepwater (qwen3.6) — larger model, slower per call; run 1 doc at a time for
@@ -82,6 +85,11 @@ RUN_MATRIX = [
     {"strategy_cls": RollingRefineSummarizer,    "config": _GPT,            "server": "bywater",   "timeout_s": 2400, "concurrency": 1},
     {"strategy_cls": MapDedupeReduceSummarizer,  "config": _GPT,            "server": "bywater",   "timeout_s": 1200, "concurrency": 2},
     {"strategy_cls": HierarchicalTreeSummarizer, "config": _GPT,            "server": "bywater",   "timeout_s": 1200, "concurrency": 2},
+    # Deepwater (gemma4) — same concurrency constraints as qwen3.6.
+    {"strategy_cls": RecursiveSummarizer,        "config": _GEMMA_RECURSIVE, "server": "deepwater", "timeout_s": 600,  "concurrency": 5},
+    {"strategy_cls": RollingRefineSummarizer,    "config": _GEMMA,           "server": "deepwater", "timeout_s": 3600, "concurrency": 1},
+    {"strategy_cls": MapDedupeReduceSummarizer,  "config": _GEMMA,           "server": "deepwater", "timeout_s": 1800, "concurrency": 1},
+    {"strategy_cls": HierarchicalTreeSummarizer, "config": _GEMMA,           "server": "deepwater", "timeout_s": 1800, "concurrency": 1},
 ]
 
 logger = logging.getLogger(__name__)
