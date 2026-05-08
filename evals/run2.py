@@ -71,16 +71,17 @@ _QWEN_RECURSIVE = {**_QWEN, "map_model": "gpt-oss:latest", "map_host_alias": "by
 _GPT = {"model": "gpt-oss:latest", "use_remote": True, "host_alias": "bywater", "use_cache": True}
 
 RUN_MATRIX = [
-    # Deepwater (qwen3.6)
-    {"strategy_cls": RecursiveSummarizer,        "config": _QWEN_RECURSIVE, "server": "deepwater", "timeout_s": 600},
-    {"strategy_cls": RollingRefineSummarizer,    "config": _QWEN,           "server": "deepwater", "timeout_s": 1800},
-    {"strategy_cls": MapDedupeReduceSummarizer,  "config": _QWEN,           "server": "deepwater", "timeout_s": 900},
-    {"strategy_cls": HierarchicalTreeSummarizer, "config": _QWEN,           "server": "deepwater", "timeout_s": 900},
-    # Bywater (gpt-oss)
-    {"strategy_cls": RecursiveSummarizer,        "config": _GPT,            "server": "bywater",   "timeout_s": 600},
-    {"strategy_cls": RollingRefineSummarizer,    "config": _GPT,            "server": "bywater",   "timeout_s": 1800},
-    {"strategy_cls": MapDedupeReduceSummarizer,  "config": _GPT,            "server": "bywater",   "timeout_s": 900},
-    {"strategy_cls": HierarchicalTreeSummarizer, "config": _GPT,            "server": "bywater",   "timeout_s": 900},
+    # Deepwater (qwen3.6) — larger model, slower per call; run 1 doc at a time for
+    # multi-stage strategies so Ollama never sees more than ~5 concurrent requests.
+    {"strategy_cls": RecursiveSummarizer,        "config": _QWEN_RECURSIVE, "server": "deepwater", "timeout_s": 600,  "concurrency": 5},
+    {"strategy_cls": RollingRefineSummarizer,    "config": _QWEN,           "server": "deepwater", "timeout_s": 3600, "concurrency": 1},
+    {"strategy_cls": MapDedupeReduceSummarizer,  "config": _QWEN,           "server": "deepwater", "timeout_s": 1800, "concurrency": 1},
+    {"strategy_cls": HierarchicalTreeSummarizer, "config": _QWEN,           "server": "deepwater", "timeout_s": 1800, "concurrency": 1},
+    # Bywater (gpt-oss) — faster per call; allow 2 concurrent docs for parallel strategies.
+    {"strategy_cls": RecursiveSummarizer,        "config": _GPT,            "server": "bywater",   "timeout_s": 600,  "concurrency": 5},
+    {"strategy_cls": RollingRefineSummarizer,    "config": _GPT,            "server": "bywater",   "timeout_s": 2400, "concurrency": 1},
+    {"strategy_cls": MapDedupeReduceSummarizer,  "config": _GPT,            "server": "bywater",   "timeout_s": 1200, "concurrency": 2},
+    {"strategy_cls": HierarchicalTreeSummarizer, "config": _GPT,            "server": "bywater",   "timeout_s": 1200, "concurrency": 2},
 ]
 
 logger = logging.getLogger(__name__)
@@ -298,8 +299,9 @@ async def _run_inference_incremental(
     timeout_s: int,
     circuit_breaker: ServerCircuitBreaker,
     project: str,
+    concurrency: int = CONCURRENCY_LIMIT,
 ) -> list[RunResult]:
-    sem = asyncio.Semaphore(CONCURRENCY_LIMIT)
+    sem = asyncio.Semaphore(concurrency)
     strategy_name = strategy.__class__.__name__
     cid = _config_id(config)
     inflight: list[int] = [0]  # mutable cell; asyncio is single-threaded so no lock needed
@@ -436,6 +438,7 @@ async def run_entry(
         timeout_s=entry["timeout_s"],
         circuit_breaker=circuit_breaker,
         project=project,
+        concurrency=entry.get("concurrency", CONCURRENCY_LIMIT),
     )
     print(f"  Done.  {strategy_name}/{cid}: {len(run_results)}/{len(remaining)} succeeded.")
 
@@ -456,7 +459,7 @@ async def print_results(ds: ConduitDatasetAsync, doc_meta: dict) -> None:
         meta = doc_meta.get(r.source_id, {})
         config = r.config if isinstance(r.config, dict) else r.config.model_dump()
         trace = r.output.metadata.get("trace", [])
-        duration = trace[0]["duration"] if trace else None
+        duration = trace[-1]["duration"] if trace else None
         rows.append({
             "strategy": r.strategy,
             "model": config.get("model", ""),

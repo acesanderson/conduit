@@ -36,6 +36,7 @@ class HierarchicalTreeSummarizer(SummarizationStrategy):
         group_size: int = 4
         chunk_size: int = 12000
         overlap: int = 500
+        concurrency_limit: int = 4  # max parallel nodes per tree level
         project_name: str = "conduit"
         use_remote: bool = False
         host_alias: str = "headwater"
@@ -63,6 +64,7 @@ class HierarchicalTreeSummarizer(SummarizationStrategy):
 
         current_level: list[str] = list(chunks)
         level = 0
+        sem = asyncio.Semaphore(cfg.concurrency_limit)
 
         while len(current_level) > 1:
             level += 1
@@ -73,12 +75,12 @@ class HierarchicalTreeSummarizer(SummarizationStrategy):
             logger.info(
                 f"Level {level}: {len(current_level)} inputs → {len(groups)} groups"
             )
-            summaries = await asyncio.gather(
-                *[
-                    OneShotSummarizer()(_TextInput("\n\n".join(group)), config)
-                    for group in groups
-                ]
-            )
+
+            async def summarize_group(group: list[str]) -> str:
+                async with sem:
+                    return await OneShotSummarizer()(_TextInput("\n\n".join(group)), config)
+
+            summaries = await asyncio.gather(*[summarize_group(g) for g in groups])
             current_level = list(summaries)
             add_metadata(f"level_{level}_nodes", len(groups))
 

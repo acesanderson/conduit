@@ -50,6 +50,7 @@ class RollingRefineSummarizer(SummarizationStrategy):
         refine_prompt: str = refine_prompt_default
         chunk_size: int = 12000
         overlap: int = 500
+        max_summary_chars: int = 24000  # ~6k tokens; prevents context overflow on small-context models
         max_tokens: int | None = None
         temperature: float | None = None
         top_p: float | None = None
@@ -110,6 +111,10 @@ class RollingRefineSummarizer(SummarizationStrategy):
 
         for i, chunk in enumerate(chunks[1:], start=2):
             logger.info(f"Refining with chunk {i}/{total_chunks}")
+            # Truncate from the front to stay within the model's context window.
+            # Keeps the most recent accumulated context when the summary grows large.
+            if len(current_summary) > cfg.max_summary_chars:
+                current_summary = current_summary[-cfg.max_summary_chars:]
             rendered = Prompt(cfg.refine_prompt).render(
                 {
                     "current_summary": current_summary,
