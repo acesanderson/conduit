@@ -263,6 +263,13 @@ class BaseCommands(CommandCollection):
             default=False,
             help="Persist this query to the message store.",
         )
+        @click.option(
+            "-d",
+            "--domain",
+            type=str,
+            multiple=True,
+            help="Restrict Perplexity search to this domain (repeatable; sonar models only).",
+        )
         @click.argument("query_input", nargs=-1)
         @click.pass_context
         def query(
@@ -281,6 +288,7 @@ class BaseCommands(CommandCollection):
             save: str | None,
             play: bool,
             persist: bool,
+            domain: tuple[str, ...],
             query_input: tuple[str, ...],
         ):
             """
@@ -379,6 +387,7 @@ class BaseCommands(CommandCollection):
                 save=save,
                 play=play,
                 persist=persist,
+                domain=domain,
                 # Injected Dependencies
                 printer=printer,
                 query_function=query_function,

@@ -289,6 +289,7 @@ class BaseHandlers:
         save: str | None = None,
         play: bool = False,
         persist: bool = False,
+        domain: tuple[str, ...] = (),
     ) -> None:
         """
         Here we resolve all inputs for flat input to the query function.
@@ -314,6 +315,9 @@ class BaseHandlers:
             client_params = {"return_citations": True}
         else:
             client_params = {}
+
+        if domain:
+            client_params["search_domain_filter"] = list(domain)
 
         inputs = CLIQueryFunctionInputs(
             query_input=query_input,
