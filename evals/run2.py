@@ -57,6 +57,7 @@ from evals import (
 from load_datasets import load_golden_dataset
 from scorer import make_gemini_judge
 from headwater_client.client.headwater_client_async import HeadwaterAsyncClient
+from conduit.strategies.summarize.summarizers.one_shot import OneShotSummarizer
 from conduit.strategies.summarize.summarizers.recursive import RecursiveSummarizer
 from conduit.strategies.summarize.summarizers.rolling_refine import RollingRefineSummarizer
 from conduit.strategies.summarize.summarizers.map_dedupe_reduce import MapDedupeReduceSummarizer
@@ -90,6 +91,12 @@ RUN_MATRIX = [
     {"strategy_cls": RollingRefineSummarizer,    "config": _GEMMA,           "server": "deepwater", "timeout_s": 3600, "concurrency": 1},
     {"strategy_cls": MapDedupeReduceSummarizer,  "config": _GEMMA,           "server": "deepwater", "timeout_s": 1800, "concurrency": 1},
     {"strategy_cls": HierarchicalTreeSummarizer, "config": _GEMMA,           "server": "deepwater", "timeout_s": 1800, "concurrency": 1},
+    # One-shot runs — capped at 100K tokens to avoid confirmed-gibberish territory.
+    # Purpose: measure effective context window degradation per model by observing
+    # score drop-off above the 12K chunk boundary without chunking strategies masking it.
+    {"strategy_cls": OneShotSummarizer, "config": _QWEN,  "server": "deepwater", "timeout_s": 300, "concurrency": 3, "max_token_count": 100_000},
+    {"strategy_cls": OneShotSummarizer, "config": _GEMMA, "server": "deepwater", "timeout_s": 300, "concurrency": 3, "max_token_count": 100_000},
+    {"strategy_cls": OneShotSummarizer, "config": _GPT,   "server": "bywater",   "timeout_s": 300, "concurrency": 5, "max_token_count": 100_000},
 ]
 
 logger = logging.getLogger(__name__)
@@ -409,6 +416,9 @@ async def run_entry(
     strategy_name = strategy.__class__.__name__
     server = entry["server"]
     cid = _config_id(config)
+    max_tc = entry.get("max_token_count")
+    if max_tc is not None:
+        docs = [d for d in docs if (d.metadata or {}).get("token_count", 0) <= max_tc]
     n_total = len(docs)
 
     done_ids = await get_done_ids(ds, strategy_name, cid)
@@ -547,7 +557,8 @@ async def main() -> None:
     print(f"Docs:      {len(docs)}")
     print(f"Matrix ({len(RUN_MATRIX)} entries):")
     for e in RUN_MATRIX:
-        print(f"  {e['strategy_cls'].__name__:<30} {e['config'].get('model'):<20} [{e['server']}]")
+        cap = f"  cap={e['max_token_count'] // 1000}K" if e.get("max_token_count") else ""
+        print(f"  {e['strategy_cls'].__name__:<30} {e['config'].get('model'):<20} [{e['server']}]{cap}")
 
     if args.dry_run:
         return
