@@ -67,6 +67,7 @@ PROJECT = "run2_strategy_comparison"
 EVAL_FUNCTION = "gemini_judge"
 RESULTS_PATH = Path(__file__).parent / "results_run2.csv"
 LOG_PATH = Path(__file__).parent / "run2.log"
+OLLAMA_KEEPALIVE_S = 300  # Ollama default keep_alive; wait this long after a model change
 
 _QWEN = {"model": "qwen3.6:latest", "use_remote": True, "host_alias": "deepwater", "use_cache": True}
 _QWEN_RECURSIVE = {**_QWEN, "map_model": "gpt-oss:latest", "map_host_alias": "bywater"}
@@ -94,6 +95,9 @@ RUN_MATRIX = [
     # One-shot runs — capped at 100K tokens to avoid confirmed-gibberish territory.
     # Purpose: measure effective context window degradation per model by observing
     # score drop-off above the 12K chunk boundary without chunking strategies masking it.
+    # Three models: gpt-oss, gemma4, qwen3.6 — lets us characterize each model's raw
+    # context limit and decide whether gemma4 can replace qwen3.6 as the pipeline workhorse.
+    {"strategy_cls": OneShotSummarizer, "config": _QWEN,  "server": "deepwater", "timeout_s": 900, "concurrency": 1, "max_token_count": 100_000},
     {"strategy_cls": OneShotSummarizer, "config": _GEMMA, "server": "deepwater", "timeout_s": 300, "concurrency": 3, "max_token_count": 100_000},
     {"strategy_cls": OneShotSummarizer, "config": _GPT,   "server": "bywater",   "timeout_s": 300, "concurrency": 5, "max_token_count": 100_000},
 ]
@@ -252,13 +256,12 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-async def warmup_server(alias: str) -> bool:
+async def warmup_model(alias: str, model: str) -> bool:
     from headwater_api.classes import BatchRequest
     from conduit.domain.request.generation_params import GenerationParams
     from conduit.domain.config.conduit_options import ConduitOptions
     from conduit.utils.progress.verbosity import Verbosity
 
-    model = "qwen3.6:latest" if alias == "deepwater" else "gpt-oss:latest"
     try:
         params = GenerationParams(model=model, temperature=0.0)
         options = ConduitOptions(
@@ -273,12 +276,33 @@ async def warmup_server(alias: str) -> bool:
         )
         async with HeadwaterAsyncClient(host_alias=alias) as client:
             resp = await asyncio.wait_for(
-                client.conduit.query_batch(batch_req), timeout=30.0
+                client.conduit.query_batch(batch_req), timeout=120.0
             )
         return bool(resp and resp.results)
     except Exception as exc:
-        print(f"[cron] {alias} warmup failed: {exc}")
+        logger.warning("warmup_model failed alias=%s model=%s: %s", alias, model, exc)
         return False
+
+
+async def warmup_server(alias: str) -> bool:
+    model = "qwen3.6:latest" if alias == "deepwater" else "gpt-oss:latest"
+    ok = await warmup_model(alias, model)
+    if not ok:
+        print(f"[cron] {alias} warmup failed")
+    return ok
+
+
+async def wait_for_model_eviction(alias: str, old_model: str, new_model: str) -> None:
+    """Wait for Ollama to evict old_model, then warm up new_model."""
+    print(f"\n  [model swap] {old_model} → {new_model} on {alias}")
+    print(f"  Waiting {OLLAMA_KEEPALIVE_S}s for Ollama to evict {old_model} ...")
+    await asyncio.sleep(OLLAMA_KEEPALIVE_S)
+    print(f"  Warming up {new_model} on {alias} ...")
+    ok = await warmup_model(alias, new_model)
+    if ok:
+        print(f"  {new_model} ready.")
+    else:
+        logger.warning("warmup after model swap failed alias=%s model=%s — proceeding anyway", alias, new_model)
 
 
 async def health_check() -> bool:
@@ -596,13 +620,18 @@ async def main() -> None:
         print("\nRunning summarizations:")
         bywater_task = asyncio.create_task(run_bywater())
 
+        prev_deepwater_model: str | None = None
         for entry in deepwater_entries:
+            curr_model = entry["config"].get("model")
+            if prev_deepwater_model is not None and prev_deepwater_model != curr_model:
+                await wait_for_model_eviction("deepwater", prev_deepwater_model, curr_model)
             batch = await run_entry(
                 ds, entry, docs, judge, smoke_tested,
                 circuit_breaker=circuit_breakers["deepwater"],
                 project=args.project,
             )
             all_results.extend(batch)
+            prev_deepwater_model = curr_model
 
         bywater_results = await bywater_task
         all_results.extend(bywater_results)
