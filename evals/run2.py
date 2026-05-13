@@ -94,7 +94,6 @@ RUN_MATRIX = [
     # One-shot runs — capped at 100K tokens to avoid confirmed-gibberish territory.
     # Purpose: measure effective context window degradation per model by observing
     # score drop-off above the 12K chunk boundary without chunking strategies masking it.
-    {"strategy_cls": OneShotSummarizer, "config": _QWEN,  "server": "deepwater", "timeout_s": 300, "concurrency": 3, "max_token_count": 100_000},
     {"strategy_cls": OneShotSummarizer, "config": _GEMMA, "server": "deepwater", "timeout_s": 300, "concurrency": 3, "max_token_count": 100_000},
     {"strategy_cls": OneShotSummarizer, "config": _GPT,   "server": "bywater",   "timeout_s": 300, "concurrency": 5, "max_token_count": 100_000},
 ]
