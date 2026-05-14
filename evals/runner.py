@@ -5,7 +5,6 @@ import asyncio
 import hashlib
 import json
 import logging
-import subprocess
 import sys
 import traceback
 from collections.abc import Callable
@@ -237,8 +236,7 @@ class EvalRunner:
         self._status_path.write_text(json.dumps(status, indent=2, default=str))
 
     def _notify(self, title: str, message: str) -> None:
-        script = f'display notification "{message}" with title "{title}"'
-        subprocess.run(["osascript", "-e", script], capture_output=True)
+        logger.info("[notify] %s — %s", title, message)
 
     async def _run_inference_incremental(
         self,
