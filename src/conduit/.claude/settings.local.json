@@ -72,7 +72,11 @@
       "Bash(/opt/homebrew/bin/uv run:*)",
       "Bash(wait)",
       "Bash(/Users/bianders/Brian_Code/conduit-project/.venv/bin/python -m conduit.apps.scripts.conduit_cli query \"say hello\" -m claude-opus-4-7 --raw)",
-      "Bash(wg show *)"
+      "Bash(wg show *)",
+      "Bash(crontab -l)",
+      "Bash(pytest evals/tests/test_runner.py -v)",
+      "mcp__glean_default__code_search",
+      "Bash(env)"
     ]
   }
 }
