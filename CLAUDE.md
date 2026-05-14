@@ -42,6 +42,12 @@ bash scripts/deploy.sh                # both hosts
 ```
 conduit-project/
   src/conduit/       main library
+  evals/             eval scaffolding, abstractions, and tests
+  jobs/              runnable eval entry points (Cronicle jobs)
   scripts/deploy.sh  deploy to remote hosts
   pyproject.toml
 ```
+
+## Evals
+
+See **`evals/ARCHITECTURE.md`** for the full guide: three-layer design (scaffolding / abstraction / job), how to add a new eval, run matrix shape, Cronicle shell command template, and key file index.
