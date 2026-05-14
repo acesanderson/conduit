@@ -308,6 +308,13 @@ async def main() -> None:
     print(f"\nPass 2: generating gpt-oss candidate summaries ({len(inputs)} sessions)...")
     candidates = await _generate_candidates(inputs, strategy, _GPT_CONFIG)
 
+    MIN_CHARS = 50
+    valid_candidates = [c for c in candidates if len(c.output.output) >= MIN_CHARS]
+    dropped = len(candidates) - len(valid_candidates)
+    if dropped:
+        print(f"  dropped {dropped} near-empty candidates (< {MIN_CHARS} chars)")
+    candidates = valid_candidates
+
     print("\nScoring candidates against references...")
     judge = make_gemini_judge(refs)
     scores = await evaluate(candidates, judge)
