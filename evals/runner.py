@@ -5,7 +5,6 @@ import asyncio
 import hashlib
 import json
 import logging
-import statistics
 import subprocess
 import sys
 import traceback
