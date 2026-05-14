@@ -1,7 +1,7 @@
 {
   "result": "failed",
-  "started_at": "2026-05-14T10:46:56.602387",
-  "failed_at": "2026-05-14T10:47:01.157105",
+  "started_at": "2026-05-14T18:12:26.871681",
+  "failed_at": "2026-05-14T18:12:30.582489",
   "error": "[Errno 2] No such file or directory: 'osascript'",
   "traceback": "Traceback (most recent call last):\n  File \"/home/fishhouses/Brian_Code/conduit-project/evals/runner.py\", line 471, in run\n    self._notify(f\"{self._project} complete\", f\"{len(all_results)} new results\")\n  File \"/home/fishhouses/Brian_Code/conduit-project/evals/runner.py\", line 241, in _notify\n    subprocess.run([\"osascript\", \"-e\", script], capture_output=True)\n  File \"/usr/lib/python3.12/subprocess.py\", line 548, in run\n    with Popen(*popenargs, **kwargs) as process:\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.12/subprocess.py\", line 1026, in __init__\n    self._execute_child(args, executable, preexec_fn, close_fds,\n  File \"/usr/lib/python3.12/subprocess.py\", line 1955, in _execute_child\n    raise child_exception_type(errno_num, err_msg, err_filename)\nFileNotFoundError: [Errno 2] No such file or directory: 'osascript'\n"
 }
