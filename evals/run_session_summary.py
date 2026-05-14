@@ -128,7 +128,11 @@ class SessionSummarizer:
         model_name = config["model"]
         prompt = _SUMMARY_PROMPT.render(transcript=input.data)
         params = GenerationParams(model=model_name, temperature=0.0)
-        options = ConduitOptions(project_name="session_summary_eval", verbosity=Verbosity.SILENT)
+        options = ConduitOptions(
+            project_name="session_summary_eval",
+            verbosity=Verbosity.SILENT,
+            include_history=False,
+        )
 
         if config.get("use_remote"):
             from conduit.remote import RemoteModelAsync
@@ -173,19 +177,25 @@ async def _generate_candidates(
     sem = asyncio.Semaphore(5)
     config_id = hashlib.md5(json.dumps(config, sort_keys=True).encode()).hexdigest()[:8]
 
-    async def _one(inp: RunInput) -> RunResult:
+    async def _one(inp: RunInput) -> RunResult | None:
         async with sem:
-            summary = await strategy(inp, config)
-            logger.info("candidate done session=%s  chars=%d", inp.source_id[:8], len(summary))
-            return RunResult(
-                strategy=strategy.__class__.__name__,
-                config_id=config_id,
-                source_id=inp.source_id,
-                config=config,
-                output=RunOutput(output=summary, metadata={}),
-            )
+            try:
+                summary = await strategy(inp, config)
+                logger.info("candidate done session=%s  chars=%d", inp.source_id[:8], len(summary))
+                return RunResult(
+                    strategy=strategy.__class__.__name__,
+                    config_id=config_id,
+                    source_id=inp.source_id,
+                    config=config,
+                    output=RunOutput(output=summary, metadata={}),
+                )
+            except Exception as exc:
+                logger.error("candidate failed session=%s: %s: %s",
+                             inp.source_id[:8], type(exc).__name__, exc)
+                return None
 
-    return list(await asyncio.gather(*[_one(i) for i in inputs]))
+    results = await asyncio.gather(*[_one(i) for i in inputs])
+    return [r for r in results if r is not None]
 
 
 # ---------------------------------------------------------------------------
