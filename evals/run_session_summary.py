@@ -245,7 +245,11 @@ def _print_results(
 # ---------------------------------------------------------------------------
 
 _GEMINI_CONFIG = {"model": "gemini3"}
-_GPT_CONFIG    = {"model": "gpt-oss:latest", "use_remote": True, "host_alias": "bywater"}
+_DEFAULT_CANDIDATE = {"model": "gpt-oss:latest", "use_remote": True, "host_alias": "bywater"}
+
+
+def _make_candidate_config(model: str, host: str) -> dict:
+    return {"model": model, "use_remote": True, "host_alias": host}
 
 
 def setup_logging() -> None:
@@ -263,12 +267,18 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument("--limit", type=int, default=10)
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--candidate-model", default="gpt-oss:latest",
+                   help="Local model to evaluate (default: gpt-oss:latest)")
+    p.add_argument("--candidate-host", default="bywater",
+                   help="Headwater host alias for the candidate model (default: bywater)")
     return p.parse_args()
 
 
 async def main() -> None:
     args = parse_args()
     setup_logging()
+
+    candidate_config = _make_candidate_config(args.candidate_model, args.candidate_host)
 
     with _open_conn() as conn:
         sessions = _fetch_recent_sessions(conn, args.limit)
@@ -305,8 +315,8 @@ async def main() -> None:
     print(f"\nPass 1: generating gemini3 reference summaries ({len(inputs)} sessions)...")
     refs = await _generate_references(inputs, strategy, _GEMINI_CONFIG)
 
-    print(f"\nPass 2: generating gpt-oss candidate summaries ({len(inputs)} sessions)...")
-    candidates = await _generate_candidates(inputs, strategy, _GPT_CONFIG)
+    print(f"\nPass 2: generating {args.candidate_model} candidate summaries ({len(inputs)} sessions)...")
+    candidates = await _generate_candidates(inputs, strategy, candidate_config)
 
     MIN_CHARS = 50
     valid_candidates = [c for c in candidates if len(c.output.output) >= MIN_CHARS]

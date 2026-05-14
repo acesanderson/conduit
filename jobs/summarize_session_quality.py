@@ -109,10 +109,12 @@ async def run(args: argparse.Namespace) -> None:
         _generate_candidates,
         _print_results,
         _GEMINI_CONFIG,
-        _GPT_CONFIG,
+        _make_candidate_config,
     )
     from evals import RunInput, evaluate
     from scorer import make_gemini_judge
+
+    candidate_config = _make_candidate_config(args.candidate_model, args.candidate_host)
 
     logger.info("opening claude-history DB")
     with _open_conn() as conn:
@@ -160,8 +162,8 @@ async def run(args: argparse.Namespace) -> None:
     if _shutdown:
         return
 
-    logger.info("pass 2: generating gpt-oss candidate summaries")
-    candidates = await _generate_candidates(inputs, strategy, _GPT_CONFIG)
+    logger.info("pass 2: generating %s candidate summaries", args.candidate_model)
+    candidates = await _generate_candidates(inputs, strategy, candidate_config)
 
     if _shutdown:
         return
@@ -177,6 +179,7 @@ async def run(args: argparse.Namespace) -> None:
 
     results_payload = {
         "run_at": datetime.now(timezone.utc).isoformat(),
+        "candidate_model": args.candidate_model,
         "n_sessions": len(inputs),
         "mean_score": round(mean_score, 4),
         "sessions": [
@@ -199,9 +202,11 @@ async def run(args: argparse.Namespace) -> None:
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
-    p.add_argument("--cron",    action="store_true", help="Health-gate before running (Cronicle mode)")
-    p.add_argument("--dry-run", action="store_true", help="Print sessions and exit")
-    p.add_argument("--limit",   type=int, default=10, help="Number of sessions to process")
+    p.add_argument("--cron",            action="store_true", help="Health-gate before running (Cronicle mode)")
+    p.add_argument("--dry-run",         action="store_true", help="Print sessions and exit")
+    p.add_argument("--limit",           type=int, default=10, help="Number of sessions to process")
+    p.add_argument("--candidate-model", default="gpt-oss:latest", help="Local model to evaluate")
+    p.add_argument("--candidate-host",  default="bywater",        help="Headwater host alias")
     return p.parse_args()
 
 
