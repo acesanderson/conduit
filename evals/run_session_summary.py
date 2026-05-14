@@ -120,6 +120,9 @@ def _build_transcript(turns: list[dict], budget: int = _BUDGET) -> str:
 class SessionSummarizer:
     """Summarizes a session transcript. Reads config['model'] and config.get('use_remote')."""
 
+    def __init__(self, debug_payload: bool = False) -> None:
+        self.debug_payload = debug_payload
+
     async def __call__(self, input: RunInput, config: dict) -> str:
         from conduit.domain.request.generation_params import GenerationParams
         from conduit.domain.config.conduit_options import ConduitOptions
@@ -132,7 +135,17 @@ class SessionSummarizer:
             project_name="session_summary_eval",
             verbosity=Verbosity.SILENT,
             include_history=False,
+            debug_payload=self.debug_payload,
         )
+
+        if self.debug_payload:
+            logger.info(
+                "DEBUG session=%s  prompt_chars=%d  prompt_head=%.300s ... prompt_tail=%.200s",
+                input.source_id[:8],
+                len(prompt),
+                prompt,
+                prompt[-200:],
+            )
 
         if config.get("use_remote"):
             from conduit.remote import RemoteModelAsync
@@ -271,6 +284,8 @@ def parse_args() -> argparse.Namespace:
                    help="Local model to evaluate (default: gpt-oss:latest)")
     p.add_argument("--candidate-host", default="bywater",
                    help="Headwater host alias for the candidate model (default: bywater)")
+    p.add_argument("--debug-payload", action="store_true",
+                   help="Log full prompt and request payload for one session (use with --limit 1)")
     return p.parse_args()
 
 
@@ -310,7 +325,7 @@ async def main() -> None:
             print(f"  {i.source_id}  turns={meta.get('turn_count')}  ~{toks} tokens  {meta.get('title', '')[:60]}")
         return
 
-    strategy = SessionSummarizer()
+    strategy = SessionSummarizer(debug_payload=args.debug_payload)
 
     print(f"\nPass 1: generating gemini3 reference summaries ({len(inputs)} sessions)...")
     refs = await _generate_references(inputs, strategy, _GEMINI_CONFIG)
