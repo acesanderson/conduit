@@ -76,7 +76,10 @@
       "Bash(crontab -l)",
       "Bash(pytest evals/tests/test_runner.py -v)",
       "mcp__glean_default__code_search",
-      "Bash(env)"
+      "Bash(env)",
+      "Skill(cronicle)",
+      "Skill(cc-planner)",
+      "Skill(postgres)"
     ]
   }
 }
