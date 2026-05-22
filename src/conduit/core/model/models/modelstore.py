@@ -83,6 +83,9 @@ class ModelStore:
         models — all cloud providers are always registered, so anything not in the
         registry is a locally-hosted Ollama model (possibly on a remote server).
         """
+        aliases = cls.aliases()
+        if model in aliases:
+            model = aliases[model]
         models = cls.models()
         for provider, model_list in models.items():
             if model in model_list:

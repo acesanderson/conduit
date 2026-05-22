@@ -2,12 +2,13 @@
 # Deploy conduit code changes to remote servers.
 #
 # Usage:
-#   ./scripts/deploy.sh [caruana|alphablue|all]
+#   ./scripts/deploy.sh [caruana|alphablue|botvinnik|all]
 #
 # Targets:
 #   caruana   — pull on caruana
 #   alphablue — pull on alphablue
-#   all       — both (default)
+#   botvinnik — pull on botvinnik
+#   all       — all three (default)
 #
 # After deploying conduit, restart headwater on the affected host(s) using
 # $BC/headwater/scripts/deploy.sh — headwater imports conduit as a library
@@ -20,6 +21,7 @@ LOCAL_REPO="$HOME/Brian_Code/conduit-project"
 declare -A REMOTE_REPO=(
     [caruana]="/home/bianders/Brian_Code/conduit-project"
     [alphablue]="/home/fishhouses/Brian_Code/conduit-project"
+    [botvinnik]="/home/fishhouses/Brian_Code/conduit-project"
 )
 
 # --- parse args ---
@@ -27,7 +29,7 @@ TARGET="all"
 
 for arg in "$@"; do
     case "$arg" in
-        caruana|alphablue|all) TARGET="$arg" ;;
+        caruana|alphablue|botvinnik|all) TARGET="$arg" ;;
         *) echo "Unknown argument: $arg"; exit 1 ;;
     esac
 done
@@ -53,9 +55,13 @@ case "$TARGET" in
     alphablue)
         remote_pull alphablue
         ;;
+    botvinnik)
+        remote_pull botvinnik
+        ;;
     all)
         remote_pull caruana
         remote_pull alphablue
+        remote_pull botvinnik
         ;;
 esac
 

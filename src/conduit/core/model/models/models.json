@@ -11,7 +11,7 @@
   "google": [
     "gemini-3.5-flash",
     "gemini-3.1-flash-lite",
-    "gemini-pro-latest",
+    "gemini-3.1-pro-preview",
     "gemini-2.5-flash-image",
     "gemini-3-pro-image",
     "imagen-4.0-generate-001",
