@@ -333,6 +333,16 @@ class EvalRunner:
         raw = await asyncio.gather(*tasks)
         return [r for r in raw if r is not None]
 
+    @staticmethod
+    def _filter_docs(entry: dict, docs: list[RunInput]) -> list[RunInput]:
+        max_tc = entry.get("max_token_count")
+        if max_tc is not None:
+            docs = [d for d in docs if (d.metadata or {}).get("token_count", 0) <= max_tc]
+        predicate = entry.get("doc_predicate")
+        if predicate is not None:
+            docs = [d for d in docs if predicate(d)]
+        return docs
+
     async def _run_entry(
         self,
         ds: ConduitDatasetAsync,
@@ -347,9 +357,7 @@ class EvalRunner:
         strategy_name = strategy.__class__.__name__
         server = entry["server"]
         cid = _config_id(config)
-        max_tc = entry.get("max_token_count")
-        if max_tc is not None:
-            docs = [d for d in docs if (d.metadata or {}).get("token_count", 0) <= max_tc]
+        docs = self._filter_docs(entry, docs)
         n_total = len(docs)
 
         done_ids = {r.source_id for r in await ds.runs.list(strategy=strategy_name, config_id=cid)}

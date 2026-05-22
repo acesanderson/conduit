@@ -7,7 +7,51 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from runner import ServerCircuitBreaker, _classify_error, _config_id
+from runner import EvalRunner, ServerCircuitBreaker, _classify_error, _config_id
+
+
+def _make_doc(source_id: str, token_count: int = 0):
+    from evals import RunInput
+    return RunInput(source_id=source_id, data="", metadata={"token_count": token_count})
+
+
+def test_filter_docs_no_filters_returns_all():
+    docs = [_make_doc("a"), _make_doc("b"), _make_doc("c")]
+    assert EvalRunner._filter_docs({}, docs) == docs
+
+
+def test_filter_docs_max_token_count_drops_oversized():
+    docs = [_make_doc("a", 1000), _make_doc("b", 5000), _make_doc("c", 9000)]
+    filtered = EvalRunner._filter_docs({"max_token_count": 4000}, docs)
+    assert [d.source_id for d in filtered] == ["a"]
+
+
+def test_filter_docs_predicate_only_keeps_matching():
+    docs = [_make_doc("a"), _make_doc("b"), _make_doc("c"), _make_doc("d")]
+    filtered = EvalRunner._filter_docs(
+        {"doc_predicate": lambda d: d.source_id in {"a", "c"}}, docs,
+    )
+    assert [d.source_id for d in filtered] == ["a", "c"]
+
+
+def test_filter_docs_predicate_is_deterministic_for_partitioning():
+    docs = [_make_doc(s) for s in ["aa", "bb", "cc", "dd", "ee", "ff"]]
+    even = lambda d: int(d.source_id, 36) % 2 == 0
+    odd  = lambda d: int(d.source_id, 36) % 2 == 1
+    e = [d.source_id for d in EvalRunner._filter_docs({"doc_predicate": even}, docs)]
+    o = [d.source_id for d in EvalRunner._filter_docs({"doc_predicate": odd},  docs)]
+    assert set(e).isdisjoint(set(o))
+    assert set(e) | set(o) == {d.source_id for d in docs}
+
+
+def test_filter_docs_combines_max_tokens_and_predicate():
+    docs = [
+        _make_doc("a", 1000), _make_doc("b", 5000),
+        _make_doc("c", 1000), _make_doc("d", 9000),
+    ]
+    entry = {"max_token_count": 4000, "doc_predicate": lambda d: d.source_id in {"a", "b"}}
+    filtered = EvalRunner._filter_docs(entry, docs)
+    assert [d.source_id for d in filtered] == ["a"]
 
 
 def test_config_id_is_deterministic():
