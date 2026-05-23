@@ -59,7 +59,7 @@ def _entry(model: str, host: str, predicate=None, concurrency: int = 3) -> dict:
             "model":      model,
             "use_remote": True,
             "host_alias": host,
-            "use_cache":  True,
+            "use_cache":  False,
         },
         "server":          host,
         "timeout_s":       300,
@@ -72,8 +72,6 @@ def _entry(model: str, host: str, predicate=None, concurrency: int = 3) -> dict:
 # Caruana-friendly models (present in both ollama configs): split across hosts.
 SHARED_MODELS = [
     "gpt-oss:latest",
-    "cogito:32b",
-    "qwen3:30b",
 ]
 
 # Alphablue-only models: deepwater only.
@@ -104,12 +102,17 @@ class SweepECWEvalRunner(ECWEvalRunner):
             r = er.run_result
             meta = doc_meta.get(r.source_id, {})
             config = r.config if isinstance(r.config, dict) else r.config.model_dump()
+            trace = r.output.metadata.get("trace", [])
+            duration = sum(t.get("duration", 0) for t in trace) if trace else None
             rows.append({
-                "model":       config.get("model", ""),
-                "host_alias":  config.get("host_alias", ""),
-                "source_id":   r.source_id,
-                "token_count": meta.get("token_count", 0),
-                "score":       er.score,
+                "model":        config.get("model", ""),
+                "host_alias":   config.get("host_alias", ""),
+                "source_id":    r.source_id,
+                "token_count":  meta.get("token_count", 0),
+                "score":        er.score,
+                "output_chars": len(r.output.output),
+                "duration_s":   duration,
+                "use_cache":    config.get("use_cache", True),
             })
 
         df = pd.DataFrame(rows)

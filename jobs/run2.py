@@ -14,7 +14,10 @@ from load_datasets import load_golden_dataset
 from scorer import make_gemini_judge
 from runner import EVAL_FUNCTION, EvalRunner
 from conduit.strategies.summarize.summarizers.hierarchical_tree import HierarchicalTreeSummarizer
-from conduit.strategies.summarize.summarizers.map_dedupe_reduce import MapDedupeReduceSummarizer
+from conduit.strategies.summarize.summarizers.map_dedupe_reduce import (
+    MapDedupeReduceHybridModelSummarizer,
+    MapDedupeReduceSummarizer,
+)
 from conduit.strategies.summarize.summarizers.one_shot import OneShotSummarizer
 from conduit.strategies.summarize.summarizers.recursive import RecursiveSummarizer
 from conduit.strategies.summarize.summarizers.rolling_refine import RollingRefineSummarizer
@@ -29,6 +32,21 @@ _QWEN_RECURSIVE = {**_QWEN, "map_model": "gpt-oss:latest", "map_host_alias": "by
 _GPT = {"model": "gpt-oss:latest", "use_remote": True, "host_alias": "bywater", "use_cache": True}
 _GEMMA = {"model": "gemma4:latest", "use_remote": True, "host_alias": "deepwater", "use_cache": True}
 _GEMMA_RECURSIVE = {**_GEMMA, "map_model": "gpt-oss:latest", "map_host_alias": "bywater"}
+
+# Hybrid: gpt-oss for cheap parallel chunk extraction, gemma4 for dedupe and final reduce.
+# use_cache=False to guarantee fresh results for the new hybrid config.
+_HYBRID_GPT_CHUNKS_GEMMA_REDUCE = {
+    "model":             "gemma4:latest",
+    "use_remote":        True,
+    "host_alias":        "deepwater",
+    "use_cache":         False,
+    "chunk_model":       "gpt-oss:latest",
+    "chunk_host_alias":  "bywater",
+    "dedupe_model":      "gemma4:latest",
+    "dedupe_host_alias": "deepwater",
+    "reduce_model":      "gemma4:latest",
+    "reduce_host_alias": "deepwater",
+}
 
 RUN_MATRIX = [
     {"strategy_cls": RecursiveSummarizer,        "config": _QWEN_RECURSIVE,  "server": "deepwater", "timeout_s": 600,  "concurrency": 5},
@@ -45,6 +63,13 @@ RUN_MATRIX = [
     {"strategy_cls": HierarchicalTreeSummarizer, "config": _GEMMA,           "server": "deepwater", "timeout_s": 1800, "concurrency": 1},
     {"strategy_cls": OneShotSummarizer, "config": _GEMMA, "server": "deepwater", "timeout_s": 300, "concurrency": 3, "max_token_count": 100_000},
     {"strategy_cls": OneShotSummarizer, "config": _GPT,   "server": "bywater",   "timeout_s": 300, "concurrency": 5, "max_token_count": 100_000},
+    {
+        "strategy_cls": MapDedupeReduceHybridModelSummarizer,
+        "config":       _HYBRID_GPT_CHUNKS_GEMMA_REDUCE,
+        "server":       "deepwater",
+        "timeout_s":    1800,
+        "concurrency":  1,
+    },
 ]
 
 

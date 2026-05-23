@@ -51,7 +51,14 @@ class MapDedupeReduceSummarizer(SummarizationStrategy):
     5. Final reduce: pass the deduplicated list to OneShotSummarizer.
 
     Config params:
-        model:              LLM (default: gpt3)
+        model:              LLM (default: gpt3) — used for any phase whose
+                            phase-specific model override is unset.
+        chunk_model:        override model for the map (chunk extraction) phase
+        chunk_host_alias:   override host for the map phase
+        dedupe_model:       override model for the dedupe phase
+        dedupe_host_alias:  override host for the dedupe phase
+        reduce_model:       override model for the final OneShot reduce phase
+        reduce_host_alias:  override host for the final reduce phase
         extraction_prompt:  override the default map-phase extraction prompt
         concurrency_limit:  max parallel map calls (default: 5)
         max_tokens:         max tokens per call
@@ -70,6 +77,12 @@ class MapDedupeReduceSummarizer(SummarizationStrategy):
         use_remote: bool = False
         host_alias: str = "headwater"
         use_cache: bool = True
+        chunk_model: str | None = None
+        chunk_host_alias: str | None = None
+        dedupe_model: str | None = None
+        dedupe_host_alias: str | None = None
+        reduce_model: str | None = None
+        reduce_host_alias: str | None = None
 
     config_model = Config
 
@@ -89,36 +102,52 @@ class MapDedupeReduceSummarizer(SummarizationStrategy):
         chunker = Chunker()
         chunks = await chunker(text, config)
         total_chunks = len(chunks)
-        logger.info(f"MapDedupeReduceSummarizer: {total_chunks} chunks")
+        logger.info(f"{self.__class__.__name__}: {total_chunks} chunks")
 
         if total_chunks == 0:
             return ""
 
-        generation_params = GenerationParams(
-            model=cfg.model,
-            max_tokens=cfg.max_tokens,
-            temperature=cfg.temperature,
-            top_p=cfg.top_p,
-        )
+        chunk_model_name = cfg.chunk_model or cfg.model
+        chunk_host = cfg.chunk_host_alias or cfg.host_alias
+        dedupe_model_name = cfg.dedupe_model or cfg.model
+        dedupe_host = cfg.dedupe_host_alias or cfg.host_alias
+        reduce_model_name = cfg.reduce_model or cfg.model
+        reduce_host = cfg.reduce_host_alias or cfg.host_alias
+
         options = ConduitOptions(
             project_name=cfg.project_name,
             verbosity=Verbosity.SILENT,
             use_remote=cfg.use_remote,
             use_cache=cfg.use_cache,
         )
-        if cfg.use_remote:
-            from conduit.core.model.model_remote import RemoteModelAsync
-            model_instance = RemoteModelAsync(model=cfg.model, host_alias=cfg.host_alias)
-        else:
-            model_instance = ModelAsync(model=cfg.model)
+
+        def _build_model(model_name: str, host: str) -> Any:
+            if cfg.use_remote:
+                from conduit.core.model.model_remote import RemoteModelAsync
+                return RemoteModelAsync(model=model_name, host_alias=host)
+            return ModelAsync(model=model_name)
+
+        def _params(model_name: str) -> GenerationParams:
+            return GenerationParams(
+                model=model_name,
+                max_tokens=cfg.max_tokens,
+                temperature=cfg.temperature,
+                top_p=cfg.top_p,
+            )
+
+        chunk_model_instance = _build_model(chunk_model_name, chunk_host)
+        dedupe_model_instance = _build_model(dedupe_model_name, dedupe_host)
+        chunk_params = _params(chunk_model_name)
+        dedupe_params = _params(dedupe_model_name)
+
         semaphore = asyncio.Semaphore(cfg.concurrency_limit)
 
         async def extract_chunk(chunk: str) -> GenerationResponse:
             rendered = Prompt(cfg.extraction_prompt).render({"text": chunk})
             async with semaphore:
-                response = await model_instance.query(
+                response = await chunk_model_instance.query(
                     query_input=rendered,
-                    params=generation_params,
+                    params=chunk_params,
                     options=options,
                 )
             assert isinstance(response, GenerationResponse)
@@ -135,9 +164,9 @@ class MapDedupeReduceSummarizer(SummarizationStrategy):
 
         # Dedupe pass
         dedupe_rendered = Prompt(deduplicate_prompt).render({"items": combined})
-        dedupe_response = await model_instance.query(
+        dedupe_response = await dedupe_model_instance.query(
             query_input=dedupe_rendered,
-            params=generation_params,
+            params=dedupe_params,
             options=options,
         )
         assert isinstance(dedupe_response, GenerationResponse)
@@ -148,8 +177,22 @@ class MapDedupeReduceSummarizer(SummarizationStrategy):
         add_metadata("map_output_tokens", map_output_tokens)
         add_metadata("dedupe_input_tokens", dedupe_response.metadata.input_tokens)
         add_metadata("dedupe_output_tokens", dedupe_response.metadata.output_tokens)
+        add_metadata("chunk_model", chunk_model_name)
+        add_metadata("dedupe_model", dedupe_model_name)
+        add_metadata("reduce_model", reduce_model_name)
 
-        return await OneShotSummarizer()(_TextInput(deduped_text), config)
+        reduce_config = {**config, "model": reduce_model_name, "host_alias": reduce_host}
+        return await OneShotSummarizer()(_TextInput(deduped_text), reduce_config)
+
+
+class MapDedupeReduceHybridModelSummarizer(MapDedupeReduceSummarizer):
+    """
+    Identical workflow to MapDedupeReduceSummarizer, but expected to be configured
+    with distinct chunk_model / dedupe_model / reduce_model (e.g. cheap fast model
+    for chunks, higher-quality model for dedupe and reduce). The separate class
+    name lets eval results distinguish hybrid runs from single-model runs.
+    """
+    pass
 
 
 if __name__ == "__main__":
