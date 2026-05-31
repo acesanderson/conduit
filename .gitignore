@@ -23,3 +23,11 @@ uv.lock
 src/conduit/summarize/essays/*
 *.txt
 .worktrees/
+
+# Eval / job runtime outputs — regenerated per run, differ between hosts
+jobs/*_status.json
+jobs/*_results.csv
+jobs/*_results.json
+evals/*_status.json
+evals/results*.csv
+evals/results*.xlsx
