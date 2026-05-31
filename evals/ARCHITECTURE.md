@@ -4,11 +4,45 @@
 
 | Layer | Directory | Purpose |
 |---|---|---|
-| **Scaffolding** | `evals/` | Reusable infrastructure: `EvalRunner`, `ConduitDatasetAsync`, `make_gemini_judge`, `load_golden_dataset`, `persist` |
+| **Scaffolding** | `evals/` | Reusable infrastructure: `EvalRunner`, `ConduitDatasetAsync`, `make_gemini_judge`, `load_golden_dataset`, `persist`, `nas` |
 | **Abstractions** | `evals/` | Reusable eval types: one file per eval methodology, e.g. `effective_context_window.py` |
 | **Jobs** | `jobs/` | Runnable entry points: one file per job, thin callers that wire an abstraction to specific models/servers |
 
 Imports go downward only: `jobs/` → `evals/` abstractions → `evals/` scaffolding.
+
+---
+
+## Artifact Storage — $NAS/evals/
+
+All eval outputs (results CSV, status JSON, run log) go to NAS, **not** the local `jobs/` directory. The NAS is mounted at `$NAS` on every host (universal env var; resolves to `/mnt/nas` on Linux, `/Volumes/nas` on macOS).
+
+**Layout**:
+
+```
+$NAS/evals/<nas_project>/<eval_name>/
+    <eval_name>__<utc_ts>__<host>__results.csv
+    <eval_name>__<utc_ts>__<host>__status.json
+    <eval_name>__<utc_ts>__<host>__run.log
+```
+
+- `nas_project` = repo name (e.g. `conduit`)
+- `eval_name` = script-level identifier (e.g. `run2`, `ecw_sweep`)
+- `utc_ts` = compact ISO `YYYYMMDDTHHMMSSZ`, set at script start
+- `host` = short hostname (alphablue, petrosian, caruana)
+
+Filenames declare provenance: which eval ran, when, on which host. Runs accumulate as history; two hosts running the same eval do not collide.
+
+**Use `evals/nas.py`** in every job:
+
+```python
+from nas import artifact_paths
+_paths = artifact_paths(nas_project="conduit", eval_name="run2")
+RESULTS_PATH = _paths["results_csv"]
+STATUS_PATH  = _paths["status_json"]
+LOG_PATH     = _paths["log"]
+```
+
+**Fail-fast contract**: if `$NAS` is unset or `$NAS/evals/` is missing (NAS unmounted), the helper raises `SystemExit` at import. Jobs do not silently fall back to local storage. Fix the mount, do not paper over.
 
 ---
 
@@ -42,11 +76,17 @@ from my_eval import my_pure_function
 
 **3. Write the job entry point in `jobs/<eval_name>.py`**
 
-Just `main()` — parse args, build `run_matrix`, instantiate your runner, call `asyncio.run(runner.run(...))`.
+Just `main()` — parse args, build `run_matrix`, instantiate your runner, call `asyncio.run(runner.run(...))`. Wire NAS artifact paths via the helper (never hardcode local paths):
 
 ```python
 sys.path.insert(0, str(Path(__file__).parent.parent / "evals"))
 from my_eval import MyEvalRunner
+from nas import artifact_paths
+
+_paths = artifact_paths(nas_project="conduit", eval_name="my_eval")
+RESULTS_PATH = _paths["results_csv"]
+STATUS_PATH  = _paths["status_json"]
+LOG_PATH     = _paths["log"]
 ```
 
 Standard CLI flags: `--dry-run`, `--cron`, `--limit`, `--project`. Add any job-specific flags (e.g. `--model`, `--server`).

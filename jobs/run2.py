@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "evals"))
 
 from dataset import ConduitDatasetAsync
 from load_datasets import load_golden_dataset
+from nas import artifact_paths
 from scorer import make_gemini_judge
 from runner import EVAL_FUNCTION, EvalRunner
 from conduit.strategies.summarize.summarizers.hierarchical_tree import HierarchicalTreeSummarizer
@@ -23,10 +24,11 @@ from conduit.strategies.summarize.summarizers.one_shot import OneShotSummarizer
 from conduit.strategies.summarize.summarizers.recursive import RecursiveSummarizer
 from conduit.strategies.summarize.summarizers.rolling_refine import RollingRefineSummarizer
 
-PROJECT = "run2_strategy_comparison"
-RESULTS_PATH = Path(__file__).parent / "run2_results.csv"
-LOG_PATH = Path(__file__).parent / "run2.log"
-STATUS_PATH = Path(__file__).parent / "run2_status.json"
+PROJECT = "run2_strategy_comparison"  # DB project (ConduitDatasetAsync)
+_paths = artifact_paths(nas_project="conduit", eval_name="run2")
+RESULTS_PATH = _paths["results_csv"]
+STATUS_PATH  = _paths["status_json"]
+LOG_PATH     = _paths["log"]
 
 # Rerun matrix — qwen3.6 dropped (out of latency budget for production routing).
 # All entries use_cache=False to force fresh runs with clean duration capture.
