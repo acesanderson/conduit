@@ -18,6 +18,7 @@ from conduit.strategies.summarize.summarizers.map_dedupe_reduce import (
     MapDedupeReduceHybridModelSummarizer,
     MapDedupeReduceSummarizer,
 )
+from conduit.strategies.summarize.summarizers.map_reduce import MapReduceSummarizer
 from conduit.strategies.summarize.summarizers.one_shot import OneShotSummarizer
 from conduit.strategies.summarize.summarizers.recursive import RecursiveSummarizer
 from conduit.strategies.summarize.summarizers.rolling_refine import RollingRefineSummarizer
@@ -27,15 +28,16 @@ RESULTS_PATH = Path(__file__).parent / "run2_results.csv"
 LOG_PATH = Path(__file__).parent / "run2.log"
 STATUS_PATH = Path(__file__).parent / "run2_status.json"
 
-_QWEN = {"model": "qwen3.6:latest", "use_remote": True, "host_alias": "deepwater", "use_cache": True}
-_QWEN_RECURSIVE = {**_QWEN, "map_model": "gpt-oss:latest", "map_host_alias": "bywater"}
-_GPT = {"model": "gpt-oss:latest", "use_remote": True, "host_alias": "bywater", "use_cache": True}
-_GEMMA = {"model": "gemma4:latest", "use_remote": True, "host_alias": "deepwater", "use_cache": True}
-_GEMMA_RECURSIVE = {**_GEMMA, "map_model": "gpt-oss:latest", "map_host_alias": "bywater"}
+# Rerun matrix — qwen3.6 dropped (out of latency budget for production routing).
+# All entries use_cache=False to force fresh runs with clean duration capture.
+# Goal: validate the three-tier routing (gpt-oss/OneShot, gemma4/OneShot, gemma4/RollingRefine)
+# and measure the unmeasured MapReduce candidates for the chunked tier.
 
-# Hybrid: gpt-oss for cheap parallel chunk extraction, gemma4 for dedupe and final reduce.
-# use_cache=False to guarantee fresh results for the new hybrid config.
-_HYBRID_GPT_CHUNKS_GEMMA_REDUCE = {
+_GPT   = {"model": "gpt-oss:latest", "use_remote": True, "host_alias": "bywater",   "use_cache": False}
+_GEMMA = {"model": "gemma4:latest",  "use_remote": True, "host_alias": "deepwater", "use_cache": False}
+
+# Hybrid: gpt-oss for cheap parallel chunk extraction (bywater) + gemma4 for dedupe and final reduce (deepwater).
+_HYBRID = {
     "model":             "gemma4:latest",
     "use_remote":        True,
     "host_alias":        "deepwater",
@@ -49,27 +51,20 @@ _HYBRID_GPT_CHUNKS_GEMMA_REDUCE = {
 }
 
 RUN_MATRIX = [
-    {"strategy_cls": RecursiveSummarizer,        "config": _QWEN_RECURSIVE,  "server": "deepwater", "timeout_s": 600,  "concurrency": 5},
-    {"strategy_cls": RollingRefineSummarizer,    "config": _QWEN,            "server": "deepwater", "timeout_s": 3600, "concurrency": 1},
-    {"strategy_cls": MapDedupeReduceSummarizer,  "config": _QWEN,            "server": "deepwater", "timeout_s": 1800, "concurrency": 1},
-    {"strategy_cls": HierarchicalTreeSummarizer, "config": _QWEN,            "server": "deepwater", "timeout_s": 1800, "concurrency": 1},
-    {"strategy_cls": RecursiveSummarizer,        "config": _GPT,             "server": "bywater",   "timeout_s": 600,  "concurrency": 5},
-    {"strategy_cls": RollingRefineSummarizer,    "config": _GPT,             "server": "bywater",   "timeout_s": 2400, "concurrency": 1},
-    {"strategy_cls": MapDedupeReduceSummarizer,  "config": _GPT,             "server": "bywater",   "timeout_s": 1200, "concurrency": 2},
-    {"strategy_cls": HierarchicalTreeSummarizer, "config": _GPT,             "server": "bywater",   "timeout_s": 1200, "concurrency": 2},
-    {"strategy_cls": RecursiveSummarizer,        "config": _GEMMA_RECURSIVE, "server": "deepwater", "timeout_s": 600,  "concurrency": 5},
-    {"strategy_cls": RollingRefineSummarizer,    "config": _GEMMA,           "server": "deepwater", "timeout_s": 3600, "concurrency": 1},
-    {"strategy_cls": MapDedupeReduceSummarizer,  "config": _GEMMA,           "server": "deepwater", "timeout_s": 1800, "concurrency": 1},
-    {"strategy_cls": HierarchicalTreeSummarizer, "config": _GEMMA,           "server": "deepwater", "timeout_s": 1800, "concurrency": 1},
-    {"strategy_cls": OneShotSummarizer, "config": _GEMMA, "server": "deepwater", "timeout_s": 300, "concurrency": 3, "max_token_count": 100_000},
-    {"strategy_cls": OneShotSummarizer, "config": _GPT,   "server": "bywater",   "timeout_s": 300, "concurrency": 5, "max_token_count": 100_000},
-    {
-        "strategy_cls": MapDedupeReduceHybridModelSummarizer,
-        "config":       _HYBRID_GPT_CHUNKS_GEMMA_REDUCE,
-        "server":       "deepwater",
-        "timeout_s":    1800,
-        "concurrency":  1,
-    },
+    # Tier 1 — OneShot + gpt-oss on small docs. Cap at 12K (one bin past gpt-oss's ECW cliff).
+    {"strategy_cls": OneShotSummarizer, "config": _GPT,   "server": "bywater",   "timeout_s": 300, "concurrency": 5, "max_token_count": 12_000},
+
+    # Tier 2 — OneShot + gemma4 across the gemma4-viable range. Cap at 60K (one bin past gemma4's ECW cliff).
+    {"strategy_cls": OneShotSummarizer, "config": _GEMMA, "server": "deepwater", "timeout_s": 300, "concurrency": 3, "max_token_count": 60_000},
+
+    # Tier 3 baseline — RollingRefine + gemma4. Current winner; rerun captures real wall-clock.
+    {"strategy_cls": RollingRefineSummarizer, "config": _GEMMA, "server": "deepwater", "timeout_s": 1200, "concurrency": 1},
+
+    # Tier 3 candidate A — MapDedupeReduceHybrid. Cross-host: gpt-oss chunks on bywater + gemma4 reduce on deepwater.
+    {"strategy_cls": MapDedupeReduceHybridModelSummarizer, "config": _HYBRID, "server": "deepwater", "timeout_s": 1800, "concurrency": 1},
+
+    # Tier 3 candidate B — plain MapReduce + gemma4. Isolates whether the dedupe pass is the cost driver vs MDR.
+    {"strategy_cls": MapReduceSummarizer, "config": _GEMMA, "server": "deepwater", "timeout_s": 1800, "concurrency": 1},
 ]
 
 
@@ -86,7 +81,9 @@ class Run2EvalRunner(EvalRunner):
             meta = doc_meta.get(r.source_id, {})
             config = r.config if isinstance(r.config, dict) else r.config.model_dump()
             trace = r.output.metadata.get("trace", [])
-            duration = trace[-1]["duration"] if trace else None
+            # Sum across all trace entries — trace[-1] only captures the final call,
+            # which understates wall-clock for chunked strategies (Rolling, MapReduce, etc.).
+            duration = sum(t.get("duration", 0) for t in trace) if trace else None
             rows.append({
                 "strategy": r.strategy,
                 "model": config.get("model", ""),
