@@ -60,6 +60,10 @@ class OneShotSummarizer(SummarizationStrategy):
         rendered = Prompt(cfg.prompt).render(
             {"text": text, "target_tokens": str(target_tokens)}
         )
+        guideline = getattr(input, "guideline", None)
+        if guideline:
+            rendered = f"{guideline}\n\n{rendered}"
+            add_metadata("guideline_applied", True)
         response = await model.query(
             query_input=rendered,
             params=generation_params,

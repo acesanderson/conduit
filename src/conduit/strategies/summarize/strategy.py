@@ -6,9 +6,18 @@ from conduit.core.workflow.protocols import Strategy
 
 @dataclass
 class _TextInput:
-    """Lightweight input wrapper for internal sub-calls between summarizers."""
+    """Lightweight input wrapper for internal sub-calls between summarizers.
+
+    `guideline` is an optional, per-call summarization directive (e.g. a
+    SourceType-specific instruction passed by Siphon). It travels with the
+    input rather than the strategy config because configs represent
+    published, eval-tested recipes — guidelines are out-of-band until a
+    given (strategy, guideline) pair has been validated and promoted into
+    a SummarizationProfile.
+    """
     data: str
     source_id: str = "internal"
+    guideline: str | None = None
 
 
 class SummarizationStrategy(Strategy, ABC):

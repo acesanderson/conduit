@@ -10,6 +10,20 @@ from conduit.strategies.summarize.summarizers.chunker import Chunker
 
 logger = logging.getLogger(__name__)
 
+# Bridge text between an opaque guideline and the rolling summary, used only
+# when the caller supplied input.guideline. Refinement does content
+# accumulation; this final pass owns the user-facing output shape.
+_FORMAT_PASS_INSTRUCTION = """
+
+Using the instructions above, restructure the following summary content
+into the specified final form. Preserve all factual content, entities,
+dates, and attribution. Restructure only. Do not summarize further or
+introduce new information.
+
+<summary>
+""".lstrip()
+
+
 refine_prompt_default = """
 You are refining an evolving summary with new information.
 
@@ -81,10 +95,15 @@ class RollingRefineSummarizer(SummarizationStrategy):
 
         add_metadata("num_chunks", total_chunks)
 
-        if total_chunks == 1:
-            logger.info("Single chunk — delegating to OneShotSummarizer")
-            return await OneShotSummarizer()(_TextInput(chunks[0]), config)
+        guideline = getattr(input, "guideline", None)
 
+        if total_chunks == 1:
+            # Single-chunk path: this OneShot call IS the final output. Pass guideline through.
+            logger.info("Single chunk, delegating to OneShotSummarizer")
+            return await OneShotSummarizer()(_TextInput(chunks[0], guideline=guideline), config)
+
+        # Multi-chunk seed: intermediate accumulation step, no guideline.
+        # Guideline fires only on the post-loop format pass (see end of method).
         logger.info("Seeding summary from chunk 1")
         current_summary = await OneShotSummarizer()(_TextInput(chunks[0]), config)
 
@@ -135,5 +154,25 @@ class RollingRefineSummarizer(SummarizationStrategy):
 
         add_metadata("refine_input_tokens", total_input_tokens)
         add_metadata("refine_output_tokens", total_output_tokens)
+
+        if guideline:
+            logger.info("Running final format pass")
+            format_prompt = (
+                guideline
+                + "\n\n"
+                + _FORMAT_PASS_INSTRUCTION
+                + current_summary
+                + "\n</summary>"
+            )
+            response = await model_instance.query(
+                query_input=format_prompt,
+                params=generation_params,
+                options=options,
+            )
+            assert isinstance(response, GenerationResponse)
+            current_summary = str(response.content)
+            add_metadata("format_pass_input_tokens", response.metadata.input_tokens)
+            add_metadata("format_pass_output_tokens", response.metadata.output_tokens)
+            add_metadata("guideline_applied", True)
 
         return current_summary
