@@ -8,20 +8,24 @@ that Siphon can route to at ingest time.
 
 ---
 
-## Status — 2026-05-31
+## Status — 2026-06-01
 
-**Phases 1 and 2 complete.** Phase 3 in progress; integration with Siphon not yet shipped.
+**Phases 1 and 2 complete. Phase 3 substantially complete on the conduit side.** ArticleEnricher wired in Siphon as proof-of-concept and live-validated. Siphon-side retrieval/embedding design now lives in `siphon-server/dev/retrieval.md`; Siphon enrichment patterns live in `siphon-server/dev/summarization.md`.
 
 - **qwen3.6 dropped from production routing** — quality strong but latency unworkable for online ingest (RollingRefine medians 8–28 min on long docs).
-- **Production routing decided** (see "Published Routing Decision" below). Holds as data, swappable post-rerun.
-- **Focused rerun in flight** (Cronicle event `emothl43a01`) to settle whether `MapDedupeReduceHybrid` (gpt-oss chunks on bywater + gemma4 reduce on deepwater) beats `RollingRefine + gemma4` for Tier 3. Plain `MapReduce + gemma4` also being measured to isolate dedupe cost. If hybrid wins, Tier 3 swaps; if not, current routing locks.
-- **NAS-backed artifact storage is now standard** (commit `0c03c08`). Results, status, logs go to `$NAS/evals/<project>/<eval>/`. See `evals/nas.py` and `evals/ARCHITECTURE.md`.
+- **Production routing decided** (see "Published Routing Decision" below). Held as data in `PRODUCTION_ROUTING` (commit `b3f3157`), swappable post-rerun with a one-line edit.
+- **RoutingSummarizer + SummarizationProfile shipped** (commit `b3f3157`). Token-count routing via tiktoken `cl100k_base`. The router is itself a `SummarizationStrategy`, so it plugs into the eval matrix as one row and Siphon calls it through the same surface as any concrete strategy.
+- **Per-call guideline plumbing shipped** as `_TextInput.guideline`. Configs stay the published-artifact surface; guidelines are out-of-band per-call directives. OneShot applies guideline inline; RollingRefine applies it only at a post-loop format pass (intermediate refinement stays guideline-free to avoid premature format-locking).
+- **ArticleEnricher rewrite landed locally and smoke-tested live** against `0xsid.com/blog/meta-account-takeover-fiasco`. Tier1 routed to gpt-oss/bywater, structured markdown output matched the guideline. Not yet committed/deployed Siphon-side.
+- **NAS-backed artifact storage is standard** (commit `0c03c08`). Results, status, logs go to `$NAS/evals/<project>/<eval>/`. See `evals/nas.py` and `evals/ARCHITECTURE.md`.
 
-**Next concrete steps (tomorrow or next session)**:
-1. Wait for rerun results from event `emothl43a01`; aggregate and decide hybrid vs RollingRefine.
-2. Build `RoutingSummarizer` + `SummarizationProfile` in `src/conduit/strategies/summarize/summarizers/routing.py` (holds routing as data so post-rerun swap is one line).
-3. Wire `ArticleEnricher` in Siphon as proof-of-concept consumer of the routing summarizer.
-4. Scaffold per-SourceType `guideline: str` injection at the `SummarizationProfile` level (one stub `guideline.md` per source folder; content tuning is a separate session).
+**Rerun status**: Cronicle event `emothl43a01` has been timing out at the 4h Cronicle timeout for the last several nightly attempts. Lower-priority since the strategy doc treats the Tier 3 swap as a one-line change post-rerun and Phase 3 was unblocked on it. Independently worth fixing: bump or remove the 4h timeout, and fix the 0-byte NAS log issue.
+
+**Next concrete steps**:
+1. Commit + deploy Siphon `ArticleEnricher` rewrite (`bash siphon/scripts/deploy.sh`).
+2. Reshape description generation per `siphon-server/dev/retrieval.md`: description becomes a HyDE-shaped retrieval artifact generated as a one-shot pass on top of the summary, not from raw text. This implies a conduit-side prompt asset for HyDE-shaped distillation (lives Siphon-side per current convention; conduit just provides the strategy).
+3. Resolve the rerun timeout so Tier 3 can settle. Either cut the matrix to Tier 3 candidates only, or remove the Cronicle timeout. Also fix the 0-byte NAS logs so future failed runs are debuggable.
+4. Roll RoutingSummarizer out to the other 10 Siphon enrichers (arxiv, audio, doc, drive, email, github, image, obsidian, podcasts, video, youtube). Each is a near-identical edit; deferred per `siphon-server/dev/summarization.md`.
 
 ---
 
@@ -187,26 +191,29 @@ See "Current Eval Run" above. Settles hybrid vs RollingRefine for Tier 3 + captu
 - [x] Strategy × model breakdown by token bin (per-tier quality cliff identified)
 - [x] Routing decision: OneShot ≤ 30K / RollingRefine > 30K, gemma4 production model
 
-### Phase 3 — Publish — IN PROGRESS
+### Phase 3 — Publish — SUBSTANTIALLY COMPLETE (conduit side)
 
 **Done**:
 - [x] Production routing decided (see "Published Routing Decision")
 - [x] NAS-backed artifact storage (`evals/nas.py`, commit `0c03c08`)
-- [x] Focused rerun matrix to settle hybrid vs RollingRefine (commit `b566de6`, in flight)
+- [x] Focused rerun matrix to settle hybrid vs RollingRefine (commit `b566de6`, parked at 4h timeout)
+- [x] `RoutingSummarizer` + `SummarizationProfile` data model shipped (commit `b3f3157`). Routing held as data; Tier 3 swap is one-line.
+- [x] `_TextInput.guideline` per-call directive shipped. OneShot inline, RollingRefine post-loop format pass (commit `b3f3157`). Documented convention: any future strategy added to `PRODUCTION_ROUTING` must opt in to guideline at its final user-facing call only, or Siphon-supplied guidelines silently drop.
+- [x] `ArticleEnricher` rewritten locally (Siphon-side, not yet committed) and live-validated end-to-end against a real article. Tier1 routing confirmed, guideline applied correctly, structured markdown output preserves the intended format.
+- [x] `guideline.jinja2` scaffold for article (`siphon-server/src/siphon_server/sources/article/guideline.jinja2`). Convention: `.jinja2` extension for templated guidelines, `.md` for un-templated stubs.
 
-**Next session (immediate)**:
-- [ ] Aggregate rerun results; finalize Tier 3 (RollingRefine vs hybrid)
-- [ ] Build `RoutingSummarizer` + `SummarizationProfile(strategy, model, host_alias, guideline)` in `src/conduit/strategies/summarize/summarizers/routing.py`. Routing held as data — list of `(token_max, SummarizationProfile)` tuples — so post-rerun swap is a one-line change.
-- [ ] Wire `ArticleEnricher` in Siphon as proof-of-concept consumer. Replace its `model.query(summary_prompt, ...)` with `routing_summarizer.summarize(text, guideline=...)`.
-- [ ] Scaffold per-SourceType `guideline.md` stubs in each `sources/<source>/` folder. Empty / placeholder content for now.
+**Open (in priority order)**:
+- [ ] Commit + deploy `ArticleEnricher` rewrite via `bash siphon/scripts/deploy.sh` (no `--restart-workers` needed; the affected code is library, not Docker workers).
+- [ ] **Description workflow redesign per `siphon-server/dev/retrieval.md`**: description becomes a HyDE-shaped retrieval-only artifact, generated by a one-shot pass on the summary (not the raw text). Hands a bounded input to gpt-oss; eliminates the long-input description problem permanently.
+- [ ] Aggregate rerun results once the Cronicle timeout is fixed. Tier 3 (RollingRefine vs hybrid) remains an open question, but doesn't block production routing.
+- [ ] Roll routing summarizer to the other 10 Siphon enrichers (arxiv, audio, doc, drive, email, github, image, obsidian, podcasts, video, youtube). Each is a near-identical pattern; see `siphon-server/dev/summarization.md` for the migration template.
+- [ ] Author actual per-SourceType guideline content (dedicated sessions with user input per source).
+- [ ] Run 3: per-SourceType guideline tuning eval.
+- [ ] Assemble holdout set for Run 4; validate published config on holdout.
 
-**Deferred (separate sessions)**:
-- [ ] Roll out routing summarizer to the other 11 Siphon enrichers (arxiv, audio, doc, drive, email, github, image, obsidian, podcasts, video, youtube)
-- [ ] Author actual per-SourceType guideline content (dedicated session with user input per source)
-- [ ] Run 3: per-SourceType guideline tuning eval
-- [ ] Assemble holdout set for Run 4
-- [ ] Run 4: validate published config on holdout
-- [ ] Wire Siphon ingest pipeline to look up profile by SourceType
+**Cross-references**:
+- Siphon enrichment architecture: `siphon-server/dev/summarization.md`
+- Siphon retrieval architecture (embedding model migration, HyDE, RRF): `siphon-server/dev/retrieval.md`
 
 ---
 
