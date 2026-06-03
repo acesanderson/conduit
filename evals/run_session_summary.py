@@ -9,6 +9,18 @@ Usage:
     python evals/run_session_summary.py               # default: 10 sessions
     python evals/run_session_summary.py --limit 5
     python evals/run_session_summary.py --dry-run     # print sessions, exit
+
+STATUS: TBD — blocked on the long-text summarization harness.
+
+The current _build_transcript() uses a naive head/tail truncation (40 head + 20 tail
+turns, 32k-token budget split per-turn) that mangles long sessions for both the
+candidate AND the gemini3 reference. Mean candidate scores (~0.18 for gemma4:latest)
+reflect this context-engineering failure, not a model-capability ceiling.
+
+Do not invest further in this eval until the broader summarization harness (see
+STRATEGY.md — RecursiveSummarizer / RollingRefine on Siphon corpus) lands a reliable
+local-model path for arbitrary-length input. Once that exists, this eval should
+consume it as a strategy rather than rolling its own head/tail truncation.
 """
 from __future__ import annotations
 

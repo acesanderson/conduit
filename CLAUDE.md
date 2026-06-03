@@ -51,3 +51,19 @@ conduit-project/
 ## Evals
 
 See **`evals/ARCHITECTURE.md`** for the full guide: three-layer design (scaffolding / abstraction / job), how to add a new eval, run matrix shape, Cronicle shell command template, and key file index.
+
+---
+
+## Cronicle Event Lifecycle
+
+**Never enable, disable, or delete Cronicle events autonomously.** Update `notes` and metadata freely — but never touch `enabled`, `timing`, or delete events without explicit per-instance approval. If you think an event should be disabled, surface it as a question; never execute.
+
+**Why:** Brian manages Cronicle event lifecycle manually. The LLM's job is metadata hygiene and provenance, not scheduling decisions.
+
+---
+
+## Active Blockers / Known State
+
+- **Session-summary eval (`evals/run_session_summary.py`, Cronicle job `emp50harw0e`) is TBD.** Diagnosed as a context-engineering failure: `_build_transcript` does naive head/tail truncation that mangles long sessions for both the gemma4 candidate and gemini3 reference. Don't interpret nightly scores from this job as evidence about local-model quality. Fix requires the broader long-text summarization harness (`evals/STRATEGY.md`) before this eval is meaningful.
+
+- **NAS for shared datasets is a future item.** Datasets like `gold_standard_dataset.parquet` currently require manual per-host copies. Flag this when designing eval jobs that need datasets across hosts.

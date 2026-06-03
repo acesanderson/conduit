@@ -10,6 +10,19 @@ Usage:
     uv run python jobs/summarize_session_quality.py --cron        # health-gate (for Cronicle)
     uv run python jobs/summarize_session_quality.py --dry-run     # print sessions, exit
     uv run python jobs/summarize_session_quality.py --limit 5
+
+STATUS: TBD — blocked on the long-text summarization harness.
+
+This job inherits the head/tail transcript truncation in
+evals/run_session_summary.py:_build_transcript, which mangles long sessions for
+both candidate and reference. Current nightly results (mean ~0.18 for
+gemma4:latest) reflect that context-engineering failure, not model capability.
+
+Do not act on results from this job until the broader summarization harness
+(evals/STRATEGY.md — RecursiveSummarizer / RollingRefine) ships a reliable
+local-model path for arbitrary-length input. The Cronicle event "Session Summary
+Quality Check — gemma4:latest" (id emp50harw0e) should probably be disabled in
+the meantime.
 """
 from __future__ import annotations
 

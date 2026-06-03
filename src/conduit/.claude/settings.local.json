@@ -79,7 +79,31 @@
       "Bash(env)",
       "Skill(cronicle)",
       "Skill(cc-planner)",
-      "Skill(postgres)"
+      "Skill(postgres)",
+      "Skill(conduit)",
+      "Read(//Users/bianders/vibe/licensing-project/scripts/**)",
+      "Read(//Users/bianders/vibe/licensing-project/**)",
+      "Read(//Users/bianders/.claude/skills/python-best-practices/**)",
+      "Read(//private/tmp/**)",
+      "Bash(gunzip -c /tmp/jmpgrjsao0s.log)",
+      "Bash(zcat /tmp/jmpgrjsao0s.log)",
+      "Read(//Users/bianders/.claude/skills/claude-history/**)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(/opt/homebrew/bin/gh auth *)",
+      "Bash(xargs -I{} sh -c 'echo \"=== {} ===\"; wc -l \"{}\"')",
+      "Bash(curl -s -m 3 -o /dev/null -w \"alphablue:3013/ping  HTTP %{http_code}  time=%{time_total}s\\\\n\" http://172.16.0.2:3013/ping)",
+      "Bash(curl -s -m 3 http://172.16.0.2:3013/ping)",
+      "Bash(curl -s -m 5 -w \"\\\\nHTTP %{http_code}  time=%{time_total}s\\\\n\" http://172.16.0.2:3013/ping)",
+      "Bash(curl -s -m 5 -o /tmp/cal-index.html -w \"HTTP %{http_code}  size=%{size_download}b  time=%{time_total}s\\\\n\" http://172.16.0.2:3013/)",
+      "Bash(curl -s -m 5 -w \"\\\\nHTTP %{http_code}\\\\n\" http://172.16.0.2:3013/api/categories)",
+      "Bash(curl -s -m 5 -o /tmp/cal-index.html -w \"HTTP %{http_code}  size=%{size_download}b\\\\n\" http://172.16.0.2:3013/)",
+      "Bash(kill 58945 58954 58955 58986)",
+      "Skill(python-best-practices)",
+      "Read(//opt/homebrew/Cellar/uv/0.11.7/bin/**)",
+      "Read(//Users/bianders/.cargo/bin/**)",
+      "Bash(curl -sS --max-time 5 http://172.16.0.2:8080/health)",
+      "Bash(kill 30123 30111)",
+      "Bash(xargs -I {} sh -c 'echo \"=== {} ===\"; grep -nE \"description|summary|asyncio\\\\.gather|await.*model|prompt_loader\\\\[\" {} | head -25')"
     ]
   }
 }
