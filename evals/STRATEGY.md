@@ -16,16 +16,15 @@ that Siphon can route to at ingest time.
 - **Production routing decided** (see "Published Routing Decision" below). Held as data in `PRODUCTION_ROUTING` (commit `b3f3157`), swappable post-rerun with a one-line edit.
 - **RoutingSummarizer + SummarizationProfile shipped** (commit `b3f3157`). Token-count routing via tiktoken `cl100k_base`. The router is itself a `SummarizationStrategy`, so it plugs into the eval matrix as one row and Siphon calls it through the same surface as any concrete strategy.
 - **Per-call guideline plumbing shipped** as `_TextInput.guideline`. Configs stay the published-artifact surface; guidelines are out-of-band per-call directives. OneShot applies guideline inline; RollingRefine applies it only at a post-loop format pass (intermediate refinement stays guideline-free to avoid premature format-locking).
-- **ArticleEnricher rewrite landed locally and smoke-tested live** against `0xsid.com/blog/meta-account-takeover-fiasco`. Tier1 routed to gpt-oss/bywater, structured markdown output matched the guideline. Not yet committed/deployed Siphon-side.
+- **ArticleEnricher shipped Siphon-side** (commit `040cfe3`, deployed 2026-06-01). Tier1 routed to gpt-oss/bywater, structured markdown output matched the guideline.
 - **NAS-backed artifact storage is standard** (commit `0c03c08`). Results, status, logs go to `$NAS/evals/<project>/<eval>/`. See `evals/nas.py` and `evals/ARCHITECTURE.md`.
 
 **Rerun status**: Cronicle event `emothl43a01` has been timing out at the 4h Cronicle timeout for the last several nightly attempts. Lower-priority since the strategy doc treats the Tier 3 swap as a one-line change post-rerun and Phase 3 was unblocked on it. Independently worth fixing: bump or remove the 4h timeout, and fix the 0-byte NAS log issue.
 
 **Next concrete steps**:
-1. Commit + deploy Siphon `ArticleEnricher` rewrite (`bash siphon/scripts/deploy.sh`).
-2. Reshape description generation per `siphon-server/dev/retrieval.md`: description becomes a HyDE-shaped retrieval artifact generated as a one-shot pass on top of the summary, not from raw text. This implies a conduit-side prompt asset for HyDE-shaped distillation (lives Siphon-side per current convention; conduit just provides the strategy).
+1. Reshape description generation per `siphon-server/dev/retrieval.md`: description becomes a HyDE-shaped retrieval artifact generated as a one-shot pass on top of the summary, not from raw text. Description guideline lives Siphon-side at `sources/<source>/description_guideline.jinja2`.
+2. Roll RoutingSummarizer out to the other Siphon enrichers. Of the 11 non-article sources, 9 follow the standard pattern (arxiv, audio, doc, email, github, image, obsidian, video, youtube; doc is multi-variant by MIME type). `drive` is a `NotImplementedError` stub; `podcasts` has no `enricher.py` — both skipped pending the upstream work that would make them enrichable.
 3. Resolve the rerun timeout so Tier 3 can settle. Either cut the matrix to Tier 3 candidates only, or remove the Cronicle timeout. Also fix the 0-byte NAS logs so future failed runs are debuggable.
-4. Roll RoutingSummarizer out to the other 10 Siphon enrichers (arxiv, audio, doc, drive, email, github, image, obsidian, podcasts, video, youtube). Each is a near-identical edit; deferred per `siphon-server/dev/summarization.md`.
 
 ---
 
@@ -199,14 +198,13 @@ See "Current Eval Run" above. Settles hybrid vs RollingRefine for Tier 3 + captu
 - [x] Focused rerun matrix to settle hybrid vs RollingRefine (commit `b566de6`, parked at 4h timeout)
 - [x] `RoutingSummarizer` + `SummarizationProfile` data model shipped (commit `b3f3157`). Routing held as data; Tier 3 swap is one-line.
 - [x] `_TextInput.guideline` per-call directive shipped. OneShot inline, RollingRefine post-loop format pass (commit `b3f3157`). Documented convention: any future strategy added to `PRODUCTION_ROUTING` must opt in to guideline at its final user-facing call only, or Siphon-supplied guidelines silently drop.
-- [x] `ArticleEnricher` rewritten locally (Siphon-side, not yet committed) and live-validated end-to-end against a real article. Tier1 routing confirmed, guideline applied correctly, structured markdown output preserves the intended format.
+- [x] `ArticleEnricher` shipped and live-validated end-to-end against a real article (commit `040cfe3`, deployed 2026-06-01). Tier1 routing confirmed, guideline applied correctly, structured markdown output preserves the intended format.
 - [x] `guideline.jinja2` scaffold for article (`siphon-server/src/siphon_server/sources/article/guideline.jinja2`). Convention: `.jinja2` extension for templated guidelines, `.md` for un-templated stubs.
 
 **Open (in priority order)**:
-- [ ] Commit + deploy `ArticleEnricher` rewrite via `bash siphon/scripts/deploy.sh` (no `--restart-workers` needed; the affected code is library, not Docker workers).
-- [ ] **Description workflow redesign per `siphon-server/dev/retrieval.md`**: description becomes a HyDE-shaped retrieval-only artifact, generated by a one-shot pass on the summary (not the raw text). Hands a bounded input to gpt-oss; eliminates the long-input description problem permanently.
+- [ ] **Description workflow redesign per `siphon-server/dev/retrieval.md`**: description becomes a HyDE-shaped retrieval-only artifact, generated by a one-shot pass on the summary (not the raw text). Hands a bounded input to gpt-oss; eliminates the long-input description problem permanently. Article first (Phase R1); other 9 sources follow per Phase R5.
 - [ ] Aggregate rerun results once the Cronicle timeout is fixed. Tier 3 (RollingRefine vs hybrid) remains an open question, but doesn't block production routing.
-- [ ] Roll routing summarizer to the other 10 Siphon enrichers (arxiv, audio, doc, drive, email, github, image, obsidian, podcasts, video, youtube). Each is a near-identical pattern; see `siphon-server/dev/summarization.md` for the migration template.
+- [ ] Roll routing summarizer to the 9 remaining standard Siphon enrichers (arxiv, audio, doc, email, github, image, obsidian, video, youtube). `drive` (NotImplementedError stub) and `podcasts` (no enricher) skipped. Each is a near-identical pattern; see `siphon-server/dev/summarization.md`.
 - [ ] Author actual per-SourceType guideline content (dedicated sessions with user input per source).
 - [ ] Run 3: per-SourceType guideline tuning eval.
 - [ ] Assemble holdout set for Run 4; validate published config on holdout.
