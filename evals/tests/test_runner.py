@@ -7,7 +7,38 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import logging
 from runner import EvalRunner, ServerCircuitBreaker, _classify_error, _config_id
+
+
+def test_setup_logging_attaches_file_handler_even_if_root_preconfigured(tmp_path):
+    """Regression: 0-byte NAS logs.
+
+    If anything (library import, prior call) attaches a handler to the root
+    logger first, `logging.basicConfig` is a no-op — the FileHandler never
+    fires, and the NAS log file ends up 0 bytes. _setup_logging must use
+    force=True so it wins.
+    """
+    pre_existing = logging.StreamHandler()
+    logging.getLogger().addHandler(pre_existing)
+    try:
+        log_path = tmp_path / "x.log"
+        runner = EvalRunner.__new__(EvalRunner)
+        runner._log_path = log_path
+        runner._setup_logging()
+        logging.getLogger("test_lognot0").info("hello world")
+
+        for h in logging.getLogger().handlers:
+            try:
+                h.flush()
+            except Exception:
+                pass
+
+        assert log_path.exists()
+        assert log_path.stat().st_size > 0
+        assert "hello world" in log_path.read_text()
+    finally:
+        logging.getLogger().removeHandler(pre_existing)
 
 
 def _make_doc(source_id: str, token_count: int = 0):

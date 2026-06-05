@@ -22,7 +22,10 @@ EVAL_FUNCTION = "gemini_judge"
 
 
 def _config_id(config: dict) -> str:
-    return hashlib.md5(json.dumps(config, sort_keys=True).encode()).hexdigest()[:8]
+    from evals import config_to_canonical_dict
+
+    canonical = config_to_canonical_dict(config)
+    return hashlib.md5(json.dumps(canonical, sort_keys=True).encode()).hexdigest()[:8]
 
 
 def _classify_error(exc: BaseException) -> str:
@@ -135,13 +138,28 @@ class EvalRunner:
 
     def _setup_logging(self) -> None:
         fmt = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+        # force=True so we win against any library (asyncpg, headwater, etc.)
+        # that emitted at import time and locked the root logger into its own
+        # handler — that was producing 0-byte log files because the FileHandler
+        # was never attached.
+        file_handler = logging.FileHandler(self._log_path, mode="w", encoding="utf-8")
+        # Flush on every record so SIGKILL at the Cronicle timeout still leaves
+        # us a useful tail. Without this we lose the last block-buffered window.
+        original_emit = file_handler.emit
+
+        def flushing_emit(record: logging.LogRecord) -> None:
+            original_emit(record)
+            file_handler.flush()
+
+        file_handler.emit = flushing_emit  # type: ignore[assignment]
         logging.basicConfig(
             level=logging.INFO,
             format=fmt,
             handlers=[
                 logging.StreamHandler(sys.stdout),
-                logging.FileHandler(self._log_path),
+                file_handler,
             ],
+            force=True,
         )
 
     def _print_matrix(self, docs_count: int | None = None) -> None:

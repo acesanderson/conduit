@@ -23,6 +23,34 @@ import hashlib
 import json
 import logging
 
+
+def config_to_canonical_dict(value: Any) -> Any:
+    """Normalize an eval config so it's JSON-serializable and identity-stable.
+
+    Pydantic BaseModels become dicts via model_dump(); `type` objects become
+    "module.qualname" strings; lists/tuples/dicts recurse. Primitive scalars
+    pass through.
+
+    This exists so configs that hold non-scalar fields (e.g. RoutingSummarizer's
+    `routing` field, which is `list[tuple[int, SummarizationProfile]]` and whose
+    SummarizationProfile contains a `type[SummarizationStrategy]`) can be hashed
+    by `_config_id` and persisted in `RunResult.config` without crashing
+    json.dumps. Without this, RoutingSummarizer cannot appear in an eval matrix.
+    """
+    if isinstance(value, BaseModel):
+        return config_to_canonical_dict(value.model_dump())
+    if isinstance(value, type):
+        module = getattr(value, "__module__", "") or ""
+        qualname = getattr(value, "__qualname__", value.__name__)
+        return f"{module}.{qualname}" if module else qualname
+    if isinstance(value, dict):
+        return {str(k): config_to_canonical_dict(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [config_to_canonical_dict(v) for v in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return repr(value)
+
 logger = logging.getLogger(__name__)
 
 CONCURRENCY_LIMIT = 10
@@ -114,12 +142,15 @@ async def run_eval(
     finally:
         context.trace.reset(token)
 
-    config_id = hashlib.md5(json.dumps(config, sort_keys=True).encode()).hexdigest()[:8]
+    canonical_config = config_to_canonical_dict(config)
+    config_id = hashlib.md5(
+        json.dumps(canonical_config, sort_keys=True).encode()
+    ).hexdigest()[:8]
     return RunResult(
         strategy=strategy.__class__.__name__,
         config_id=config_id,
         source_id=input.source_id,
-        config=config,
+        config=canonical_config,
         output=RunOutput(output=output, metadata={"trace": trace}),
         warnings=warnings,
     )
