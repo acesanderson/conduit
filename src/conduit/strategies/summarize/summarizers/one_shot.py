@@ -64,6 +64,7 @@ class OneShotSummarizer(SummarizationStrategy):
         if guideline:
             rendered = f"{guideline}\n\n{rendered}"
             add_metadata("guideline_applied", True)
+        add_metadata("rendered_prompt", rendered)
         response = await model.query(
             query_input=rendered,
             params=generation_params,

@@ -127,6 +127,7 @@ class RollingRefineSummarizer(SummarizationStrategy):
 
         total_input_tokens = 0
         total_output_tokens = 0
+        refine_rendered_prompts: list[str] = []
 
         for i, chunk in enumerate(chunks[1:], start=2):
             logger.info(f"Refining with chunk {i}/{total_chunks}")
@@ -142,6 +143,7 @@ class RollingRefineSummarizer(SummarizationStrategy):
                     "total_chunks": str(total_chunks),
                 }
             )
+            refine_rendered_prompts.append(rendered)
             response = await model_instance.query(
                 query_input=rendered,
                 params=generation_params,
@@ -154,6 +156,7 @@ class RollingRefineSummarizer(SummarizationStrategy):
 
         add_metadata("refine_input_tokens", total_input_tokens)
         add_metadata("refine_output_tokens", total_output_tokens)
+        add_metadata("refine_rendered_prompts", refine_rendered_prompts)
 
         if guideline:
             logger.info("Running final format pass")
@@ -164,6 +167,7 @@ class RollingRefineSummarizer(SummarizationStrategy):
                 + current_summary
                 + "\n</summary>"
             )
+            add_metadata("format_pass_rendered_prompt", format_prompt)
             response = await model_instance.query(
                 query_input=format_prompt,
                 params=generation_params,
