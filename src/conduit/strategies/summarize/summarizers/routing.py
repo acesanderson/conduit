@@ -105,12 +105,13 @@ _GEMMA_DEEPWATER = {
 }
 
 PRODUCTION_ROUTING: list[tuple[int, SummarizationProfile]] = [
-    # Tier 1 upper bound dropped from 12K to 5K after empirical confirmation
-    # of the gpt-oss ECW cliff. The 32-min YouTube video at 7993 tokens
-    # (youtube:///Kf0rPU7zy7Q) produced hallucinated CTA boilerplate in the
-    # 5K-12K range — matching the eval-measured 0.13 quality in that bin.
-    # The 5K-30K range now routes to gemma4 (eval quality 0.60).
-    (5_000, SummarizationProfile(
+    # Tier 1 upper bound dropped 12K -> 5K (commit 0578342) then 5K -> 3K
+    # after the Article re-enrichment smoke surfaced within-bin variance
+    # at 4715 tokens: gpt-oss hallucinated a Python `make_adder` factory
+    # for a code-heavy Claude Code article. The eval-measured 0.72 quality
+    # at <5K turned out to be a mean — code-dense content sits in the
+    # worse half of the bin. 3K-30K now routes to gemma4 (eval 0.60).
+    (3_000, SummarizationProfile(
         name="tier1_oneshot_gpt_oss",
         strategy_cls=OneShotSummarizer,
         config=_GPT_BYWATER,
