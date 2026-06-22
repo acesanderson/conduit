@@ -97,10 +97,14 @@ _GPT_BYWATER = {
     "host_alias": "bywater",
     "use_cache": True,
 }
-_GEMMA_DEEPWATER = {
+# gemma4 moved from alphablue/deepwater to caruana/bywater on 2026-06-21
+# after alphablue was repurposed exclusively for vllm. caruana already
+# served gpt-oss; it now also serves gemma4:latest for Tier 2/3
+# summarization.
+_GEMMA_BYWATER = {
     "model": "gemma4:latest",
     "use_remote": True,
-    "host_alias": "deepwater",
+    "host_alias": "bywater",
     "use_cache": True,
 }
 
@@ -119,12 +123,12 @@ PRODUCTION_ROUTING: list[tuple[int, SummarizationProfile]] = [
     (30_000, SummarizationProfile(
         name="tier2_oneshot_gemma4",
         strategy_cls=OneShotSummarizer,
-        config=_GEMMA_DEEPWATER,
+        config=_GEMMA_BYWATER,
     )),
     # Tier 3 catch-all. Swap to a hybrid profile here post-rerun if it wins.
     (10**9, SummarizationProfile(
         name="tier3_rolling_refine_gemma4",
         strategy_cls=RollingRefineSummarizer,
-        config=_GEMMA_DEEPWATER,
+        config=_GEMMA_BYWATER,
     )),
 ]
