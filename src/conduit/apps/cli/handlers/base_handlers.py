@@ -282,6 +282,7 @@ class BaseHandlers:
         search: bool = False,
         citations: bool = False,
         deep_research: bool = False,
+        deep_research_tier: str = "standard",
         image_path: str | None = None,
         image_content: ImageContent | None = None,
         audio_path: str | None = None,
@@ -303,14 +304,18 @@ class BaseHandlers:
 
         # 2. Build Inputs
         if deep_research:
-            client_params: dict = {"deep_research": True}
+            client_params: dict = {
+                "deep_research": True,
+                "deep_research_tier": deep_research_tier,
+            }
             citations = True  # deep research always returns citations
             persist = True    # always save — a 20-min job shouldn't be lost
-            # Deep research requires a Google model — auto-select if the user didn't specify one
+            # Deep research uses a dedicated agent regardless of --model; the model
+            # arg is only used for response metadata. Coerce to a Google slug so
+            # downstream routing (provider identification, cache key) is consistent.
             from conduit.core.model.models.modelstore import ModelStore
             if ModelStore.identify_provider(model) != "google":
-                model = "gemini-2.5-flash"
-                printer.print_err("[yellow]--deep-research requires a Gemini model; using gemini-2.5-flash[/yellow]")
+                model = "gemini-3.5-flash"
         elif citations:
             client_params = {"return_citations": True}
         else:

@@ -89,7 +89,9 @@
       "Bash(tmux new-window *)",
       "Bash(tmux send-keys *)",
       "Bash(tmux capture-pane *)",
-      "Bash(tmux list-sessions *)"
+      "Bash(tmux list-sessions *)",
+      "Bash(/Users/bianders/Brian_Code/siphon/siphon-server/.venv/bin/python -c \"from siphon_server.sources.article.enricher import ArticleEnricher; e = ArticleEnricher\\(\\); print\\('imports OK'\\); print\\('guideline:', e.guideline_template\\); print\\('desc_guideline:', e.description_guideline_template\\)\")",
+      "Bash(/Users/bianders/Brian_Code/siphon/siphon-server/.venv/bin/python *)"
     ]
   }
 }

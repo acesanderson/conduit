@@ -103,7 +103,8 @@
       "Read(//Users/bianders/.cargo/bin/**)",
       "Bash(curl -sS --max-time 5 http://172.16.0.2:8080/health)",
       "Bash(kill 30123 30111)",
-      "Bash(xargs -I {} sh -c 'echo \"=== {} ===\"; grep -nE \"description|summary|asyncio\\\\.gather|await.*model|prompt_loader\\\\[\" {} | head -25')"
+      "Bash(xargs -I {} sh -c 'echo \"=== {} ===\"; grep -nE \"description|summary|asyncio\\\\.gather|await.*model|prompt_loader\\\\[\" {} | head -25')",
+      "Skill(superpowers:brainstorming)"
     ]
   }
 }

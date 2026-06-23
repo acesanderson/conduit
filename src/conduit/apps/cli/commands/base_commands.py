@@ -227,6 +227,13 @@ class BaseCommands(CommandCollection):
             help="Run Gemini Deep Research (async, takes several minutes). Implies --citations.",
         )
         @click.option(
+            "--deep-research-tier",
+            type=click.Choice(["pro", "standard", "max"], case_sensitive=False),
+            default="standard",
+            show_default=True,
+            help="Deep-research agent tier (only with --deep-research).",
+        )
+        @click.option(
             "-S", "--search", is_flag=True,
             help="Use web search and URL fetch to inform the answer (multi-turn agent).",
         )
@@ -282,6 +289,7 @@ class BaseCommands(CommandCollection):
             append: str | None,
             citations: bool,
             deep_research: bool,
+            deep_research_tier: str,
             search: bool,
             image: str | None,
             audio: str | None,
@@ -379,6 +387,7 @@ class BaseCommands(CommandCollection):
                 append=append,
                 citations=citations,
                 deep_research=deep_research,
+                deep_research_tier=deep_research_tier,
                 search=search,
                 image_path=image_path,
                 image_content=image_content,
@@ -632,6 +641,55 @@ class BaseCommands(CommandCollection):
             count: int = m.tokenize(text)
             click.echo(f"Number of tokens: {count}")
 
+        @click.command("deep-research-resume")
+        @click.argument("interaction_id", required=False)
+        @click.option("--list", "list_jobs", is_flag=True, help="List recorded deep-research jobs.")
+        @click.option("--raw", is_flag=True, help="Print raw JSON instead of formatted output.")
+        def deep_research_resume(interaction_id: str | None, list_jobs: bool, raw: bool):
+            """Recover a deep-research interaction by ID after a CLI crash."""
+            import asyncio
+            import json as _json
+            from pathlib import Path
+            from conduit.core.clients.google.client import GoogleClient
+
+            state_file = Path.home() / ".conduit" / "deep_research_jobs.json"
+
+            if list_jobs:
+                if not state_file.exists():
+                    click.echo("No deep-research jobs recorded.")
+                    return
+                jobs = _json.loads(state_file.read_text())
+                if not jobs:
+                    click.echo("No deep-research jobs recorded.")
+                    return
+                for j in jobs:
+                    click.echo(
+                        f"{j.get('created_at', '?')}  {j.get('interaction_id', '?')}  "
+                        f"[{j.get('agent', '?')}]  {j.get('query_preview', '')[:80]}"
+                    )
+                return
+
+            if not interaction_id:
+                raise click.UsageError("Provide INTERACTION_ID or use --list to see recorded jobs.")
+
+            client = GoogleClient()
+            click.echo(f"Polling interaction {interaction_id}...", err=True)
+            result = asyncio.run(client.resume_deep_research(interaction_id))
+
+            if raw:
+                click.echo(_json.dumps(result, indent=2))
+                return
+
+            click.echo(result["text"])
+            if result["citations"]:
+                click.echo("\n--- Citations ---", err=True)
+                for i, c in enumerate(result["citations"], 1):
+                    click.echo(f"[{i}] {c['title']}: {c['url']}", err=True)
+            click.echo(
+                f"\n[tokens: in={result['input_tokens']} out={result['output_tokens']}]",
+                err=True,
+            )
+
         self._commands = [
             query,
             history,
@@ -644,6 +702,7 @@ class BaseCommands(CommandCollection):
             config,
             tokens,
             tokenize,
+            deep_research_resume,
         ]
 
     @override
